@@ -79,6 +79,7 @@ def resolve_device(
     *,
     model_precision_supports_fp16: bool = True,
     estimated_vram_mb: int | None = None,
+    allowed_gpu_indices: list[int] | None = None,
 ) -> DeviceProfile:
     """
     Resolve a requested execution option into a concrete device profile.
@@ -86,8 +87,16 @@ def resolve_device(
     AUTO SELECT evaluates, in order: hardware availability -> model/precision
     compatibility -> available memory / GPU VRAM -> processing workload, and
     falls back to the next-best option rather than failing outright.
+
+    `allowed_gpu_indices` backs the UI's per-GPU checkboxes (the top-bar GPU
+    dropdown): when given, only those physical CUDA device indices are ever
+    considered a candidate — a real restriction, not cosmetic. An empty list
+    is treated the same as None (no restriction) rather than "no GPU allowed",
+    since an accidentally-empty selection shouldn't silently force CPU.
     """
     gpus = _cuda_devices()
+    if allowed_gpu_indices:
+        gpus = [g for g in gpus if g["index"] in allowed_gpu_indices]
 
     if option == DeviceOption.CPU0:
         return DeviceProfile(option, "cpu", settings.CPU0_THREADS, None, "User-selected CPU profile 0.")
@@ -97,10 +106,12 @@ def resolve_device(
 
     if option == DeviceOption.GPU:
         if not gpus:
-            return DeviceProfile(
-                DeviceOption.CPU1, "cpu", settings.CPU1_THREADS, None,
-                "GPU requested but no CUDA device is available on this host — fell back to CPU1.",
+            reason = (
+                "GPU requested but no CUDA device is available on this host — fell back to CPU1."
+                if not _cuda_devices() else
+                "GPU requested but none of the enabled GPUs are available — fell back to CPU1."
             )
+            return DeviceProfile(DeviceOption.CPU1, "cpu", settings.CPU1_THREADS, None, reason)
         best = max(gpus, key=lambda g: g["free_vram_mb"])
         return DeviceProfile(DeviceOption.GPU, f"cuda:{best['index']}", None, best["index"],
                               f"Using {best['name']} ({best['free_vram_mb']} MB free).")

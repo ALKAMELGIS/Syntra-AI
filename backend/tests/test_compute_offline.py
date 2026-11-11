@@ -65,6 +65,27 @@ def test_resolve_device_never_raises_and_always_returns_profile():
         assert profile.resolved in ("cpu", "cuda") or profile.resolved.startswith("cuda:")
 
 
+def test_allowed_gpu_indices_is_a_no_op_without_cuda():
+    # No GPUs exist in this sandbox either way, but allowed_gpu_indices must
+    # not change the honest "no CUDA device" fallback reason into something
+    # that implies a GPU was actually considered and excluded.
+    profile = resolve_device(DeviceOption.AUTO, allowed_gpu_indices=[0, 1])
+    assert profile.option == DeviceOption.CPU1
+    assert "no CUDA device detected" in profile.reason
+
+    profile2 = resolve_device(DeviceOption.GPU, allowed_gpu_indices=[0])
+    assert profile2.option == DeviceOption.CPU1
+    assert "GPU requested but no CUDA device" in profile2.reason
+
+
+def test_allowed_gpu_indices_empty_list_means_no_restriction():
+    # An empty list (e.g. a UI selection that briefly renders empty) must be
+    # treated the same as None, never as "no GPU is allowed".
+    profile = resolve_device(DeviceOption.AUTO, allowed_gpu_indices=[])
+    assert profile.option == DeviceOption.CPU1
+    assert "no CUDA device detected" in profile.reason
+
+
 def test_list_devices_reports_zero_gpus_honestly():
     inventory = list_devices()
     assert inventory["gpu"] == []

@@ -48,4 +48,7 @@ export const api = {
       body: JSON.stringify({ action, build }),
     }).then(handle),
   environmentActionStatus: (jobId) => fetch(`${BASE}/environment/actions/${jobId}`).then(handle),
+  usageSummary: () => fetch(`${BASE}/usage`).then(handle),
+  resultDownloadUrl: (jobId, modelId, format) =>
+    format === "geojson" ? `${BASE}/results/${jobId}/${modelId}` : `${BASE}/results/${jobId}/${modelId}/${format}`,
 };

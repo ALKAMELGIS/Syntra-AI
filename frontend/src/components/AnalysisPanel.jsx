@@ -1,7 +1,50 @@
 import React from "react";
 
-export default function AnalysisPanel({ job, modelMeta }) {
-  if (!job) {
+function JobCard({ entry, color }) {
+  const { job, modelMeta, imageName } = entry;
+  return (
+    <div className="progress-card">
+      <div className="result-row">
+        <span>
+          <span className="legend-swatch-inline" style={{ background: color }} />
+          {modelMeta?.name || job.model_id}
+          {imageName ? <span className="note"> · {imageName}</span> : null}
+        </span>
+        {job.status === "completed" && job.result && (
+          <span className="result-count">{job.result.final_detection_count}</span>
+        )}
+      </div>
+
+      {job.status !== "completed" && job.status !== "error" && (
+        <div>
+          <div className="note">{job.status === "queued" ? "Queued…" : `Processing — tile ${job.tiles_processed ?? 0}`}</div>
+          <div className="progress-bar">
+            <div className="progress-fill" style={{ width: job.status === "queued" ? "5%" : "60%" }} />
+          </div>
+        </div>
+      )}
+
+      {job.status === "error" && (
+        <p className="note" style={{ color: "var(--error)" }}>{job.error}</p>
+      )}
+
+      {job.status === "completed" && job.result && (
+        <>
+          <p className="note">
+            {job.result.tiles_processed} tiles · {job.result.raw_detection_count} raw detections ·{" "}
+            {job.result.duration_seconds}s · device: {job.result.device_used}
+          </p>
+          {modelMeta?.status !== "ready" && (
+            <p className="note" style={{ color: "var(--warn)" }}>⚠ {modelMeta?.notes}</p>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+export default function AnalysisPanel({ entries, colorFor }) {
+  if (!entries || entries.length === 0) {
     return (
       <div className="panel right">
         <p className="section-title">Analysis</p>
@@ -13,39 +56,9 @@ export default function AnalysisPanel({ job, modelMeta }) {
   return (
     <div className="panel right">
       <p className="section-title">Analysis</p>
-
-      {job.status !== "completed" && job.status !== "error" && (
-        <div className="progress-card">
-          <div>{job.status === "queued" ? "Queued…" : `Processing — tile ${job.tiles_processed}`}</div>
-          <div className="progress-bar">
-            <div className="progress-fill" style={{ width: job.status === "queued" ? "5%" : "60%" }} />
-          </div>
-        </div>
-      )}
-
-      {job.status === "error" && (
-        <div className="progress-card" style={{ color: "var(--error)" }}>
-          {job.error}
-        </div>
-      )}
-
-      {job.status === "completed" && job.result && (
-        <div className="progress-card">
-          <div className="result-row">
-            <span>{modelMeta?.name}</span>
-            <span className="result-count">{job.result.final_detection_count}</span>
-          </div>
-          <p className="note">
-            {job.result.tiles_processed} tiles · {job.result.raw_detection_count} raw detections ·{" "}
-            {job.result.duration_seconds}s · device: {job.result.device_used}
-          </p>
-          {modelMeta?.status !== "ready" && (
-            <p className="note" style={{ color: "var(--warn)" }}>
-              ⚠ {modelMeta?.notes}
-            </p>
-          )}
-        </div>
-      )}
+      {entries.map((entry) => (
+        <JobCard key={entry.key} entry={entry} color={colorFor(entry.job.model_id)} />
+      ))}
     </div>
   );
 }

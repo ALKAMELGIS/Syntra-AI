@@ -34,6 +34,7 @@ class PredictRequest(BaseModel):
     confidence_threshold: float | None = None
     tile_size: int = settings.DEFAULT_TILE_SIZE
     overlap: float = settings.DEFAULT_TILE_OVERLAP
+    gpu_indices: list[int] | None = None  # restricts AUTO/GPU to these physical CUDA device indices
 
 
 def _run_job(job_id: str, req: PredictRequest):
@@ -56,6 +57,7 @@ def _run_job(job_id: str, req: PredictRequest):
         result = engine.run(
             tiles, out_dir, device_option=req.device,
             confidence_threshold=req.confidence_threshold, progress_cb=progress,
+            allowed_gpu_indices=req.gpu_indices,
         )
         with _LOCK:
             _JOBS[job_id].update(status="completed", result=result.__dict__)

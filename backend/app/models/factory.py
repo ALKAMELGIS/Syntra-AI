@@ -13,7 +13,7 @@ from app.models.registry import get_metadata
 def build_model(model_id: str) -> DetectionModel:
     metadata = get_metadata(model_id)
 
-    if model_id in ("car_detection", "ship_detection"):
+    if model_id in ("car_detection", "ship_detection", "aircraft_detection"):
         from app.models.generic_detector import GenericYoloDetector
         return GenericYoloDetector(metadata)
 
@@ -21,14 +21,13 @@ def build_model(model_id: str) -> DetectionModel:
         from app.models.segmentation import FieldBoundarySegmenter
         return FieldBoundarySegmenter(metadata)
 
-    if model_id in ("palm_tree_detection", "date_tree_detection", "tree_detection"):
+    if metadata.status == ModelStatus.NOT_PRODUCTION_READY:
         # No runtime exists yet — these are NOT_PRODUCTION_READY with no
         # weights to load at all. Raise a clear, typed error rather than
         # silently returning something that looks runnable.
-        if metadata.status == ModelStatus.NOT_PRODUCTION_READY:
-            from app.models.segmentation import NotProductionReadyError
-            raise NotProductionReadyError(
-                f"{metadata.name}: no model runtime/weights exist yet. {metadata.notes}"
-            )
+        from app.models.segmentation import NotProductionReadyError
+        raise NotProductionReadyError(
+            f"{metadata.name}: no model runtime/weights exist yet. {metadata.notes}"
+        )
 
     raise KeyError(f"No factory entry for model_id '{model_id}'.")

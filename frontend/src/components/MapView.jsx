@@ -1,5 +1,6 @@
-import React, { useRef, useState } from "react";
+import React, { useState } from "react";
 import { MapContainer, TileLayer, GeoJSON, useMap } from "react-leaflet";
+import MapDrawTools from "./MapDrawTools.jsx";
 
 const BASEMAPS = {
   satellite: {
@@ -22,14 +23,15 @@ const BASEMAPS = {
 // Lives inside <MapContainer> so it can reach the Leaflet map instance via
 // react-leaflet's useMap() hook -- these buttons actually drive the map,
 // they are not decorative.
-function MapToolbar({ geojson, basemap, onBasemapChange, legendOpen, onLegendToggle }) {
+function MapToolbar({ layers, basemap, onBasemapChange, legendOpen, onLegendToggle }) {
   const map = useMap();
 
   function zoomToFit() {
-    if (geojson && geojson.features?.length) {
-      const layer = L_boundsFromGeojson(geojson);
-      if (layer) {
-        map.fitBounds(layer, { padding: [40, 40] });
+    const combined = { type: "FeatureCollection", features: layers.flatMap((l) => l.geojson?.features || []) };
+    if (combined.features.length) {
+      const bounds = L_boundsFromGeojson(combined);
+      if (bounds) {
+        map.fitBounds(bounds, { padding: [40, 40] });
         return;
       }
     }
@@ -84,7 +86,10 @@ function L_boundsFromGeojson(geojson) {
   return [[minLat, minLng], [maxLat, maxLng]];
 }
 
-export default function MapView({ geojson }) {
+export default function MapView({
+  layers, detectionsVisible = true, onToggleDetections,
+  aoi, onAoiChange, measurement, onMeasurementChange, onOpenDatasetManager,
+}) {
   const [basemap, setBasemap] = useState("satellite");
   const [legendOpen, setLegendOpen] = useState(true);
   const bm = BASEMAPS[basemap];
@@ -93,27 +98,59 @@ export default function MapView({ geojson }) {
     <div className="map-area">
       <MapContainer center={[24.7, 46.7]} zoom={5} scrollWheelZoom>
         <TileLayer attribution={bm.attribution} url={bm.url} />
-        {geojson && (
+        {detectionsVisible &&
+          layers.map((l) =>
+            l.geojson ? (
+              <GeoJSON
+                key={l.key}
+                data={l.geojson}
+                style={() => ({ color: l.color, weight: 1, fillColor: l.color, fillOpacity: 0.4 })}
+              />
+            ) : null
+          )}
+        {aoi && (
           <GeoJSON
-            data={geojson}
-            style={() => ({ color: "#5b8cff", weight: 1, fillColor: "#3ddc97", fillOpacity: 0.5 })}
+            key="aoi"
+            data={aoi}
+            style={() => ({ color: "#ffcf5c", weight: 2, fillColor: "#ffcf5c", fillOpacity: 0.08, dashArray: "6 4" })}
           />
         )}
         <MapToolbar
-          geojson={geojson}
+          layers={layers}
           basemap={basemap}
           onBasemapChange={setBasemap}
           legendOpen={legendOpen}
           onLegendToggle={() => setLegendOpen((o) => !o)}
         />
+        <MapDrawTools
+          detectionsVisible={detectionsVisible}
+          onToggleDetections={onToggleDetections}
+          aoi={aoi}
+          onAoiChange={onAoiChange}
+          measurement={measurement}
+          onMeasurementChange={onMeasurementChange}
+          onOpenDatasetManager={onOpenDatasetManager}
+        />
       </MapContainer>
       {legendOpen && (
         <div className="map-legend">
           <div className="map-legend-title">Legend</div>
-          <div className="map-legend-row">
-            <span className="map-legend-swatch" />
-            Detection footprint
-          </div>
+          {layers.length === 0 && <div className="map-legend-row dim">No results yet</div>}
+          {layers.map((l) => (
+            <div className="map-legend-row" key={l.key}>
+              <span className="map-legend-swatch" style={{ background: l.color }} />
+              {l.name}
+            </div>
+          ))}
+          {aoi && (
+            <div className="map-legend-row">
+              <span className="map-legend-swatch" style={{ background: "#ffcf5c" }} />
+              Area of interest
+            </div>
+          )}
+          {measurement != null && (
+            <div className="map-legend-row dim">Measured: {measurement}</div>
+          )}
           <div className="map-legend-row dim">Basemap: {bm.label}</div>
         </div>
       )}

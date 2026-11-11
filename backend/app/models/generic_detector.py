@@ -18,8 +18,9 @@ from app.models.base import DetectionModel, ModelMetadata, ModelStatus, RawDetec
 
 # Map our catalog's class name -> COCO class index in the stock weights.
 _COCO_CLASS_MAP = {
-    "car": 2,     # COCO 'car'
-    "ship": 8,    # COCO 'boat' (closest available proxy)
+    "car": 2,       # COCO 'car'
+    "ship": 8,      # COCO 'boat' (closest available proxy)
+    "airplane": 4,  # COCO 'airplane'
 }
 
 

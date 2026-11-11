@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useRef, useState } from "react";
 import { api } from "../api/client.js";
 
 const STATUS_LABEL = {
@@ -12,11 +12,14 @@ const STATUS_LABEL = {
   disabled: "Disabled",
 };
 
-export default function Sidebar({ models, selected, onToggle, image, onImageUploaded, onRun, running }) {
+export default function Sidebar({ models, selectedModels, onToggleModel, image, onImageUploaded, onRun, running }) {
   const fileInput = useRef(null);
+  const batchInput = useRef(null);
+  const [mode, setMode] = useState("single"); // "single" | "batch"
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [uploadError, setUploadError] = useState(null);
+  const [batchQueue, setBatchQueue] = useState([]); // [{filename, status: "uploading"|"done"|"error", image?, error?}]
 
   async function doUpload(file) {
     if (!file) return;
@@ -38,7 +41,7 @@ export default function Sidebar({ models, selected, onToggle, image, onImageUplo
 
   function handleFile(e) {
     doUpload(e.target.files?.[0]);
-    e.target.value = ""; // allow re-selecting the same file after an error
+    e.target.value = "";
   }
 
   function handleDrop(e) {
@@ -47,49 +50,138 @@ export default function Sidebar({ models, selected, onToggle, image, onImageUplo
     doUpload(e.dataTransfer.files?.[0]);
   }
 
+  async function handleBatchFiles(fileList) {
+    const files = Array.from(fileList || []).filter((f) => /\.tiff?$/i.test(f.name));
+    if (files.length === 0) return;
+    const initial = files.map((f) => ({ filename: f.name, status: "uploading" }));
+    setBatchQueue((q) => [...q, ...initial]);
+    for (const file of files) {
+      try {
+        const result = await api.uploadImage(file);
+        setBatchQueue((q) =>
+          q.map((item) => (item.filename === file.name && item.status === "uploading" ? { ...item, status: "done", image: result } : item))
+        );
+      } catch (err) {
+        setBatchQueue((q) =>
+          q.map((item) => (item.filename === file.name && item.status === "uploading" ? { ...item, status: "error", error: err.message } : item))
+        );
+      }
+    }
+  }
+
+  function removeBatchItem(filename) {
+    setBatchQueue((q) => q.filter((item) => item.filename !== filename));
+  }
+
+  const batchImages = batchQueue.filter((q) => q.status === "done").map((q) => q.image);
+  const canRun =
+    mode === "single"
+      ? !!image && selectedModels.length > 0 && !running
+      : batchImages.length > 0 && selectedModels.length > 0 && !running;
+
+  function handleRunClick() {
+    if (mode === "single") {
+      onRun([image]);
+    } else {
+      onRun(batchImages);
+    }
+  }
+
   return (
     <div className="panel">
       <p className="section-title">Source Image</p>
-      <div
-        className={`dropzone ${dragOver ? "drag-over" : ""}`}
-        onClick={() => fileInput.current?.click()}
-        onDragOver={(e) => {
-          e.preventDefault();
-          setDragOver(true);
-        }}
-        onDragLeave={() => setDragOver(false)}
-        onDrop={handleDrop}
-      >
-        <input ref={fileInput} type="file" accept=".tif,.tiff" hidden onChange={handleFile} />
-        {uploading ? "Uploading…" : image ? image.filename : "Drop GeoTIFF to begin, or click to browse"}
+
+      <div className="source-mode-tabs">
+        <button className={`source-mode-tab ${mode === "single" ? "active" : ""}`} onClick={() => setMode("single")}>
+          Single file
+        </button>
+        <button className={`source-mode-tab ${mode === "batch" ? "active" : ""}`} onClick={() => setMode("batch")}>
+          Folder batch
+        </button>
       </div>
-      {uploadError && <p className="note" style={{ color: "var(--error)" }}>⚠ {uploadError}</p>}
-      {image && (
-        <p className="note">
-          {image.width ? `${image.width} × ${image.height} px` : ""}
-          {image.gsd_x_m ? ` · ${(image.gsd_x_m * 100).toFixed(0)} cm GSD` : ""}
-        </p>
+
+      {mode === "single" ? (
+        <>
+          <button className="import-button" onClick={() => fileInput.current?.click()}>
+            ⇪ Import
+          </button>
+          <div
+            className={`dropzone ${dragOver ? "drag-over" : ""}`}
+            onClick={() => fileInput.current?.click()}
+            onDragOver={(e) => {
+              e.preventDefault();
+              setDragOver(true);
+            }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={handleDrop}
+          >
+            <input ref={fileInput} type="file" accept=".tif,.tiff" hidden onChange={handleFile} />
+            {uploading ? "Uploading…" : image ? image.filename : "Drop GeoTIFF to begin, or click to browse · .tif · 0.25–0.70 m"}
+          </div>
+          {uploadError && <p className="note" style={{ color: "var(--error)" }}>⚠ {uploadError}</p>}
+          {image && (
+            <p className="note">
+              {image.width ? `${image.width} × ${image.height} px` : ""}
+              {image.gsd_x_m ? ` · ${(image.gsd_x_m * 100).toFixed(0)} cm GSD` : ""}
+            </p>
+          )}
+        </>
+      ) : (
+        <>
+          <button className="import-button" onClick={() => batchInput.current?.click()}>
+            ⇪ Import Folder / Files
+          </button>
+          <input
+            ref={batchInput}
+            type="file"
+            accept=".tif,.tiff"
+            multiple
+            webkitdirectory=""
+            hidden
+            onChange={(e) => {
+              handleBatchFiles(e.target.files);
+              e.target.value = "";
+            }}
+          />
+          <div className="note" style={{ marginBottom: 8 }}>
+            {batchQueue.length === 0
+              ? "No files queued yet — click Import to select multiple GeoTIFFs."
+              : `${batchImages.length}/${batchQueue.length} uploaded`}
+          </div>
+          <div className="batch-queue-list">
+            {batchQueue.map((item) => (
+              <div key={item.filename} className="batch-queue-row">
+                <span className={`model-status-dot ${item.status === "done" ? "dot-ready" : item.status === "error" ? "dot-error" : "dot-info"}`} />
+                <span className="batch-queue-name">{item.filename}</span>
+                {item.status === "error" && <span className="note" style={{ color: "var(--error)" }}>{item.error}</span>}
+                <button className="batch-queue-remove" onClick={() => removeBatchItem(item.filename)}>✕</button>
+              </div>
+            ))}
+          </div>
+        </>
       )}
 
       <p className="section-title" style={{ marginTop: 20 }}>
         Detection Models
       </p>
-      {models.map((m) => (
-        <div
-          key={m.model_id}
-          className={`model-row ${selected === m.model_id ? "selected" : ""}`}
-          onClick={() => onToggle(m.model_id)}
-          title={m.notes}
-        >
-          <span className="model-name">
-            <input type="radio" readOnly checked={selected === m.model_id} />
-            {m.name}
-          </span>
-          <span className={`status-pill status-${m.status}`}>{STATUS_LABEL[m.status] || m.status}</span>
-        </div>
-      ))}
+      <div className="detection-model-list">
+        {models.map((m) => (
+          <div
+            key={m.model_id}
+            className={`model-row ${selectedModels.includes(m.model_id) ? "selected" : ""}`}
+            onClick={() => onToggleModel(m.model_id)}
+            title={m.notes}
+          >
+            <span className="model-name">
+              <input type="checkbox" readOnly checked={selectedModels.includes(m.model_id)} />
+              {m.name}
+            </span>
+            <span className={`status-pill status-${m.status}`}>{STATUS_LABEL[m.status] || m.status}</span>
+          </div>
+        ))}
+      </div>
 
-      <button className="run-button" disabled={!image || !selected || running} onClick={onRun}>
+      <button className="run-button" disabled={!canRun} onClick={handleRunClick}>
         {running ? "Running…" : "Run Prediction"}
       </button>
     </div>

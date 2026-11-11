@@ -50,10 +50,11 @@ class DetectionEngine:
         confidence_threshold: float | None = None,
         nms_iou: float = 0.45,
         progress_cb: Callable[[int, int | None], None] | None = None,
+        allowed_gpu_indices: list[int] | None = None,
     ) -> RunResult:
         t0 = time.time()
 
-        profile = resolve_device(device_option)
+        profile = resolve_device(device_option, allowed_gpu_indices=allowed_gpu_indices)
         self.model.load_model(profile.resolved)
         ok, msg = self.model.validate_model()
         if not ok:
