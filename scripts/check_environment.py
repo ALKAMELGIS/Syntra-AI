@@ -57,6 +57,30 @@ def check_import(module_name: str) -> tuple[bool, str]:
         return False, str(exc)
 
 
+def check_proj_database() -> dict:
+    """
+    Confirms rasterio/pyproj can actually build a CRS, not just import.
+
+    Real-world failure mode this catches: a system-wide PROJ_LIB/PROJ_DATA
+    env var set by another installed GIS tool (PostgreSQL/PostGIS, QGIS,
+    Anaconda's own GDAL, ArcGIS) can shadow pyproj's own bundled proj.db
+    with an incompatible/older one. Both rasterio and pyproj import fine in
+    that case -- this only breaks the moment you actually try to use a CRS,
+    e.g. rasterio.open(..., crs="EPSG:4326"). Confirmed on a real Windows
+    machine with PostgreSQL/PostGIS installed.
+    """
+    try:
+        import rasterio
+        from rasterio.crs import CRS
+
+        CRS.from_epsg(4326)  # the actual operation that fails, not just an import
+        return {"ok": True, "error": None}
+    except ImportError:
+        return {"ok": None, "error": None}  # rasterio not installed -- not this check's problem
+    except Exception as exc:  # rasterio.errors.CRSError, or the underlying PROJ exception
+        return {"ok": False, "error": str(exc)}
+
+
 def check_cuda() -> dict:
     try:
         import torch
@@ -87,7 +111,9 @@ def main() -> int:
         })
 
     cuda_info = check_cuda()
+    proj_info = check_proj_database()
     missing = [r for r in results if not r["installed"]]
+    proj_broken = proj_info["ok"] is False
 
     report = {
         "python": sys.version.split()[0],
@@ -96,7 +122,8 @@ def main() -> int:
         "missing_count": len(missing),
         "total_count": len(results),
         "cuda": cuda_info,
-        "production_ready": len(missing) == 0,
+        "proj_database": proj_info,
+        "production_ready": len(missing) == 0 and not proj_broken,
     }
 
     if as_json:
@@ -120,17 +147,34 @@ def main() -> int:
     else:
         print("GPU: torch is not installed, so CUDA availability cannot be checked yet.")
 
+    if proj_info["ok"] is False:
+        print()
+        print("PROJ database: BROKEN -- rasterio/pyproj import fine, but building a real CRS fails:")
+        print(f"    {proj_info['error']}")
+        print("This usually means another installed GIS tool (PostgreSQL/PostGIS, QGIS, Anaconda's")
+        print("own GDAL, ArcGIS) set a system-wide PROJ_LIB/PROJ_DATA pointing at an incompatible")
+        print("proj.db. Fix (this process only, no permanent system change):")
+        print('    python -c "import pyproj; print(pyproj.datadir.get_data_dir())"')
+        print("    -- then set PROJ_LIB and PROJ_DATA to that path in backend/.env (see .env.example)")
+    elif proj_info["ok"] is True:
+        print()
+        print("PROJ database: OK -- rasterio can build a real CRS (EPSG:4326 round-tripped).")
+
     print()
-    if missing:
-        print(f"Result: {len(missing)}/{len(results)} dependencies missing. "
-              f"This machine is NOT ready to run the Syntra AI backend yet.")
-        print("Install the full stack with:\n    pip install -r backend/requirements.txt")
+    if missing or proj_broken:
+        if missing:
+            print(f"Result: {len(missing)}/{len(results)} dependencies missing. "
+                  f"This machine is NOT ready to run the Syntra AI backend yet.")
+            print("Install the full stack with:\n    pip install -r backend/requirements.txt")
+        if proj_broken:
+            print("Result: all packages installed, but the PROJ database is broken (see above) -- "
+                  "any endpoint that touches a real CRS (image upload, predict, georeferencing) will fail.")
     else:
-        print("Result: all dependencies present. "
+        print("Result: all dependencies present and the PROJ database is sane. "
               "This does not by itself confirm trained model weights exist — "
               "see backend/app/models/registry.py for per-model production-readiness status.")
 
-    return 1 if missing else 0
+    return 1 if (missing or proj_broken) else 0
 
 
 if __name__ == "__main__":

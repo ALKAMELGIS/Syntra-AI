@@ -10,6 +10,19 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+try:
+    # Load backend/.env (if present) into the process environment *before*
+    # Settings reads any os.getenv() below, and -- critically -- before
+    # rasterio/pyproj get imported anywhere (they're lazy-imported per
+    # module, but always after app.core.config is first imported). This is
+    # also how PROJ_LIB/PROJ_DATA overrides in .env actually take effect;
+    # see .env.example for why that one matters on Windows.
+    from dotenv import load_dotenv
+
+    load_dotenv()
+except ImportError:
+    pass  # python-dotenv not installed yet -- plain OS env vars still work
+
 
 class Settings:
     # --- Paths -----------------------------------------------------------
