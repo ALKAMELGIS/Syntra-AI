@@ -2,11 +2,14 @@
 GIS export formats beyond GeoJSON — spec Phase 5.
 
 KML is plain XML, so it's implemented here with the stdlib only (no
-simplekml/fiona/GDAL dependency) and is fully offline-testable. Shapefile
-export genuinely needs a binary-format writer (.shp/.shx/.dbf) or a library
-like `pyshp`/`fiona`; that's left as a documented follow-up (see bottom of
-this file) rather than hand-rolling a binary format without a way to verify
-it against a real GIS tool in this sandbox.
+simplekml/fiona/GDAL dependency) and is fully offline-testable.
+
+Shapefile export (.shp/.shx/.dbf) is implemented separately in
+app/engine/shapefile_export.py — it's a binary format, so it's kept apart
+from this XML-based module. See that file's docstring for how its
+correctness was validated without a real GIS tool available in this
+sandbox (a from-scratch independent reader, plus a spec-derived invariant
+check on the file's self-declared length).
 """
 from __future__ import annotations
 
@@ -75,17 +78,8 @@ def geojson_to_kml(geojson: dict, document_name: str = "Syntra AI Export") -> st
     )
 
 
-# --- Shapefile export (not implemented here) ---------------------------------
-#
-# Writing .shp/.shx/.dbf by hand is error-prone to get byte-exact without a
-# real GIS tool to validate against, which this sandbox doesn't have. Use
-# `pyshp` (pure Python, no GDAL) once deployed with network access:
-#
-#     import shapefile
-#     with shapefile.Writer(out_path, shapeType=shapefile.POINT) as w:
-#         w.field("class", "C")
-#         w.field("score", "N", decimal=4)
-#         for feat in geojson["features"]:
-#             lon, lat = feat["geometry"]["coordinates"]
-#             w.point(lon, lat)
-#             w.record(feat["properties"]["class"], feat["properties"]["score"])
+# Shapefile export: see app/engine/shapefile_export.write_shapefile(),
+# exposed via GET /api/results/{job_id}/{model_id}/shapefile (zipped
+# .shp+.shx+.dbf). If a real GIS stack (pyshp/fiona/GDAL) is available in
+# your deployment, that remains a fine alternative — this hand-rolled
+# version exists so shapefile export doesn't require installing one.

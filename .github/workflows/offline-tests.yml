@@ -36,6 +36,7 @@ jobs:
           python tests/test_export_formats_offline.py
           python tests/test_measurements_offline.py
           python tests/test_stats_offline.py
+          python tests/test_shapefile_export_offline.py
 
   # Full-stack job: installs requirements.txt (torch/ultralytics/rasterio
   # included) and would run model-level tests once any exist. Currently a
