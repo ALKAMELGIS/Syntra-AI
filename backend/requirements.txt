@@ -1,0 +1,32 @@
+# Syntra AI — Detection Engine requirements
+# Target deployment: a machine with CUDA GPU(s) for production inference.
+# This file is NOT installable in the current build sandbox (no package-registry
+# network access there) — it is written for your real deployment environment.
+
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+python-multipart==0.0.20
+
+# Raster / geospatial
+rasterio==1.4.3
+shapely==2.0.6
+pyproj==3.7.0
+affine==2.4.0
+geopandas==1.0.1
+
+# Numerics / imaging
+numpy==2.1.3
+opencv-python-headless==4.10.0.84
+pillow==11.0.0
+
+# Detection / segmentation models
+torch==2.5.1
+torchvision==0.20.1
+ultralytics==8.3.49          # YOLO-family + RT-DETR
+segmentation-models-pytorch==0.3.4   # U-Net / DeepLab for field-boundary segmentation
+onnxruntime-gpu==1.20.1       # optional faster inference path
+
+# Utilities
+pyyaml==6.0.2
+python-dotenv==1.0.1
