@@ -114,6 +114,7 @@ body {
   font-size: 12px;
 }
 .dropzone:hover { border-color: var(--accent); color: var(--text); }
+.dropzone.drag-over { border-color: var(--accent); background: var(--accent-soft); color: var(--text); }
 
 .model-row {
   display: flex; align-items: center; justify-content: space-between;

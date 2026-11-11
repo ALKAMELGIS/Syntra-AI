@@ -42,7 +42,12 @@ export default function App() {
       const started = await api.startPrediction({ image_path: image.path, model_id: selected });
       setJob({ ...started, tiles_processed: 0 });
     } catch (err) {
-      alert(err.message);
+      // Most common cause: a 409 refusal because the model is not
+      // production-ready (see app/api/predict.py). Surface it in the
+      // Analysis panel's existing error styling rather than a jarring
+      // native alert() -- reuses AnalysisPanel's job.status === "error"
+      // rendering instead of adding a parallel error-display path.
+      setJob({ status: "error", error: err.message });
     }
   }
 
