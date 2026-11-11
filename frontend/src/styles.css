@@ -128,9 +128,11 @@ body {
   font-size: 10px; padding: 2px 7px; border-radius: 999px;
   text-transform: uppercase; letter-spacing: 0.04em;
 }
-.status-ready, .status-validation { background: rgba(61,220,151,0.15); color: var(--ready); }
-.status-not_production_ready { background: rgba(245,166,35,0.15); color: var(--warn); }
+.status-ready { background: rgba(61,220,151,0.15); color: var(--ready); }
+.status-validation { background: rgba(245,166,35,0.15); color: var(--warn); }
+.status-not_production_ready, .status-disabled { background: rgba(255,93,108,0.15); color: var(--error); }
 .status-error { background: rgba(255,93,108,0.15); color: var(--error); }
+.status-loading, .status-processing, .status-training { background: var(--accent-soft); color: var(--accent); }
 
 .map-area {
   position: relative;
@@ -211,3 +213,85 @@ body {
 }
 .models-table td { padding: 10px; border-bottom: 1px solid var(--panel-border); vertical-align: top; }
 .models-table tr:hover td { background: #121829; }
+
+/* --- Per-model status cards (Detection Models tab) --- */
+.catalog-summary {
+  display: flex; gap: 18px; padding: 10px 14px; margin-bottom: 14px;
+  background: var(--panel); border: 1px solid var(--panel-border); border-radius: var(--radius);
+  font-size: 12px; color: var(--text-dim);
+}
+.catalog-summary-item { display: flex; align-items: center; gap: 6px; }
+
+.model-card-list { display: flex; flex-direction: column; gap: 8px; }
+.model-card {
+  background: var(--panel); border: 1px solid var(--panel-border); border-radius: var(--radius);
+  overflow: hidden;
+}
+.model-card-main {
+  display: flex; align-items: center; gap: 10px; padding: 12px 14px; cursor: pointer;
+}
+.model-card-main:hover { background: #18203a; }
+.model-card-text { flex: 1 1 auto; }
+.model-card-toggle {
+  background: transparent; border: none; color: var(--text-dim);
+  font-size: 11px; cursor: pointer; padding: 4px 8px; white-space: nowrap;
+}
+.model-card-toggle:hover { color: var(--text); }
+
+.model-status-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.dot-ready { background: var(--ready); }
+.dot-warn { background: var(--warn); }
+.dot-error { background: var(--error); }
+.dot-info { background: var(--accent); }
+.dot-dim { background: var(--text-dim); }
+
+.model-card-details {
+  padding: 4px 16px 16px 34px; border-top: 1px solid var(--panel-border);
+}
+.model-detail-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px; margin-top: 10px; font-size: 12px;
+}
+.model-detail-grid > div { display: flex; flex-direction: column; gap: 2px; }
+.detail-label {
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-dim);
+}
+
+.gsd-check { margin-top: 14px; }
+.gsd-check-row { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.gsd-input {
+  width: 90px; background: #0b0f17; border: 1px solid var(--panel-border);
+  color: var(--text); border-radius: 6px; padding: 5px 8px; font-size: 12px;
+}
+.gsd-result { font-size: 12px; margin-top: 6px; }
+.gsd-result.ok { color: var(--ready); }
+.gsd-result.warn { color: var(--warn); }
+
+.chip-button {
+  background: var(--panel); border: 1px solid var(--panel-border); color: var(--text);
+  border-radius: 7px; padding: 6px 12px; font-size: 12px; cursor: pointer;
+}
+.chip-button:hover { background: #18203a; border-color: var(--accent); }
+
+.dataset-version-list { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.dataset-version-row {
+  background: #0b0f17; border: 1px solid var(--panel-border); border-radius: 7px;
+  padding: 8px 10px; font-size: 12px;
+}
+
+.prepare-dataset-panel {
+  background: var(--panel); border: 1px solid var(--panel-border); border-radius: var(--radius);
+  padding: 14px; margin-bottom: 14px;
+}
+.prepare-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px; margin-bottom: 12px;
+}
+.prepare-grid label {
+  display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: var(--text-dim);
+}
+.prepare-grid .prepare-wide { grid-column: 1 / -1; }
+.prepare-grid input, .prepare-grid select {
+  background: #0b0f17; border: 1px solid var(--panel-border); color: var(--text);
+  border-radius: 6px; padding: 6px 8px; font-size: 12px;
+}
