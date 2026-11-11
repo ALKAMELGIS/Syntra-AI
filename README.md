@@ -18,7 +18,7 @@ never verified:
 | Geospatial coordinate reconstruction (pixel → geo) | ✅ implemented & tested | `backend/tests/test_pipeline_offline.py` asserts reconstructed coordinates land in the expected geo bounds. |
 | Cross-tile duplicate suppression / NMS | ✅ implemented & tested | Explicit unit check: 3 overlapping synthetic detections → 2 after merge. Also exercised inside the full pipeline test. |
 | Standardized model interface (`load_model/validate_model/predict/postprocess/georeference/export_results`) | ✅ implemented & tested | Exercised end-to-end via an offline stub detector (`app/models/stub_predictor.py` — numpy-only, deterministic, **not** a real detector). |
-| Compute device manager (CPU0/CPU1/GPU/AUTO) | ✅ implemented & tested | `resolve_device()` correctly falls back to CPU when no CUDA device is present (verified here, since this sandbox has no GPU). |
+| Compute device manager (CPU0/CPU1/GPU/AUTO) | ✅ implemented & tested | `resolve_device()` correctly falls back to CPU when no CUDA device is present (verified here, since this sandbox has no GPU). Dedicated `test_compute_offline.py` (7 cases) locks down every option (CPU0/CPU1/GPU/AUTO), the GPU→CPU1 fallback reason string, and `list_devices()` reporting zero GPUs honestly rather than guessing. |
 | GeoJSON + manifest export | ✅ implemented & tested | Written files were parsed back and checked in the pipeline test. |
 | **Car / Ship detection** (`generic_detector.py`) | ⚠️ real ultralytics code, **not run** | Wraps a stock YOLOv8-COCO model as a working placeholder (`car`/`boat` classes). Needs `pip install -r requirements.txt` + a GPU/CPU box with network access to actually run. Marked `VALIDATION` status, not `READY` — it is unfine-tuned and unbenchmarked for aerial imagery. |
 | **Palm / Date / Tree / Field-boundary** models | ❌ not production-ready | No trained weights or labeled datasets exist. The factory and model classes raise a clear `NotProductionReadyError` instead of fabricating detections — per the spec's final requirement. |
@@ -59,6 +59,7 @@ backend/
     test_measurements_offline.py    # field area/perimeter math (real cv2 contour extraction)
     test_stats_offline.py           # per-model processing-statistics accumulation
     test_shapefile_export_offline.py  # .shp/.shx/.dbf round-trip + spec-derived file-length check
+    test_compute_offline.py         # CPU0/CPU1/GPU/AUTO resolution + fallback-without-GPU behavior
   requirements.txt
   Dockerfile
 frontend/
@@ -68,6 +69,10 @@ frontend/
   package.json
   Dockerfile
   nginx.conf
+docs/
+  API.md          # full REST API reference — routes, request/response shapes, error codes
+scripts/
+  check_environment.py  # dependency + CUDA doctor; run this on your real machine before `uvicorn`
 docker-compose.yml
 .github/workflows/offline-tests.yml
 ```
@@ -75,6 +80,11 @@ docker-compose.yml
 ## Running it for real
 
 ```bash
+# 0. Check what your machine actually has before installing anything
+python scripts/check_environment.py
+# Prints an honest pass/fail per dependency (fastapi/rasterio/torch/...),
+# whether CUDA is visible to torch, and an exit code (0 = fully ready).
+
 # Backend
 cd backend
 python -m venv .venv && source .venv/bin/activate
@@ -96,10 +106,15 @@ python tests/test_export_formats_offline.py
 python tests/test_measurements_offline.py
 python tests/test_stats_offline.py
 python tests/test_shapefile_export_offline.py
+python tests/test_compute_offline.py
 
 # Or with Docker Compose (not yet built/tested here — no registry access in this sandbox):
 docker compose up --build
 ```
+
+Full REST endpoint reference (request/response shapes, status codes, and
+which checks are real vs. still to be exercised against a live server): see
+[`docs/API.md`](docs/API.md).
 
 ## The six initial detection categories
 
