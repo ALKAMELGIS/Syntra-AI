@@ -8,9 +8,14 @@ const BASEMAPS = {
     attribution: "&copy; Esri, Maxar, Earthstar Geographics",
   },
   streets: {
+    // CARTO's free basemap tiles (basemaps.cartocdn.com) now require an API
+    // key -- confirmed by hand (tiles rendered as "API KEY REQUIRED" in the
+    // browser) after wiring this up. Standard OpenStreetMap raster tiles
+    // remain genuinely keyless and are the correct default for a "streets"
+    // toggle with no account/billing setup required.
     label: "Streets",
-    url: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
-    attribution: "&copy; OpenStreetMap, &copy; CARTO",
+    url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+    attribution: "&copy; OpenStreetMap contributors",
   },
 };
 
