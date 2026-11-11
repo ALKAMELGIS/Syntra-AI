@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { api } from "../api/client.js";
+import EnvironmentPanel from "./EnvironmentPanel.jsx";
 
 const STATUS_LABEL = {
   ready: "Ready",
@@ -319,7 +320,9 @@ export default function ModelsDashboard() {
 
   return (
     <div className="models-dashboard">
-      <div className="models-dashboard-header">
+      <EnvironmentPanel />
+
+      <div className="models-dashboard-header" style={{ marginTop: 22 }}>
         <p className="section-title" style={{ margin: 0 }}>Detection Models — Status</p>
         <button className="run-button" style={{ width: "auto", marginTop: 0, padding: "6px 14px" }} onClick={refresh}>
           Refresh

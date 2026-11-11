@@ -40,4 +40,12 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     }).then(handle),
+  getEnvironment: () => fetch(`${BASE}/environment`).then(handle),
+  startEnvironmentAction: (action, build) =>
+    fetch(`${BASE}/environment/actions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action, build }),
+    }).then(handle),
+  environmentActionStatus: (jobId) => fetch(`${BASE}/environment/actions/${jobId}`).then(handle),
 };

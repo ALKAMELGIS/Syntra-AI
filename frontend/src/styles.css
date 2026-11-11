@@ -295,3 +295,39 @@ body {
   background: #0b0f17; border: 1px solid var(--panel-border); color: var(--text);
   border-radius: 6px; padding: 6px 8px; font-size: 12px;
 }
+
+/* --- Library Status / Installation Options (Environment panel) --- */
+.environment-panel {
+  background: var(--panel); border: 1px solid var(--panel-border); border-radius: var(--radius);
+  padding: 14px; margin-bottom: 4px;
+}
+.lib-row-list { display: flex; flex-direction: column; gap: 4px; }
+.lib-row {
+  display: flex; align-items: center; gap: 10px; padding: 8px 10px;
+  border-radius: 7px; background: #0b0f17; border: 1px solid var(--panel-border);
+}
+.lib-row-text { flex: 1 1 auto; font-size: 12px; }
+
+.install-options-row {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 10px;
+}
+.build-select {
+  display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-dim);
+}
+.build-select select {
+  background: #0b0f17; border: 1px solid var(--panel-border); color: var(--text);
+  border-radius: 6px; padding: 6px 8px; font-size: 12px;
+}
+.chip-button.chip-primary {
+  background: linear-gradient(135deg, var(--accent), #4169e8); color: white; border: none;
+}
+.chip-button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.job-log-card {
+  margin-top: 12px; background: #0b0f17; border: 1px solid var(--panel-border);
+  border-radius: 7px; padding: 10px 12px;
+}
+.job-log-tail {
+  margin-top: 8px; max-height: 220px; overflow: auto; font-size: 11px;
+  color: var(--text-dim); white-space: pre-wrap; font-family: monospace;
+}
