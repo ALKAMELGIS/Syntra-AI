@@ -23,6 +23,24 @@ from __future__ import annotations
 import importlib
 import json
 import sys
+from pathlib import Path
+
+# Load backend/.env the same way app.core.config does, so this script's PROJ
+# check reflects reality: without this, running `python scripts\check_
+# environment.py` from the repo root (rather than `backend/`) would report
+# the PROJ database as broken even after fixing it via backend/.env, purely
+# because this standalone script -- unlike the actual server -- never read
+# that file. Confirmed this exact gap on a real deployment: the server
+# picked up PROJ_LIB/PROJ_DATA from backend/.env fine (because app.core.
+# config calls load_dotenv()), but this script still reported BROKEN.
+try:
+    from dotenv import load_dotenv
+
+    _env_path = Path(__file__).resolve().parent.parent / "backend" / ".env"
+    if _env_path.exists():
+        load_dotenv(_env_path)
+except ImportError:
+    pass
 
 # (import name, pip/conda package name, why it's needed)
 REQUIRED = [
@@ -123,6 +141,7 @@ def main() -> int:
         "total_count": len(results),
         "cuda": cuda_info,
         "proj_database": proj_info,
+        "backend_env_file": {"path": str(_env_path), "found": _env_path.exists()},
         "production_ready": len(missing) == 0 and not proj_broken,
     }
 
@@ -130,7 +149,8 @@ def main() -> int:
         print(json.dumps(report, indent=2))
         return 1 if missing else 0
 
-    print(f"Syntra AI environment check — Python {report['python']} on {report['platform']}\n")
+    print(f"Syntra AI environment check — Python {report['python']} on {report['platform']}")
+    print(f"backend/.env: {'loaded (' + str(_env_path) + ')' if _env_path.exists() else 'not found -- PROJ_LIB/PROJ_DATA overrides in it, if any, were NOT applied'}\n")
     for r in results:
         status = "OK   " if r["installed"] else "MISSING"
         extra = f"({r['detail']})" if r["installed"] else f"-- pip install {r['package']}"
