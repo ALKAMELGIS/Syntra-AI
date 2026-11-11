@@ -32,9 +32,23 @@ def tile_detections_to_global(
         x1, y1, x2, y2 = det["box"]
         ring_geo = box_pixel_to_geo((x1, y1, x2, y2), tile_transform)
         centroid_geo = point_pixel_to_geo((x1 + x2) / 2, (y1 + y2) / 2, tile_transform)
+        # NOTE: do not assume ring_geo[0] is the min corner and ring_geo[2] is
+        # the max corner. box_pixel_to_geo() maps pixel-space corners in
+        # pixel order (x1,y1)->(x2,y2), but a standard north-up affine
+        # transform has a NEGATIVE pixel-height coefficient (e < 0), which
+        # flips the y-axis: the geo-y of pixel-row y1 (top) ends up LARGER
+        # than the geo-y of pixel-row y2 (bottom). Taking ring_geo[0]/[2]
+        # verbatim then produces (xmin, ymax, xmax, ymin) instead of
+        # (xmin, ymin, xmax, ymax) — silently breaking the axis-aligned-box
+        # contract that nms.py's IoU math assumes (negative height -> broken
+        # area/intersection -> cross-tile duplicate suppression never fires
+        # for any real north-up GeoTIFF). Always derive the true min/max
+        # from the actual coordinates instead of positional indices.
+        geo_xs = [pt[0] for pt in ring_geo]
+        geo_ys = [pt[1] for pt in ring_geo]
         out.append(
             {
-                "box_geo": (ring_geo[0][0], ring_geo[0][1], ring_geo[2][0], ring_geo[2][1]),
+                "box_geo": (min(geo_xs), min(geo_ys), max(geo_xs), max(geo_ys)),
                 "polygon_geo": ring_geo,
                 "centroid_geo": centroid_geo,
                 "score": float(det["score"]),
