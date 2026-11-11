@@ -3,12 +3,15 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
 
+from app.core.config import settings
 from app.models.registry import get_metadata, list_catalog
+from app.models.stats import get_stats
 
 router = APIRouter(prefix="/api/models", tags=["models"])
 
 
 def _serialize(meta) -> dict:
+    stats = get_stats(settings.DATA_DIR, meta.model_id)
     return {
         "model_id": meta.model_id,
         "name": meta.name,
@@ -21,6 +24,7 @@ def _serialize(meta) -> dict:
         "hardware_compatibility": meta.hardware_compatibility,
         "default_confidence_threshold": meta.default_confidence_threshold,
         "notes": meta.notes,
+        "processing_statistics": stats.to_dict(),
     }
 
 

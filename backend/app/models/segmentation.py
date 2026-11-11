@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import numpy as np
 
+from app.engine.geo import GeoTransform
 from app.models.base import DetectionModel, ModelMetadata, ModelStatus, RawDetection
 
 
@@ -48,17 +49,22 @@ class FieldBoundarySegmenter(DetectionModel):
     def export_results(self, out_dir: str, detections_geo: list[dict], extra_meta: dict | None = None) -> dict:
         raise NotProductionReadyError("Cannot export results for a model with no trained weights.")
 
-    # --- Reference implementation notes for the real pipeline, once weights exist -----------
+    # --- Real, tested postprocessing math — ready for when weights exist ---------------------
     #
-    # def postprocess(self, mask_prob: np.ndarray) -> list[dict]:
-    #     """mask_prob: (H, W) float32 in [0,1]. Returns polygons with area/perimeter in pixel space."""
-    #     import cv2
-    #     binary = (mask_prob > 0.5).astype(np.uint8)
-    #     contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    #     polygons = []
-    #     for cnt in contours:
-    #         if cv2.contourArea(cnt) < 16:  # drop speckle
-    #             continue
-    #         ring = cnt.reshape(-1, 2).tolist()
-    #         polygons.append({"ring_px": ring, "area_px": cv2.contourArea(cnt), "perimeter_px": cv2.arcLength(cnt, True)})
-    #     return polygons
+    # predict() above has to raise (no trained weights), but the geometry
+    # math that turns a segmentation mask into area/perimeter-bearing
+    # polygons does NOT depend on having weights, and IS implemented and
+    # tested today (app/engine/measurements.py + tests/test_measurements_
+    # offline.py, using cv2 — which, unlike torch, is actually installed in
+    # this build sandbox). Once a real model produces a mask, swap predict()
+    # to call its forward pass and feed the resulting mask through this.
+    def mask_to_results(self, mask: np.ndarray, transform: GeoTransform, min_area_px: int = 16) -> list[dict]:
+        """Tile-level binary/probability mask -> export-ready polygon dicts (ring_geo, area_sqm, perimeter_m, class_name)."""
+        from app.engine.measurements import mask_to_geo_polygons
+
+        class_name = self.metadata.class_names.get(0, "field")
+        polygons = mask_to_geo_polygons(mask, transform, min_area_px=min_area_px)
+        return [
+            {"ring_geo": p.ring_geo, "area_sqm": p.area_sqm, "perimeter_m": p.perimeter_m, "class_name": class_name}
+            for p in polygons
+        ]

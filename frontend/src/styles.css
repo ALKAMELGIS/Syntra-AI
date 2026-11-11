@@ -134,3 +134,24 @@ body {
 
 .result-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--panel-border); font-size: 12px; }
 .result-count { color: var(--accent); font-weight: 700; }
+
+.topbar-tabs { display: flex; gap: 4px; }
+.tab-button {
+  background: transparent; border: none; color: var(--text-dim);
+  padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600;
+}
+.tab-button:hover { color: var(--text); background: #18203a; }
+.tab-button.active { color: var(--accent); background: var(--accent-soft); }
+
+.models-dashboard { padding: 16px; overflow: auto; }
+.models-dashboard-header {
+  display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px;
+}
+.models-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.models-table th {
+  text-align: left; padding: 8px 10px; color: var(--text-dim);
+  text-transform: uppercase; font-size: 10px; letter-spacing: 0.06em;
+  border-bottom: 1px solid var(--panel-border); position: sticky; top: 0; background: var(--bg);
+}
+.models-table td { padding: 10px; border-bottom: 1px solid var(--panel-border); vertical-align: top; }
+.models-table tr:hover td { background: #121829; }

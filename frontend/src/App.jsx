@@ -3,9 +3,11 @@ import TopBar from "./components/TopBar.jsx";
 import Sidebar from "./components/Sidebar.jsx";
 import MapView from "./components/MapView.jsx";
 import AnalysisPanel from "./components/AnalysisPanel.jsx";
+import ModelsDashboard from "./components/ModelsDashboard.jsx";
 import { api } from "./api/client.js";
 
 export default function App() {
+  const [view, setView] = useState("detect"); // "detect" | "models"
   const [models, setModels] = useState([]);
   const [selected, setSelected] = useState(null);
   const [image, setImage] = useState(null);
@@ -49,20 +51,24 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      <TopBar />
-      <div className="layout">
-        <Sidebar
-          models={models}
-          selected={selected}
-          onToggle={setSelected}
-          image={image}
-          onImageUploaded={setImage}
-          onRun={handleRun}
-          running={!!running}
-        />
-        <MapView geojson={geojson} />
-        <AnalysisPanel job={job} modelMeta={modelMeta} />
-      </div>
+      <TopBar view={view} onViewChange={setView} />
+      {view === "models" ? (
+        <ModelsDashboard />
+      ) : (
+        <div className="layout">
+          <Sidebar
+            models={models}
+            selected={selected}
+            onToggle={setSelected}
+            image={image}
+            onImageUploaded={setImage}
+            onRun={handleRun}
+            running={!!running}
+          />
+          <MapView geojson={geojson} />
+          <AnalysisPanel job={job} modelMeta={modelMeta} />
+        </div>
+      )}
     </div>
   );
 }

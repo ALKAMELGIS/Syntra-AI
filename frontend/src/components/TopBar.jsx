@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { api } from "../api/client.js";
 
-export default function TopBar() {
+export default function TopBar({ view, onViewChange }) {
   const [devices, setDevices] = useState(null);
 
   useEffect(() => {
@@ -16,6 +16,14 @@ export default function TopBar() {
         <div className="brand-mark" />
         <span className="brand-name">SYNTRA AI</span>
         <span className="brand-sub">Detection Engine</span>
+      </div>
+      <div className="topbar-tabs">
+        <button className={`tab-button ${view === "detect" ? "active" : ""}`} onClick={() => onViewChange("detect")}>
+          Detect
+        </button>
+        <button className={`tab-button ${view === "models" ? "active" : ""}`} onClick={() => onViewChange("models")}>
+          Detection Models
+        </button>
       </div>
       <div className="device-badge">
         <span className="device-dot" />

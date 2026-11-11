@@ -25,7 +25,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install lightweight test dependencies
-        run: pip install numpy pillow
+        run: pip install numpy pillow opencv-python-headless
 
       - name: Run offline test suite
         working-directory: backend
@@ -34,6 +34,8 @@ jobs:
           python tests/test_datasets_offline.py
           python tests/test_benchmark_offline.py
           python tests/test_export_formats_offline.py
+          python tests/test_measurements_offline.py
+          python tests/test_stats_offline.py
 
   # Full-stack job: installs requirements.txt (torch/ultralytics/rasterio
   # included) and would run model-level tests once any exist. Currently a

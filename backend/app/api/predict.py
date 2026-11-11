@@ -19,6 +19,7 @@ from app.core.compute import DeviceOption
 from app.core.config import settings
 from app.models.base import ModelStatus
 from app.models.registry import get_metadata
+from app.models.stats import record_run
 
 router = APIRouter(prefix="/api/predict", tags=["predict"])
 
@@ -58,9 +59,15 @@ def _run_job(job_id: str, req: PredictRequest):
         )
         with _LOCK:
             _JOBS[job_id].update(status="completed", result=result.__dict__)
+        record_run(
+            settings.DATA_DIR, req.model_id, status="completed",
+            tiles_processed=result.tiles_processed, detection_count=result.final_detection_count,
+            duration_seconds=result.duration_seconds, device=result.device_used,
+        )
     except Exception as exc:
         with _LOCK:
             _JOBS[job_id].update(status="error", error=str(exc))
+        record_run(settings.DATA_DIR, req.model_id, status="error")
 
 
 @router.post("")

@@ -29,6 +29,9 @@ never verified:
 | GeoJSON → KML export | ✅ implemented & tested | `test_export_formats_offline.py` round-trips Point and Polygon features through real `xml.etree` parsing, not just string checks, and verifies an unsupported geometry type is rejected. Shapefile export is documented but not implemented (see `export_formats.py`'s bottom comment) — hand-rolling a binary `.shp` without a GIS tool here to validate against would be worse than not shipping it. |
 | CI (`.github/workflows/offline-tests.yml`) | ✅ added, config-validated | Runs all four offline test scripts on every push/PR with just numpy+Pillow; a second job installs the full `requirements.txt` as an import-smoke-test. Not yet run on GitHub itself since this was written from the sandbox — check the Actions tab after pushing. |
 | Docker Compose (`docker-compose.yml`, `backend/Dockerfile`, `frontend/Dockerfile`) | 📝 written, **not built** | Standard Python-slim + nginx images; `docker build`/`docker compose up` wasn't possible here (no image-registry network access). GPU support is commented inline (needs the NVIDIA Container Toolkit on the host). |
+| Field-boundary area/perimeter math (`app/engine/measurements.py`) | ✅ implemented & tested | `test_measurements_offline.py`: a known 100m×100m synthetic square mask (via real `cv2.findContours`, not a mock — opencv IS installed here) measures within ~1-2% of the hand-computed 10,000 sqm / 1.0 ha / 400 m. Wired through `FieldBoundarySegmenter.mask_to_results()`. `predict()` still correctly refuses to run (no trained segmentation weights) — this only makes the *postprocessing math* ready for when weights exist. |
+| Per-model processing statistics (`app/models/stats.py`) | ✅ implemented & tested | Spec Section 7's "Processing statistics" field — run count, error count, totals, averages, last-run info — persisted as JSON and accumulated via `record_run()` (wired into `/api/predict`'s background job) and read via `get_stats()` (wired into `/api/models`). `test_stats_offline.py` verifies accumulation across multiple runs including an error case. |
+| Model Management dashboard — Phase 4 (`ModelsDashboard.jsx`) | 📝 written, **not built/run** | A dedicated table view (toggle via the new Detect/Detection Models tabs in the top bar) showing every registry field plus live processing statistics per model. Same caveat as the rest of the frontend: no `npm install` possible here. Verified by hand instead: Node's real parser confirms `client.js` is syntactically valid JS, and a brace/paren balance check passed on the three edited `.jsx` files — not a substitute for an actual build, but better than nothing. |
 
 **Bottom line:** the orchestration engine — the hard, easy-to-get-subtly-wrong
 part (tiling, georeferencing, duplicate removal, the model contract) — is
@@ -52,11 +55,13 @@ backend/
     test_datasets_offline.py        # dataset parsing/validation/splitting (incl. real YOLO dir parsing)
     test_benchmark_offline.py       # metric-computation correctness (AP/mAP/precision/recall)
     test_export_formats_offline.py  # GeoJSON -> KML round-trip
+    test_measurements_offline.py    # field area/perimeter math (real cv2 contour extraction)
+    test_stats_offline.py           # per-model processing-statistics accumulation
   requirements.txt
   Dockerfile
 frontend/
   src/
-    components/   # TopBar, Sidebar (model checklist + upload + run), MapView (Leaflet), AnalysisPanel
+    components/   # TopBar (Detect/Detection Models tabs), Sidebar (model checklist + upload + run), MapView (Leaflet), AnalysisPanel, ModelsDashboard (Phase 4)
     api/client.js
   package.json
   Dockerfile
@@ -86,6 +91,8 @@ python tests/test_pipeline_offline.py
 python tests/test_datasets_offline.py
 python tests/test_benchmark_offline.py
 python tests/test_export_formats_offline.py
+python tests/test_measurements_offline.py
+python tests/test_stats_offline.py
 
 # Or with Docker Compose (not yet built/tested here — no registry access in this sandbox):
 docker compose up --build
@@ -104,8 +111,8 @@ missing). Status values: `ready`, `validation` (running but unbenchmarked),
 - [x] **Phase 1** — detection engine architecture: tiling, model interface, NMS, georeferencing, GeoJSON export. Working placeholder for car/ship; honest stubs for palm/date/tree/field-boundary pending datasets. Also includes the Section 9 dataset module (YOLO/COCO/GeoJSON parsing, validation, geo-separated splitting, versioning) a turn ahead of where the phase list put it, since training anything in Phase 1 needs it.
 - [x] **Phase 2** — CPU0 / CPU1 / GPU / AUTO SELECT compute manager.
 - [ ] **Phase 3** — validated at scale against real multi-GB orthomosaics (needs a real deployment box).
-- [ ] **Phase 4** — Model Management dashboard beyond the current checklist (model versioning UI, training status, hardware compatibility matrix).
-- [~] **Phase 5 (partial)** — GeoJSON → KML export implemented and tested (`GET /api/results/{job_id}/{model_id}/kml`). Shapefile export, layer styling, and measurement tools are still open — see `app/engine/export_formats.py` for why shapefile specifically was deferred rather than hand-rolled.
+- [x] **Phase 4** — Model Management dashboard: full registry fields + live processing statistics in a dedicated table view, toggled from the top bar. Dataset-version UI (listing `/api/datasets/{model_id}/versions`) is not built yet.
+- [~] **Phase 5 (partial)** — GeoJSON → KML export implemented and tested (`GET /api/results/{job_id}/{model_id}/kml`). Field area/perimeter measurement math implemented and tested (`app/engine/measurements.py`). Shapefile export and layer styling are still open — see `app/engine/export_formats.py` for why shapefile specifically was deferred rather than hand-rolled.
 - [x] **Phase 6 (tooling only)** — `app/engine/benchmark.py` computes real precision/recall/F1/mAP50/mAP50-95/throughput/false-positive-rate from predictions + ground truth, unit-tested against hand-verified numbers. Nothing has actually been benchmarked yet — that still requires trained weights and a labeled held-out test set, which don't exist for any model in the catalog.
 
 ## What's needed from you to move past Phase 1
