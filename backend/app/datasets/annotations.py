@@ -46,6 +46,109 @@ def parse_yolo_txt(txt_path: str | Path, image_path: str, image_w: int, image_h:
     return DatasetSample(sample_id=txt_path.stem, image_path=image_path, boxes=boxes, image_w=image_w, image_h=image_h)
 
 
+_IMAGE_EXTENSIONS = (".tif", ".tiff", ".jpg", ".jpeg", ".png")
+
+
+def _read_image_size(image_path: Path) -> tuple[int, int]:
+    """Pixel dimensions only (no georeferencing needed) — works for plain TIFF/JPEG/PNG via Pillow."""
+    from PIL import Image  # lazy import; Pillow is a light, commonly-available dependency
+
+    with Image.open(image_path) as im:
+        return im.width, im.height
+
+
+def parse_yolo_dataset_dir(
+    images_dir: str | Path,
+    labels_dir: str | Path | None = None,
+    classes_file: str | Path | None = None,
+    image_extensions: tuple[str, ...] = _IMAGE_EXTENSIONS,
+) -> tuple[list[DatasetSample], dict[int, str]]:
+    """
+    Parse a whole YOLO-style dataset directory: one image file per sample,
+    with a same-stem `.txt` label file in `labels_dir` (defaults to
+    `images_dir`). An optional `classes.txt` (one class name per line, in
+    class-id order) or Ultralytics-style `data.yaml` (`names:` list/dict)
+    supplies human-readable class names.
+
+    An image with no matching label file is still included (as a
+    zero-annotation sample, e.g. a legitimate hard-negative/background
+    tile) — `validate_dataset()` will flag it so a human can confirm that
+    was intentional rather than a missing-label bug.
+    """
+    images_dir = Path(images_dir)
+    labels_dir = Path(labels_dir) if labels_dir is not None else images_dir
+    if not images_dir.is_dir():
+        raise AnnotationError(f"images_dir does not exist or is not a directory: {images_dir}")
+
+    class_names: dict[int, str] = {}
+    if classes_file is not None:
+        classes_file = Path(classes_file)
+        if not classes_file.exists():
+            raise AnnotationError(f"classes_file not found: {classes_file}")
+        if classes_file.suffix in (".yaml", ".yml"):
+            class_names = _parse_names_from_yaml(classes_file)
+        else:
+            lines = [l.strip() for l in classes_file.read_text().splitlines() if l.strip()]
+            class_names = {i: name for i, name in enumerate(lines)}
+
+    image_paths = sorted(p for p in images_dir.iterdir() if p.suffix.lower() in image_extensions)
+    if not image_paths:
+        raise AnnotationError(f"No images with extensions {image_extensions} found in {images_dir}")
+
+    samples: list[DatasetSample] = []
+    for img_path in image_paths:
+        label_path = labels_dir / f"{img_path.stem}.txt"
+        try:
+            image_w, image_h = _read_image_size(img_path)
+        except ImportError:
+            raise AnnotationError("Pillow is required to read image dimensions for YOLO datasets (pip install pillow).")
+        except Exception as exc:
+            raise AnnotationError(f"Could not read image dimensions for {img_path}: {exc}")
+
+        if label_path.exists():
+            sample = parse_yolo_txt(label_path, str(img_path), image_w, image_h)
+        else:
+            sample = DatasetSample(sample_id=img_path.stem, image_path=str(img_path), image_w=image_w, image_h=image_h)
+        samples.append(sample)
+
+    return samples, class_names
+
+
+def _parse_names_from_yaml(yaml_path: Path) -> dict[int, str]:
+    """Minimal `names:` extractor for an Ultralytics-style data.yaml — avoids a hard PyYAML dependency."""
+    text = yaml_path.read_text()
+    try:
+        import yaml  # optional; fall back to a tiny manual parser if unavailable
+        data = yaml.safe_load(text)
+        names = data.get("names", {})
+        if isinstance(names, list):
+            return {i: n for i, n in enumerate(names)}
+        return {int(k): v for k, v in names.items()}
+    except ImportError:
+        pass
+
+    # Tiny fallback parser for the common `names: [a, b, c]` or indented-list form.
+    names: dict[int, str] = {}
+    lines = text.splitlines()
+    for i, line in enumerate(lines):
+        if line.strip().startswith("names:"):
+            rest = line.split("names:", 1)[1].strip()
+            if rest.startswith("["):
+                items = [x.strip().strip("'\"") for x in rest.strip("[]").split(",") if x.strip()]
+                return {idx: n for idx, n in enumerate(items)}
+            # indented `- name` lines following `names:`
+            idx = 0
+            for later in lines[i + 1:]:
+                s = later.strip()
+                if s.startswith("- "):
+                    names[idx] = s[2:].strip().strip("'\"")
+                    idx += 1
+                elif s and not s.startswith("#"):
+                    break
+            break
+    return names
+
+
 def parse_coco_json(coco_path: str | Path, images_dir: str | Path) -> list[DatasetSample]:
     """Standard COCO detection format: {images: [...], annotations: [...], categories: [...]}."""
     coco_path = Path(coco_path)

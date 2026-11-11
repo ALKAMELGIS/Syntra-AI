@@ -15,6 +15,7 @@ from app.datasets.annotations import (
     AnnotationError,
     parse_coco_json,
     parse_geojson_annotations,
+    parse_yolo_dataset_dir,
     validate_dataset,
 )
 from app.datasets.schema import AnnotationFormat
@@ -27,8 +28,10 @@ router = APIRouter(prefix="/api/datasets", tags=["datasets"])
 class PrepareDatasetRequest(BaseModel):
     model_id: str
     annotation_format: AnnotationFormat
-    annotation_path: str
-    images_dir: str | None = None   # required for COCO
+    annotation_path: str             # COCO: the .json file · GeoJSON: the .geojson file · YOLO: the images directory
+    images_dir: str | None = None    # required for COCO
+    labels_dir: str | None = None    # YOLO only; defaults to annotation_path (images_dir) if omitted
+    classes_file: str | None = None  # YOLO only; classes.txt or data.yaml with a `names:` list
     train_frac: float = 0.7
     val_frac: float = 0.15
     test_frac: float = 0.15
@@ -44,29 +47,24 @@ def prepare_dataset(req: PrepareDatasetRequest):
             samples = parse_coco_json(req.annotation_path, req.images_dir)
         elif req.annotation_format == AnnotationFormat.GEOJSON:
             samples = parse_geojson_annotations(req.annotation_path)
-        else:
-            raise HTTPException(
-                status_code=400,
-                detail="YOLO parsing needs one .txt per image; use the dataset's directory layout "
-                       "via a future /datasets/prepare-yolo-dir endpoint, or submit per-image via annotations.parse_yolo_txt directly.",
+        else:  # YOLO — annotation_path is the images directory
+            samples, _class_names = parse_yolo_dataset_dir(
+                req.annotation_path, labels_dir=req.labels_dir, classes_file=req.classes_file,
             )
     except AnnotationError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
+    split_kwargs = dict(train_frac=req.train_frac, val_frac=req.val_frac, test_frac=req.test_frac, cell_size=req.cell_size_m)
     problems = validate_dataset(samples)
     if problems:
         raise HTTPException(status_code=422, detail={"message": "Dataset failed validation.", "problems": problems})
 
     balance = class_balance(samples)
-    split = geographically_separated_split(
-        samples, train_frac=req.train_frac, val_frac=req.val_frac, test_frac=req.test_frac, cell_size=req.cell_size_m,
-    )
+    split = geographically_separated_split(samples, **split_kwargs)
 
     settings.ensure_dirs()
-    version = register_version(
-        settings.DATA_DIR, req.model_id, [s.sample_id for s in samples],
-        balance, split, req.annotation_format, [req.annotation_path],
-    )
+    version = register_version(settings.DATA_DIR, req.model_id, [s.sample_id for s in samples],
+                                balance, split, req.annotation_format, [req.annotation_path])
 
     return {
         "version_id": version.version_id,

@@ -1,0 +1,29 @@
+# Local/on-prem deployment scaffold. For GPU inference, add:
+#   deploy:
+#     resources:
+#       reservations:
+#         devices:
+#           - driver: nvidia
+#             count: all
+#             capabilities: [gpu]
+# under the `backend` service (requires the NVIDIA Container Toolkit on the host).
+
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - syntra_data:/srv/data
+    environment:
+      - SYNTRA_CORS_ORIGINS=http://localhost:8080
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+
+volumes:
+  syntra_data:

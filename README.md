@@ -25,6 +25,10 @@ never verified:
 | React + Leaflet dashboard | 📝 written, **not built/run** | No `npm install` was possible here (no registry access). Standard Vite/React/Leaflet code — run `npm install && npm run dev` in a normal dev environment. |
 | Dataset module (YOLO/COCO/GeoJSON parsing, validation, class balance, geo-separated splitting, versioning) | ✅ implemented & tested | `backend/tests/test_datasets_offline.py`: GeoJSON round-trip, class-balance math, and a split test that asserts two spatial clusters are never divided across train/val/test. |
 | Benchmark metrics (precision/recall/F1/mAP50/mAP50-95/throughput/FP-rate) | ✅ implemented & tested | `backend/tests/test_benchmark_offline.py`: hand-verified precision/recall on a constructed 2-image case, a perfect-prediction AP=1.0 case, and a regression test proving matching is scoped per-image (a prediction can't score against another image's ground truth just because the raw coordinates coincide). No real model has been benchmarked yet — see the table above. |
+| YOLO directory dataset parsing (images + per-image `.txt` labels + `classes.txt`/`data.yaml`) | ✅ implemented & tested | `test_yolo_dataset_dir_parsing` writes real PNG files (via Pillow, which IS installed here) and YOLO labels to a temp dir and parses them back, including a label-less "background tile" case. |
+| GeoJSON → KML export | ✅ implemented & tested | `test_export_formats_offline.py` round-trips Point and Polygon features through real `xml.etree` parsing, not just string checks, and verifies an unsupported geometry type is rejected. Shapefile export is documented but not implemented (see `export_formats.py`'s bottom comment) — hand-rolling a binary `.shp` without a GIS tool here to validate against would be worse than not shipping it. |
+| CI (`.github/workflows/offline-tests.yml`) | ✅ added, config-validated | Runs all four offline test scripts on every push/PR with just numpy+Pillow; a second job installs the full `requirements.txt` as an import-smoke-test. Not yet run on GitHub itself since this was written from the sandbox — check the Actions tab after pushing. |
+| Docker Compose (`docker-compose.yml`, `backend/Dockerfile`, `frontend/Dockerfile`) | 📝 written, **not built** | Standard Python-slim + nginx images; `docker build`/`docker compose up` wasn't possible here (no image-registry network access). GPU support is commented inline (needs the NVIDIA Container Toolkit on the host). |
 
 **Bottom line:** the orchestration engine — the hard, easy-to-get-subtly-wrong
 part (tiling, georeferencing, duplicate removal, the model contract) — is
@@ -44,15 +48,21 @@ backend/
     api/          # FastAPI routes: images, models, predict, results, compute, datasets, benchmark
     main.py
   tests/
-    test_pipeline_offline.py    # numpy-only, runs anywhere, no GPU/network needed
-    test_datasets_offline.py    # dataset parsing/validation/splitting
-    test_benchmark_offline.py   # metric-computation correctness (AP/mAP/precision/recall)
+    test_pipeline_offline.py        # numpy-only, runs anywhere, no GPU/network needed
+    test_datasets_offline.py        # dataset parsing/validation/splitting (incl. real YOLO dir parsing)
+    test_benchmark_offline.py       # metric-computation correctness (AP/mAP/precision/recall)
+    test_export_formats_offline.py  # GeoJSON -> KML round-trip
   requirements.txt
+  Dockerfile
 frontend/
   src/
     components/   # TopBar, Sidebar (model checklist + upload + run), MapView (Leaflet), AnalysisPanel
     api/client.js
   package.json
+  Dockerfile
+  nginx.conf
+docker-compose.yml
+.github/workflows/offline-tests.yml
 ```
 
 ## Running it for real
@@ -75,6 +85,10 @@ cd backend
 python tests/test_pipeline_offline.py
 python tests/test_datasets_offline.py
 python tests/test_benchmark_offline.py
+python tests/test_export_formats_offline.py
+
+# Or with Docker Compose (not yet built/tested here — no registry access in this sandbox):
+docker compose up --build
 ```
 
 ## The six initial detection categories
@@ -91,7 +105,7 @@ missing). Status values: `ready`, `validation` (running but unbenchmarked),
 - [x] **Phase 2** — CPU0 / CPU1 / GPU / AUTO SELECT compute manager.
 - [ ] **Phase 3** — validated at scale against real multi-GB orthomosaics (needs a real deployment box).
 - [ ] **Phase 4** — Model Management dashboard beyond the current checklist (model versioning UI, training status, hardware compatibility matrix).
-- [ ] **Phase 5** — fuller GIS visualization/export (shapefile/KML export, layer styling, measurement tools).
+- [~] **Phase 5 (partial)** — GeoJSON → KML export implemented and tested (`GET /api/results/{job_id}/{model_id}/kml`). Shapefile export, layer styling, and measurement tools are still open — see `app/engine/export_formats.py` for why shapefile specifically was deferred rather than hand-rolled.
 - [x] **Phase 6 (tooling only)** — `app/engine/benchmark.py` computes real precision/recall/F1/mAP50/mAP50-95/throughput/false-positive-rate from predictions + ground truth, unit-tested against hand-verified numbers. Nothing has actually been benchmarked yet — that still requires trained weights and a labeled held-out test set, which don't exist for any model in the catalog.
 
 ## What's needed from you to move past Phase 1

@@ -10,7 +10,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.datasets.annotations import parse_geojson_annotations, validate_dataset
+from app.datasets.annotations import parse_geojson_annotations, parse_yolo_dataset_dir, validate_dataset
 from app.datasets.schema import BoundingBox, DatasetSample
 from app.datasets.splitter import class_balance, geographically_separated_split
 
@@ -56,6 +56,42 @@ def test_class_balance():
     print("Class balance:", report.summary())
 
 
+def test_yolo_dataset_dir_parsing():
+    import numpy as np
+    from PIL import Image
+
+    tmp = Path(tempfile.mkdtemp())
+    images_dir = tmp / "images"
+    labels_dir = tmp / "labels"
+    images_dir.mkdir()
+    labels_dir.mkdir()
+
+    # Two real 64x48 PNGs (pixel dims matter: parse_yolo_dataset_dir reads them via Pillow).
+    for name in ("tile_001", "tile_002"):
+        arr = (np.random.default_rng(0).integers(0, 255, size=(48, 64, 3))).astype("uint8")
+        Image.fromarray(arr).save(images_dir / f"{name}.png")
+
+    # tile_001 has one centered box; tile_002 has no label file at all (background tile).
+    (labels_dir / "tile_001.txt").write_text("0 0.5 0.5 0.2 0.3\n")
+    (tmp / "classes.txt").write_text("palm_tree\n")
+
+    samples, class_names = parse_yolo_dataset_dir(images_dir, labels_dir=labels_dir, classes_file=tmp / "classes.txt")
+
+    assert len(samples) == 2
+    assert class_names == {0: "palm_tree"}
+
+    by_id = {s.sample_id: s for s in samples}
+    assert by_id["tile_001"].image_w == 64 and by_id["tile_001"].image_h == 48
+    assert len(by_id["tile_001"].boxes) == 1
+    assert by_id["tile_001"].boxes[0].class_id == 0
+    assert len(by_id["tile_002"].boxes) == 0   # no label file -> legitimately zero annotations
+
+    # validate_dataset should flag tile_002's zero annotations so a human can confirm it's intentional.
+    problems = validate_dataset(samples)
+    assert any("tile_002" in p for p in problems)
+    print(f"YOLO dir parsing: {len(samples)} samples, classes={class_names}, flagged={len(problems)} problem(s)")
+
+
 def test_geographic_split_keeps_cells_together():
     # Two tight clusters far apart (different grid cells at cell_size=1000);
     # within each cluster the samples must never straddle different splits.
@@ -87,5 +123,6 @@ def test_geographic_split_keeps_cells_together():
 if __name__ == "__main__":
     test_geojson_parsing_and_validation()
     test_class_balance()
+    test_yolo_dataset_dir_parsing()
     test_geographic_split_keeps_cells_together()
     print("test_datasets_offline: PASSED")

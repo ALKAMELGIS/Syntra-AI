@@ -1,0 +1,54 @@
+name: Offline orchestration tests
+
+# Runs the dependency-light test suite (numpy/Pillow only — no GPU, no
+# rasterio/torch/ultralytics) on every push/PR. These tests prove the
+# engine's orchestration logic (tiling, georeferencing, cross-tile NMS,
+# dataset parsing/splitting, benchmark metrics, KML export) is correct;
+# they do NOT exercise real model inference, which needs the full
+# requirements.txt stack and a GPU/CPU box with network access (see
+# README.md's status table for exactly what is and isn't covered here).
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+jobs:
+  offline-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install lightweight test dependencies
+        run: pip install numpy pillow
+
+      - name: Run offline test suite
+        working-directory: backend
+        run: |
+          python tests/test_pipeline_offline.py
+          python tests/test_datasets_offline.py
+          python tests/test_benchmark_offline.py
+          python tests/test_export_formats_offline.py
+
+  # Full-stack job: installs requirements.txt (torch/ultralytics/rasterio
+  # included) and would run model-level tests once any exist. Currently a
+  # no-op beyond proving the dependency set installs cleanly, since no
+  # model in the catalog has trained weights yet (see registry.py).
+  full-environment-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install full requirements
+        working-directory: backend
+        run: pip install -r requirements.txt
+      - name: Import-check the full app (catches missing deps / import errors)
+        working-directory: backend
+        run: python -c "from app.main import app; print('app imports cleanly with full deps:', app.title)"

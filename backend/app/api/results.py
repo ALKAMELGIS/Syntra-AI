@@ -4,9 +4,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Response
 
 from app.core.config import settings
+from app.engine.export_formats import geojson_to_kml
 
 router = APIRouter(prefix="/api/results", tags=["results"])
 
@@ -17,6 +18,16 @@ def get_geojson(job_id: str, model_id: str):
     if not path.exists():
         raise HTTPException(status_code=404, detail="No results found for this job/model.")
     return json.loads(path.read_text())
+
+
+@router.get("/{job_id}/{model_id}/kml")
+def get_kml(job_id: str, model_id: str):
+    path = settings.RESULTS_DIR / job_id / f"{model_id}.geojson"
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="No results found for this job/model.")
+    geojson = json.loads(path.read_text())
+    kml = geojson_to_kml(geojson, document_name=f"Syntra AI — {model_id}")
+    return Response(content=kml, media_type="application/vnd.google-earth.kml+xml")
 
 
 @router.get("/{job_id}/{model_id}/manifest")
