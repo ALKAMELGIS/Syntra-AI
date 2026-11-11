@@ -23,6 +23,8 @@ never verified:
 | **Car / Ship detection** (`generic_detector.py`) | ⚠️ real ultralytics code, **not run** | Wraps a stock YOLOv8-COCO model as a working placeholder (`car`/`boat` classes). Needs `pip install -r requirements.txt` + a GPU/CPU box with network access to actually run. Marked `VALIDATION` status, not `READY` — it is unfine-tuned and unbenchmarked for aerial imagery. |
 | **Palm / Date / Tree / Field-boundary** models | ❌ not production-ready | No trained weights or labeled datasets exist. The factory and model classes raise a clear `NotProductionReadyError` instead of fabricating detections — per the spec's final requirement. |
 | React + Leaflet dashboard | 📝 written, **not built/run** | No `npm install` was possible here (no registry access). Standard Vite/React/Leaflet code — run `npm install && npm run dev` in a normal dev environment. |
+| Dataset module (YOLO/COCO/GeoJSON parsing, validation, class balance, geo-separated splitting, versioning) | ✅ implemented & tested | `backend/tests/test_datasets_offline.py`: GeoJSON round-trip, class-balance math, and a split test that asserts two spatial clusters are never divided across train/val/test. |
+| Benchmark metrics (precision/recall/F1/mAP50/mAP50-95/throughput/FP-rate) | ✅ implemented & tested | `backend/tests/test_benchmark_offline.py`: hand-verified precision/recall on a constructed 2-image case, a perfect-prediction AP=1.0 case, and a regression test proving matching is scoped per-image (a prediction can't score against another image's ground truth just because the raw coordinates coincide). No real model has been benchmarked yet — see the table above. |
 
 **Bottom line:** the orchestration engine — the hard, easy-to-get-subtly-wrong
 part (tiling, georeferencing, duplicate removal, the model contract) — is
@@ -36,12 +38,15 @@ train/fine-tune.
 backend/
   app/
     core/        # config, compute device manager (CPU0/CPU1/GPU/AUTO)
-    engine/       # raster I/O + tiling, geo transform, NMS, postprocess/export, pipeline orchestrator
+    engine/       # raster I/O + tiling, geo transform, NMS, postprocess/export, pipeline orchestrator, benchmark metrics
     models/       # standardized model interface, catalog/registry, factory, per-model implementations
-    api/          # FastAPI routes: images, models, predict, results, compute
+    datasets/     # Section 9: annotation parsing (YOLO/COCO/GeoJSON), validation, geo-separated splitting, versioning
+    api/          # FastAPI routes: images, models, predict, results, compute, datasets, benchmark
     main.py
   tests/
-    test_pipeline_offline.py   # numpy-only, runs anywhere, no GPU/network needed
+    test_pipeline_offline.py    # numpy-only, runs anywhere, no GPU/network needed
+    test_datasets_offline.py    # dataset parsing/validation/splitting
+    test_benchmark_offline.py   # metric-computation correctness (AP/mAP/precision/recall)
   requirements.txt
 frontend/
   src/
@@ -65,9 +70,11 @@ cd frontend
 npm install
 npm run dev   # http://localhost:5173, proxies /api -> :8000
 
-# Offline orchestration test (no GPU/rasterio/torch needed)
+# Offline tests (no GPU/rasterio/torch needed)
 cd backend
 python tests/test_pipeline_offline.py
+python tests/test_datasets_offline.py
+python tests/test_benchmark_offline.py
 ```
 
 ## The six initial detection categories
@@ -80,19 +87,20 @@ missing). Status values: `ready`, `validation` (running but unbenchmarked),
 
 ## Roadmap (spec's Section 10, Development Priorities)
 
-- [x] **Phase 1** — detection engine architecture: tiling, model interface, NMS, georeferencing, GeoJSON export. Working placeholder for car/ship; honest stubs for palm/date/tree/field-boundary pending datasets.
+- [x] **Phase 1** — detection engine architecture: tiling, model interface, NMS, georeferencing, GeoJSON export. Working placeholder for car/ship; honest stubs for palm/date/tree/field-boundary pending datasets. Also includes the Section 9 dataset module (YOLO/COCO/GeoJSON parsing, validation, geo-separated splitting, versioning) a turn ahead of where the phase list put it, since training anything in Phase 1 needs it.
 - [x] **Phase 2** — CPU0 / CPU1 / GPU / AUTO SELECT compute manager.
 - [ ] **Phase 3** — validated at scale against real multi-GB orthomosaics (needs a real deployment box).
 - [ ] **Phase 4** — Model Management dashboard beyond the current checklist (model versioning UI, training status, hardware compatibility matrix).
 - [ ] **Phase 5** — fuller GIS visualization/export (shapefile/KML export, layer styling, measurement tools).
-- [ ] **Phase 6** — per-model benchmarking (precision/recall/F1/mAP50/mAP50-95/inference time/throughput/VRAM/FP rate) — requires trained weights and a labeled eval set first.
+- [x] **Phase 6 (tooling only)** — `app/engine/benchmark.py` computes real precision/recall/F1/mAP50/mAP50-95/throughput/false-positive-rate from predictions + ground truth, unit-tested against hand-verified numbers. Nothing has actually been benchmarked yet — that still requires trained weights and a labeled held-out test set, which don't exist for any model in the catalog.
 
 ## What's needed from you to move past Phase 1
 
 1. Labeled datasets (or existing weights) for palm, date-palm, tree, and
    field-boundary-polygon classes — YOLO/COCO/GeoJSON annotation formats are
-   all supported by the dataset module's intended design (not yet built —
-   Phase 1 prioritized the engine per the spec).
+   all parsed and validated by `app/datasets/` already; point it at real
+   annotation files via `POST /api/datasets/prepare` to get a geographically
+   separated train/val/test split and a versioned manifest.
 2. A GPU-equipped host (or at least a normal networked machine) to install
    `requirements.txt` and actually run/benchmark the models.
 3. Confirmation on the "reference" UI: the dashboard here is an **original**
