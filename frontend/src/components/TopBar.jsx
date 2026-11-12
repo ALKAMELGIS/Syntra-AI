@@ -193,8 +193,11 @@ export default function TopBar({ view, onViewChange, devices, enabledGpus, onTog
         </button>
         <GpuMenu devices={devices} enabledGpus={enabledGpus} onToggleGpu={onToggleGpu} />
         <div className="usage-badge" title="Real usage counter — not a payment balance">
-          <span className="usage-badge-label">Usage</span>
-          <span className="usage-badge-value">{usage ? `${usage.total_runs} runs` : "…"}</span>
+          <span className="usage-badge-avatar" aria-hidden="true">S</span>
+          <span className="usage-badge-text">
+            <span className="usage-badge-label">Usage</span>
+            <span className="usage-badge-value">{usage ? `${usage.total_runs} runs` : "…"}</span>
+          </span>
         </div>
       </div>
     </div>

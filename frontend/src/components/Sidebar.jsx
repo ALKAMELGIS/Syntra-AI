@@ -1,6 +1,11 @@
 import React, { useRef, useState } from "react";
 import { api } from "../api/client.js";
 
+function formatBytes(bytes) {
+  const mb = bytes / (1024 * 1024);
+  return mb >= 1024 ? `${(mb / 1024).toFixed(2)} GB` : `${mb.toFixed(1)} MB`;
+}
+
 const STATUS_LABEL = {
   ready: "Ready",
   validation: "Unvalidated",
@@ -89,10 +94,6 @@ export default function Sidebar({ models, selectedModels, onToggleModel, image, 
   }
 
   const pendingBytes = pendingFiles.reduce((sum, f) => sum + f.size, 0);
-  function formatPendingSize(bytes) {
-    const mb = bytes / (1024 * 1024);
-    return mb >= 1024 ? `${(mb / 1024).toFixed(2)} GB` : `${mb.toFixed(1)} MB`;
-  }
 
   const batchImages = batchQueue.filter((q) => q.status === "done").map((q) => q.image);
   const canRun =
@@ -123,9 +124,6 @@ export default function Sidebar({ models, selectedModels, onToggleModel, image, 
 
       {mode === "single" ? (
         <>
-          <button className="import-button" onClick={() => fileInput.current?.click()}>
-            ⇪ Import
-          </button>
           <div
             className={`dropzone ${dragOver ? "drag-over" : ""}`}
             onClick={() => fileInput.current?.click()}
@@ -142,6 +140,7 @@ export default function Sidebar({ models, selectedModels, onToggleModel, image, 
           {uploadError && <p className="note" style={{ color: "var(--error)" }}>⚠ {uploadError}</p>}
           {image && (
             <p className="note">
+              {image.size_bytes ? `${formatBytes(image.size_bytes)} · ` : ""}
               {image.width ? `${image.width} × ${image.height} px` : ""}
               {image.gsd_x_m ? ` · ${(image.gsd_x_m * 100).toFixed(0)} cm GSD` : ""}
             </p>
@@ -149,9 +148,6 @@ export default function Sidebar({ models, selectedModels, onToggleModel, image, 
         </>
       ) : (
         <>
-          <button className="import-button" onClick={() => batchInput.current?.click()}>
-            ⇪ Import
-          </button>
           <input
             ref={batchInput}
             type="file"
@@ -174,7 +170,7 @@ export default function Sidebar({ models, selectedModels, onToggleModel, image, 
           ) : (
             <div className="folder-pick-confirm-row">
               <span className="note">
-                {pendingFiles.length} .tif/.tiff file{pendingFiles.length === 1 ? "" : "s"} found · {formatPendingSize(pendingBytes)}
+                {pendingFiles.length} .tif/.tiff file{pendingFiles.length === 1 ? "" : "s"} found · {formatBytes(pendingBytes)}
               </span>
               <div style={{ display: "flex", gap: 6 }}>
                 <button className="batch-queue-remove" onClick={clearPending} title="Clear selection">✕</button>
