@@ -75,4 +75,23 @@ export const api = {
   usageSummary: () => fetch(`${BASE}/usage`).then(handle),
   resultDownloadUrl: (jobId, modelId, format) =>
     format === "geojson" ? `${BASE}/results/${jobId}/${modelId}` : `${BASE}/results/${jobId}/${modelId}/${format}`,
+  // --- Model Setup wizard: Dataset export + Train steps ---
+  exportDataset: (payload) =>
+    fetch(`${BASE}/training/export-dataset`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(handle),
+  exportDatasetStatus: (jobId) => fetch(`${BASE}/training/export-dataset/${jobId}`).then(handle),
+  exportDatasetCancel: (jobId) =>
+    fetch(`${BASE}/training/export-dataset/${jobId}/cancel`, { method: "POST" }).then(handle),
+  startTraining: (payload) =>
+    fetch(`${BASE}/training/train`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(handle),
+  trainingStatus: (jobId) => fetch(`${BASE}/training/train/${jobId}`).then(handle),
+  trainingCancel: (jobId) =>
+    fetch(`${BASE}/training/train/${jobId}/cancel`, { method: "POST" }).then(handle),
 };

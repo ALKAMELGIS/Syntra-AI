@@ -1,5 +1,6 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import ModelsDashboard from "./ModelsDashboard.jsx";
+import { api } from "../api/client.js";
 import {
   IconGear,
   IconPencil,
@@ -54,19 +55,271 @@ function WizardStepBar({ current, reached, onGo }) {
   );
 }
 
-function ComingSoon({ title, description, bullets }) {
+function DatasetStep() {
+  const [form, setForm] = useState({
+    image_path: "",
+    class_names: "",
+    annotations_json: "",
+    tile: 640,
+    overlap: 64,
+    val_split: 0.2,
+    neg_ratio: 0.1,
+    task: "detect",
+  });
+  const [jobId, setJobId] = useState(null);
+  const [job, setJob] = useState(null);
+  const [error, setError] = useState(null);
+  const pollRef = useRef(null);
+
+  function set(field, value) {
+    setForm((f) => ({ ...f, [field]: value }));
+  }
+
+  useEffect(() => () => clearInterval(pollRef.current), []);
+
+  async function submit() {
+    setError(null);
+    setJob(null);
+    let annotations;
+    try {
+      annotations = JSON.parse(form.annotations_json);
+    } catch {
+      setError("Annotations must be valid JSON — a list of {\"class_id\": 0, \"points_px\": [[x,y], ...]}.");
+      return;
+    }
+    try {
+      const payload = {
+        image_path: form.image_path,
+        class_names: form.class_names.split(",").map((s) => s.trim()).filter(Boolean),
+        annotations,
+        tile: parseInt(form.tile, 10),
+        overlap: parseInt(form.overlap, 10),
+        val_split: parseFloat(form.val_split),
+        neg_ratio: parseFloat(form.neg_ratio),
+        task: form.task,
+      };
+      const r = await api.exportDataset(payload);
+      setJobId(r.job_id);
+      setJob({ status: "queued" });
+      clearInterval(pollRef.current);
+      pollRef.current = setInterval(async () => {
+        try {
+          const st = await api.exportDatasetStatus(r.job_id);
+          setJob(st);
+          if (st.status === "completed" || st.status === "error") clearInterval(pollRef.current);
+        } catch { /* transient poll error */ }
+      }, 1200);
+    } catch (err) {
+      setError(err.detail?.message || err.message);
+    }
+  }
+
   return (
     <div className="panel wizard-coming-soon">
-      <p className="section-title">{title}</p>
-      <p className="note" style={{ maxWidth: 640 }}>{description}</p>
-      {bullets?.length > 0 && (
-        <ul className="wizard-coming-soon-list">
-          {bullets.map((b, i) => <li key={i}>{b}</li>)}
-        </ul>
-      )}
-      <p className="note" style={{ marginTop: 14, color: "var(--warn)" }}>
-        ⚠ Not built yet — this step is a planned part of the workflow, not a working control.
+      <p className="section-title">Dataset</p>
+      <p className="note" style={{ maxWidth: 640 }}>
+        Tiles the image below into {form.tile}px tiles ({form.overlap}px overlap), converts the
+        annotations into YOLO labels, filters black tiles, samples background tiles, and splits
+        train/val. Until drawing on the map feeds this directly (next step), annotations are given
+        as pixel-coordinate JSON.
       </p>
+      <div className="prepare-grid">
+        <label className="prepare-wide">
+          Image path
+          <input value={form.image_path} onChange={(e) => set("image_path", e.target.value)} placeholder="/path/to/orthomosaic.tif" />
+        </label>
+        <label className="prepare-wide">
+          Class names (comma-separated)
+          <input value={form.class_names} onChange={(e) => set("class_names", e.target.value)} placeholder="tree, building" />
+        </label>
+        <label className="prepare-wide">
+          Annotations (JSON — pixel coordinates)
+          <textarea
+            value={form.annotations_json}
+            onChange={(e) => set("annotations_json", e.target.value)}
+            placeholder='[{"class_id": 0, "points_px": [[100,100],[160,100],[160,160],[100,160]]}]'
+            rows={4}
+            style={{ fontFamily: "monospace", fontSize: 11.5 }}
+          />
+        </label>
+        <label>
+          Tile size (px)
+          <input type="number" value={form.tile} onChange={(e) => set("tile", e.target.value)} />
+        </label>
+        <label>
+          Overlap (px)
+          <input type="number" value={form.overlap} onChange={(e) => set("overlap", e.target.value)} />
+        </label>
+        <label>
+          Val split
+          <input type="number" step="0.05" value={form.val_split} onChange={(e) => set("val_split", e.target.value)} />
+        </label>
+        <label>
+          Background ratio
+          <input type="number" step="0.05" value={form.neg_ratio} onChange={(e) => set("neg_ratio", e.target.value)} />
+        </label>
+        <label>
+          Task
+          <select value={form.task} onChange={(e) => set("task", e.target.value)}>
+            <option value="detect">detect (boxes)</option>
+            <option value="obb">obb (rotated boxes)</option>
+            <option value="segment">segment (polygons)</option>
+          </select>
+        </label>
+      </div>
+      <button className="run-button" style={{ width: "auto", padding: "8px 18px" }}
+        onClick={submit} disabled={!form.image_path || !form.class_names || job?.status === "processing"}>
+        Export Dataset
+      </button>
+      {error && <p className="note" style={{ color: "var(--error)", marginTop: 8 }}>⚠ {error}</p>}
+      {job && (
+        <div className="note" style={{ marginTop: 10 }}>
+          {job.status === "completed" ? (
+            <span style={{ color: "var(--ready)" }}>
+              ✓ Done — {job.info?.stats?.train_images} train / {job.info?.stats?.val_images} val tiles
+              → <code>{job.data_yaml}</code>
+            </span>
+          ) : job.status === "error" ? (
+            <span style={{ color: "var(--error)" }}>⚠ {job.error}</span>
+          ) : (
+            <span>{job.status} — {job.progress ?? 0}% {job.message ? `(${job.message})` : ""}</span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TrainStep() {
+  const [form, setForm] = useState({
+    data_yaml: "", device: "cpu", model_size: "nano",
+    epochs: "", batch: "", workers: "", imgsz: "",
+  });
+  const [jobId, setJobId] = useState(null);
+  const [job, setJob] = useState(null);
+  const [error, setError] = useState(null);
+  const pollRef = useRef(null);
+
+  function set(field, value) {
+    setForm((f) => ({ ...f, [field]: value }));
+  }
+
+  useEffect(() => () => clearInterval(pollRef.current), []);
+
+  async function submit() {
+    setError(null);
+    setJob(null);
+    try {
+      const payload = {
+        data_yaml: form.data_yaml,
+        device: form.device,
+        model_size: form.model_size,
+        epochs: form.epochs ? parseInt(form.epochs, 10) : null,
+        batch: form.batch ? parseInt(form.batch, 10) : null,
+        workers: form.workers ? parseInt(form.workers, 10) : null,
+        imgsz: form.imgsz ? parseInt(form.imgsz, 10) : null,
+      };
+      const r = await api.startTraining(payload);
+      setJobId(r.job_id);
+      setJob({ status: "queued" });
+      clearInterval(pollRef.current);
+      pollRef.current = setInterval(async () => {
+        try {
+          const st = await api.trainingStatus(r.job_id);
+          setJob(st);
+          if (["completed", "done", "canceled", "error"].includes(st.status)) clearInterval(pollRef.current);
+        } catch { /* transient poll error */ }
+      }, 1500);
+    } catch (err) {
+      setError(err.detail?.message || err.message);
+    }
+  }
+
+  async function cancel() {
+    if (jobId) await api.trainingCancel(jobId).catch(() => {});
+  }
+
+  const p = job?.progress;
+  const running = job && ["queued", "processing"].includes(job.status);
+
+  return (
+    <div className="panel wizard-coming-soon">
+      <p className="section-title">Train</p>
+      <p className="note" style={{ maxWidth: 640 }}>
+        Trains a YOLO model on the dataset above, in a separate process so the app never freezes —
+        works on CPU, faster with a GPU. Batch size, worker count and epochs are auto-suggested from
+        the dataset size and device; override only what you need.
+      </p>
+      <div className="prepare-grid">
+        <label className="prepare-wide">
+          data.yaml path
+          <input value={form.data_yaml} onChange={(e) => set("data_yaml", e.target.value)} placeholder="/path/to/dataset/data.yaml" />
+        </label>
+        <label>
+          Device
+          <select value={form.device} onChange={(e) => set("device", e.target.value)}>
+            <option value="cpu">CPU</option>
+            <option value="cuda:0">GPU (cuda:0)</option>
+          </select>
+        </label>
+        <label>
+          Model size
+          <select value={form.model_size} onChange={(e) => set("model_size", e.target.value)}>
+            <option value="nano">nano (fastest, CPU-friendly)</option>
+            <option value="small">small</option>
+            <option value="medium">medium</option>
+          </select>
+        </label>
+        <label>
+          Epochs (auto if blank)
+          <input type="number" value={form.epochs} onChange={(e) => set("epochs", e.target.value)} />
+        </label>
+        <label>
+          Batch (auto if blank)
+          <input type="number" value={form.batch} onChange={(e) => set("batch", e.target.value)} />
+        </label>
+        <label>
+          Workers (auto if blank)
+          <input type="number" value={form.workers} onChange={(e) => set("workers", e.target.value)} />
+        </label>
+        <label>
+          Image size (auto if blank)
+          <input type="number" value={form.imgsz} onChange={(e) => set("imgsz", e.target.value)} />
+        </label>
+      </div>
+      <div style={{ display: "flex", gap: 10 }}>
+        <button className="run-button" style={{ width: "auto", padding: "8px 18px" }}
+          onClick={submit} disabled={!form.data_yaml || running}>
+          Start Training
+        </button>
+        {running && (
+          <button className="chip-button" onClick={cancel}>Cancel</button>
+        )}
+      </div>
+      {error && <p className="note" style={{ color: "var(--error)", marginTop: 8 }}>⚠ {error}</p>}
+      {job && (
+        <div className="note" style={{ marginTop: 10 }}>
+          {job.status === "error" ? (
+            <span style={{ color: "var(--error)" }}>⚠ {job.error || job.result?.message}</span>
+          ) : job.status === "canceled" ? (
+            <span style={{ color: "var(--warn)" }}>Canceled at epoch {p?.epoch ?? "?"}.</span>
+          ) : job.status === "done" || job.status === "completed" ? (
+            <span style={{ color: "var(--ready)" }}>
+              ✓ Done — best weights at <code>{job.result?.best}</code>
+            </span>
+          ) : p ? (
+            <>
+              <span>Epoch {p.epoch}/{p.epochs} — loss {p.box_loss?.toFixed?.(3)} · precision {p.precision?.toFixed?.(2)} ·
+                recall {p.recall?.toFixed?.(2)} · mAP50 {p.map50?.toFixed?.(2)}</span>
+              <div className="upload-progress-bar" style={{ marginTop: 6 }}>
+                <div className="upload-progress-fill" style={{ width: `${(100 * p.epoch) / p.epochs}%` }} />
+              </div>
+            </>
+          ) : (
+            <span>{job.status}…</span>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -119,28 +372,8 @@ export default function ModelSetupWizard({ onViewChange }) {
       <div className="wizard-body">
         {current === 0 && <ModelsDashboard />}
         {current === 1 && <AnnotateStep onViewChange={onViewChange} />}
-        {current === 2 && (
-          <ComingSoon
-            title="Dataset"
-            description="Slices a large orthomosaic into tiles, converts the annotations you drew into YOLO labels, filters out empty/black tiles, samples background tiles, and splits train/val automatically."
-            bullets={[
-              "Tile size and overlap suggested automatically from your objects' pixel size",
-              "Rotation / flip augmentation on the training tiles",
-              "Writes data.yaml + dataset_info.json ready for the Train step",
-            ]}
-          />
-        )}
-        {current === 3 && (
-          <ComingSoon
-            title="Train"
-            description="Trains a YOLO model on the dataset from the step above, in a separate process so it never freezes the app. Works on CPU, faster on GPU when available."
-            bullets={[
-              "Epochs, image size, batch size, optimizer, learning rate",
-              "Live per-epoch progress: loss, precision, recall, mAP50",
-              "Automatic batch-size and worker tuning for your machine's RAM/VRAM",
-            ]}
-          />
-        )}
+        {current === 2 && <DatasetStep />}
+        {current === 3 && <TrainStep />}
         {current === 4 && <DetectStep onViewChange={onViewChange} />}
       </div>
       <div className="wizard-nav">

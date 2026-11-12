@@ -367,10 +367,11 @@ body {
   display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: var(--text-dim);
 }
 .prepare-grid .prepare-wide { grid-column: 1 / -1; }
-.prepare-grid input, .prepare-grid select {
+.prepare-grid input, .prepare-grid select, .prepare-grid textarea {
   background: var(--bg); border: 1px solid var(--panel-border); color: var(--text);
-  border-radius: 6px; padding: 6px 8px; font-size: 12px;
+  border-radius: 6px; padding: 6px 8px; font-size: 12px; font-family: inherit;
 }
+.prepare-grid textarea { resize: vertical; }
 
 /* --- Library Status / Installation Options (Environment panel) ---
    Laid out as two separate cards, stacked, matching the reference app's
