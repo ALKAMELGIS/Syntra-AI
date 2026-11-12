@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { MapContainer, TileLayer, GeoJSON, useMap } from "react-leaflet";
+import React, { useEffect, useState } from "react";
+import { MapContainer, TileLayer, GeoJSON, ImageOverlay, useMap } from "react-leaflet";
 import MapDrawTools from "./MapDrawTools.jsx";
 import ImageLibrary from "./ImageLibrary.jsx";
 import SettingsPanel from "./SettingsPanel.jsx";
@@ -25,7 +25,7 @@ const BASEMAPS = {
 // Lives inside <MapContainer> so it can reach the Leaflet map instance via
 // react-leaflet's useMap() hook -- these buttons actually drive the map,
 // they are not decorative.
-function MapToolbar({ layers, basemap, onBasemapChange, legendOpen, onLegendToggle, onOpenLibrary, onOpenSettings }) {
+function MapToolbar({ layers, sourceImage, basemap, onBasemapChange, legendOpen, onLegendToggle, onOpenLibrary, onOpenSettings }) {
   const map = useMap();
 
   function zoomToFit() {
@@ -36,6 +36,11 @@ function MapToolbar({ layers, basemap, onBasemapChange, legendOpen, onLegendTogg
         map.fitBounds(bounds, { padding: [40, 40] });
         return;
       }
+    }
+    const b = sourceImage?.bounds_wgs84;
+    if (b) {
+      map.fitBounds([[b.south, b.west], [b.north, b.east]], { padding: [40, 40] });
+      return;
     }
     map.setView([24.7, 46.7], 5);
   }
@@ -70,6 +75,20 @@ function MapToolbar({ layers, basemap, onBasemapChange, legendOpen, onLegendTogg
   );
 }
 
+// Frames the newly loaded source image automatically, the same way the
+// reference app snaps to a freshly imported scene — real geographic bounds
+// from the backend (app.engine.raster_io.compute_wgs84_bounds), not a guess.
+function AutoFitSourceImage({ sourceImage }) {
+  const map = useMap();
+  useEffect(() => {
+    const b = sourceImage?.bounds_wgs84;
+    if (b) {
+      map.fitBounds([[b.south, b.west], [b.north, b.east]], { padding: [40, 40] });
+    }
+  }, [sourceImage?.image_id, map]);
+  return null;
+}
+
 // Minimal bounds helper so we don't need to pull in the `leaflet` module
 // directly just for L.geoJSON(...).getBounds().
 function L_boundsFromGeojson(geojson) {
@@ -98,7 +117,7 @@ function L_boundsFromGeojson(geojson) {
 export default function MapView({
   layers, detectionsVisible = true, onToggleDetections,
   aoi, onAoiChange, measurement, onMeasurementChange, onOpenDatasetManager,
-  onSelectLibraryImage, currentImageId,
+  onSelectLibraryImage, currentImageId, sourceImage,
 }) {
   const [basemap, setBasemap] = useState("satellite");
   const [legendOpen, setLegendOpen] = useState(true);
@@ -116,6 +135,17 @@ export default function MapView({
     <div className={`map-area icon-style-${iconStyle}`}>
       <MapContainer center={[24.7, 46.7]} zoom={5} scrollWheelZoom>
         <TileLayer attribution={bm.attribution} url={bm.url} />
+        {sourceImage?.bounds_wgs84 && sourceImage?.image_id && (
+          <ImageOverlay
+            key={sourceImage.image_id}
+            url={`/api/images/${sourceImage.image_id}/preview.png`}
+            bounds={[
+              [sourceImage.bounds_wgs84.south, sourceImage.bounds_wgs84.west],
+              [sourceImage.bounds_wgs84.north, sourceImage.bounds_wgs84.east],
+            ]}
+          />
+        )}
+        <AutoFitSourceImage sourceImage={sourceImage} />
         {detectionsVisible &&
           layers.map((l) =>
             l.geojson ? (
@@ -135,6 +165,7 @@ export default function MapView({
         )}
         <MapToolbar
           layers={layers}
+          sourceImage={sourceImage}
           basemap={basemap}
           onBasemapChange={setBasemap}
           legendOpen={legendOpen}
@@ -187,6 +218,11 @@ export default function MapView({
             <div className="map-legend-row dim">Measured: {measurement}</div>
           )}
           <div className="map-legend-row dim">Basemap: {bm.label}</div>
+          {sourceImage?.filename && (
+            <div className="map-legend-row dim">
+              Source: {sourceImage.filename}{!sourceImage.bounds_wgs84 ? " (no CRS — not shown on map)" : ""}
+            </div>
+          )}
         </div>
       )}
     </div>

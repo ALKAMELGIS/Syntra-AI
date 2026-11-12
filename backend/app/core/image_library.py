@@ -38,6 +38,7 @@ class LibraryEntry:
     gsd_x_m: float | None = None
     gsd_y_m: float | None = None
     area_km2: float | None = None
+    bounds_wgs84: dict[str, float] | None = None  # {south, west, north, east} — for map ImageOverlay placement
     raster_meta_note: str | None = None  # set when raster metadata couldn't be read
 
     def to_dict(self) -> dict[str, Any]:
@@ -60,6 +61,7 @@ def build_entry(
     uploaded_at: str,
     raster_meta: dict[str, Any] | None = None,
     raster_meta_note: str | None = None,
+    bounds_wgs84: dict[str, float] | None = None,
 ) -> LibraryEntry:
     raster_meta = raster_meta or {}
     width = raster_meta.get("width")
@@ -80,6 +82,7 @@ def build_entry(
         gsd_x_m=gsd_x_m,
         gsd_y_m=gsd_y_m,
         area_km2=compute_area_km2(width, height, gsd_x_m, gsd_y_m),
+        bounds_wgs84=bounds_wgs84,
         raster_meta_note=raster_meta_note,
     )
 

@@ -45,6 +45,67 @@ class RasterInfo:
     path: str
 
 
+def compute_wgs84_bounds(path: str | Path) -> dict[str, float] | None:
+    """
+    Real geographic footprint of a raster, reprojected to WGS84 (EPSG:4326)
+    so the frontend can place it on a Leaflet map with <ImageOverlay>.
+
+    Returns None rather than guessing when the raster has no CRS at all —
+    an unreferenced image has no honest place to sit on a web map.
+    """
+    import rasterio  # lazy import
+    from rasterio.warp import transform_bounds
+
+    with rasterio.open(path) as ds:
+        if ds.crs is None:
+            return None
+        west, south, east, north = transform_bounds(ds.crs, "EPSG:4326", *ds.bounds)
+        return {"south": south, "west": west, "north": north, "east": east}
+
+
+def read_preview_png(path: str | Path, max_dim: int = 1024) -> bytes:
+    """
+    A small, real true-color (or single-band grayscale) PNG rendering of the
+    raster for map display — decimated at read time via rasterio's out_shape
+    so this never materializes the full-resolution array (orthomosaics here
+    run into the tens of thousands of pixels per side).
+    """
+    import rasterio  # lazy import
+    from rasterio.enums import Resampling
+    from PIL import Image
+
+    with rasterio.open(path) as ds:
+        scale = min(1.0, max_dim / max(ds.width, ds.height))
+        out_w = max(1, round(ds.width * scale))
+        out_h = max(1, round(ds.height * scale))
+        band_count = min(ds.count, 3)
+        data = ds.read(
+            indexes=list(range(1, band_count + 1)),
+            out_shape=(band_count, out_h, out_w),
+            resampling=Resampling.bilinear,
+        )
+
+    data = np.moveaxis(data, 0, -1)  # (h, w, bands)
+    if data.shape[-1] == 1:
+        data = np.repeat(data, 3, axis=-1)
+
+    # Stretch whatever bit depth the source is (8/16-bit) to displayable uint8
+    # using real per-band min/max from the decimated sample, not a hardcoded
+    # guess — some orthomosaics are 16-bit and would render solid black
+    # without this.
+    data = data.astype(np.float32)
+    lo = np.percentile(data, 1, axis=(0, 1), keepdims=True)
+    hi = np.percentile(data, 99, axis=(0, 1), keepdims=True)
+    span = np.where(hi > lo, hi - lo, 1)
+    data = np.clip((data - lo) / span, 0, 1)
+    data = (data * 255).astype(np.uint8)
+
+    import io
+    buf = io.BytesIO()
+    Image.fromarray(data, mode="RGB").save(buf, format="PNG")
+    return buf.getvalue()
+
+
 def read_raster_info(path: str | Path) -> RasterInfo:
     """Read metadata only — does not load pixel data."""
     import rasterio  # lazy import

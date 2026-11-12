@@ -188,6 +188,7 @@ export default function App() {
             onOpenDatasetManager={() => setView("models")}
             onSelectLibraryImage={setImage}
             currentImageId={image?.image_id}
+            sourceImage={image}
           />
           <AnalysisPanel entries={analysisEntries} colorFor={colorFor} />
         </div>

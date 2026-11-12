@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, UploadFile
+from fastapi import APIRouter, HTTPException, Response, UploadFile
 
 from app.core.config import settings
 from app.core.image_library import build_entry, find_entry_by_image_id, list_library, write_entry
@@ -27,13 +27,15 @@ async def upload_image(file: UploadFile):
 
     raster_meta = None
     raster_meta_note = None
+    bounds_wgs84 = None
     try:
-        from app.engine.raster_io import read_raster_info
+        from app.engine.raster_io import compute_wgs84_bounds, read_raster_info
         info = read_raster_info(dest)
         raster_meta = {
             "width": info.width, "height": info.height, "bands": info.count,
             "dtype": info.dtype, "crs": info.crs, "gsd_x_m": info.gsd_x, "gsd_y_m": info.gsd_y,
         }
+        bounds_wgs84 = compute_wgs84_bounds(dest)
     except ImportError:
         raster_meta_note = "rasterio not installed in this environment — metadata unavailable until deployed with full requirements.txt"
     except Exception as exc:
@@ -48,6 +50,7 @@ async def upload_image(file: UploadFile):
         uploaded_at=datetime.now(timezone.utc).isoformat(),
         raster_meta=raster_meta,
         raster_meta_note=raster_meta_note,
+        bounds_wgs84=bounds_wgs84,
     )
     write_entry(dest, entry)
 
@@ -67,3 +70,21 @@ def get_image(image_id: str):
     if entry is None:
         raise HTTPException(status_code=404, detail=f"No library image with id '{image_id}'.")
     return entry
+
+
+@router.get("/{image_id}/preview.png")
+def get_image_preview(image_id: str):
+    """A real, decimated true-color PNG of the raster for the map overlay —
+    not a placeholder box. See app.engine.raster_io.read_preview_png."""
+    settings.ensure_dirs()
+    entry = find_entry_by_image_id(settings.UPLOAD_DIR, image_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail=f"No library image with id '{image_id}'.")
+    try:
+        from app.engine.raster_io import read_preview_png
+        png_bytes = read_preview_png(entry["path"])
+    except ImportError:
+        raise HTTPException(status_code=503, detail="rasterio/Pillow not installed — preview unavailable in this environment.")
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Could not render preview: {exc}")
+    return Response(content=png_bytes, media_type="image/png")
