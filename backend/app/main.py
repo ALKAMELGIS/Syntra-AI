@@ -11,7 +11,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import benchmark, compute, datasets, environment, images, models, predict, results, usage
+from app.api import benchmark, compute, datasets, environment, images, models, predict, results, training, usage
 from app.core.config import settings
 
 app = FastAPI(title="Syntra AI Detection Engine", version="0.1.0")
@@ -33,6 +33,7 @@ app.include_router(datasets.router)
 app.include_router(benchmark.router)
 app.include_router(environment.router)
 app.include_router(usage.router)
+app.include_router(training.router)
 
 
 @app.get("/api/health")
