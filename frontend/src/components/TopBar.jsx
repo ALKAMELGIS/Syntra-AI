@@ -180,7 +180,7 @@ export default function TopBar({ view, onViewChange, devices, enabledGpus, onTog
           <IconMap /> Full Map
         </button>
         <button className={`tab-button ${view === "models" ? "active" : ""}`} onClick={() => onViewChange("models")}>
-          <IconDashboard /> Dashboard
+          <IconDashboard /> Model Setup
         </button>
       </div>
 

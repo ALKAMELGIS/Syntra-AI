@@ -3,7 +3,7 @@ import TopBar from "./components/TopBar.jsx";
 import Sidebar from "./components/Sidebar.jsx";
 import MapView from "./components/MapView.jsx";
 import AnalysisPanel from "./components/AnalysisPanel.jsx";
-import ModelsDashboard from "./components/ModelsDashboard.jsx";
+import ModelSetupWizard from "./components/ModelSetupWizard.jsx";
 import { api } from "./api/client.js";
 
 const PALETTE = ["#5b8cff", "#3ddc97", "#f5a623", "#ff5d6c", "#c678dd", "#56c7d6", "#e8a87c", "#a8e6cf"];
@@ -167,7 +167,7 @@ export default function App() {
         onExport={handleExport}
       />
       {view === "models" ? (
-        <ModelsDashboard />
+        <ModelSetupWizard onViewChange={setView} />
       ) : (
         <div className={`layout ${analysisOpen ? "layout-with-analysis" : ""}`}>
           <Sidebar
