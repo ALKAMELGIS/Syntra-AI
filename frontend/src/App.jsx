@@ -24,6 +24,7 @@ export default function App() {
   const [aoi, setAoi] = useState(null);
   const [measurement, setMeasurement] = useState(null);
   const [detectionsVisible, setDetectionsVisible] = useState(true);
+  const [analysisOpen, setAnalysisOpen] = useState(false);
   const pollRef = useRef(null);
 
   useEffect(() => {
@@ -88,6 +89,7 @@ export default function App() {
     const validImages = (images || []).filter(Boolean);
     if (validImages.length === 0 || selectedModels.length === 0) return;
 
+    setAnalysisOpen(true);
     for (const img of validImages) {
       for (const modelId of selectedModels) {
         const key = jobKey(img.image_id, modelId);
@@ -167,7 +169,7 @@ export default function App() {
       {view === "models" ? (
         <ModelsDashboard />
       ) : (
-        <div className="layout">
+        <div className={`layout ${analysisOpen ? "layout-with-analysis" : ""}`}>
           <Sidebar
             models={models}
             selectedModels={selectedModels}
@@ -189,8 +191,13 @@ export default function App() {
             onSelectLibraryImage={setImage}
             currentImageId={image?.image_id}
             sourceImage={image}
+            analysisOpen={analysisOpen}
+            onToggleAnalysis={() => setAnalysisOpen((v) => !v)}
+            analysisCount={analysisEntries.length}
           />
-          <AnalysisPanel entries={analysisEntries} colorFor={colorFor} />
+          {analysisOpen && (
+            <AnalysisPanel entries={analysisEntries} colorFor={colorFor} onClose={() => setAnalysisOpen(false)} />
+          )}
         </div>
       )}
     </div>

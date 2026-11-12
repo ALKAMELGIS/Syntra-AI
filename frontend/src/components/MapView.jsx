@@ -3,7 +3,7 @@ import { MapContainer, TileLayer, GeoJSON, ImageOverlay, useMap } from "react-le
 import MapDrawTools from "./MapDrawTools.jsx";
 import ImageLibrary from "./ImageLibrary.jsx";
 import SettingsPanel from "./SettingsPanel.jsx";
-import { IconExpand, IconBasemap, IconLegend, IconGallery, IconGear } from "./Icons.jsx";
+import { IconExpand, IconBasemap, IconLegend, IconGallery, IconGear, IconAnalysis } from "./Icons.jsx";
 
 const BASEMAPS = {
   satellite: {
@@ -26,7 +26,10 @@ const BASEMAPS = {
 // Lives inside <MapContainer> so it can reach the Leaflet map instance via
 // react-leaflet's useMap() hook -- these buttons actually drive the map,
 // they are not decorative.
-function MapToolbar({ layers, sourceImage, basemap, onBasemapChange, legendOpen, onLegendToggle, onOpenLibrary, onOpenSettings }) {
+function MapToolbar({
+  layers, sourceImage, basemap, onBasemapChange, legendOpen, onLegendToggle,
+  onOpenLibrary, onOpenSettings, analysisOpen, onToggleAnalysis, analysisCount,
+}) {
   const map = useMap();
 
   function zoomToFit() {
@@ -71,6 +74,15 @@ function MapToolbar({ layers, sourceImage, basemap, onBasemapChange, legendOpen,
       </button>
       <button className="map-tool-btn" title="Settings" onClick={onOpenSettings}>
         <IconGear />
+      </button>
+      <div className="map-toolbar-sep" />
+      <button
+        className={`map-tool-btn ${analysisOpen ? "active" : ""}`}
+        title="Analysis results"
+        onClick={onToggleAnalysis}
+      >
+        <IconAnalysis />
+        {analysisCount > 0 && <span className="map-tool-badge">{analysisCount}</span>}
       </button>
     </div>
   );
@@ -119,6 +131,7 @@ export default function MapView({
   layers, detectionsVisible = true, onToggleDetections,
   aoi, onAoiChange, measurement, onMeasurementChange, onOpenDatasetManager,
   onSelectLibraryImage, currentImageId, sourceImage,
+  analysisOpen, onToggleAnalysis, analysisCount,
 }) {
   const [basemap, setBasemap] = useState("satellite");
   const [legendOpen, setLegendOpen] = useState(true);
@@ -173,6 +186,9 @@ export default function MapView({
           onLegendToggle={() => setLegendOpen((o) => !o)}
           onOpenLibrary={() => setLibraryOpen(true)}
           onOpenSettings={() => setSettingsOpen(true)}
+          analysisOpen={analysisOpen}
+          onToggleAnalysis={onToggleAnalysis}
+          analysisCount={analysisCount}
         />
         <MapDrawTools
           detectionsVisible={detectionsVisible}

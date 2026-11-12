@@ -1,4 +1,5 @@
 import React from "react";
+import { IconClose } from "./Icons.jsx";
 
 function JobCard({ entry, color }) {
   const { job, modelMeta, imageName } = entry;
@@ -43,22 +44,24 @@ function JobCard({ entry, color }) {
   );
 }
 
-export default function AnalysisPanel({ entries, colorFor }) {
-  if (!entries || entries.length === 0) {
-    return (
-      <div className="panel right">
-        <p className="section-title">Analysis</p>
-        <p className="note">Run a prediction to see results here.</p>
-      </div>
-    );
-  }
-
+export default function AnalysisPanel({ entries, colorFor, onClose }) {
   return (
     <div className="panel right">
-      <p className="section-title">Analysis</p>
-      {entries.map((entry) => (
-        <JobCard key={entry.key} entry={entry} color={colorFor(entry.job.model_id)} />
-      ))}
+      <div className="models-dashboard-header">
+        <p className="section-title" style={{ margin: 0 }}>Analysis</p>
+        {onClose && (
+          <button className="panel-close-btn" title="Close" onClick={onClose}>
+            <IconClose />
+          </button>
+        )}
+      </div>
+      {!entries || entries.length === 0 ? (
+        <p className="note">Run a prediction to see results here.</p>
+      ) : (
+        entries.map((entry) => (
+          <JobCard key={entry.key} entry={entry} color={colorFor(entry.job.model_id)} />
+        ))
+      )}
     </div>
   );
 }

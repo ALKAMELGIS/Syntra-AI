@@ -84,9 +84,10 @@ body {
 
 .layout {
   display: grid;
-  grid-template-columns: 300px 1fr 300px;
+  grid-template-columns: 300px 1fr;
   height: 100%;
 }
+.layout.layout-with-analysis { grid-template-columns: 300px 1fr 300px; }
 
 .panel {
   background: var(--panel);
@@ -159,12 +160,24 @@ body {
   border-radius: var(--radius); padding: 6px;
 }
 .map-tool-btn {
+  position: relative;
   width: 32px; height: 32px; border-radius: 7px; border: none;
   background: transparent; color: var(--text); font-size: 15px;
   cursor: pointer; display: flex; align-items: center; justify-content: center;
 }
 .map-tool-btn:hover { background: #18203a; }
 .map-tool-btn.active { background: var(--accent-soft); color: var(--accent); }
+.map-tool-badge {
+  position: absolute; top: -4px; right: -4px; min-width: 15px; height: 15px;
+  padding: 0 3px; border-radius: 999px; background: var(--accent); color: white;
+  font-size: 9px; font-weight: 700; line-height: 15px; text-align: center;
+}
+
+.panel-close-btn {
+  background: transparent; border: none; color: var(--text-dim); cursor: pointer;
+  display: flex; align-items: center; font-size: 14px; padding: 2px;
+}
+.panel-close-btn:hover { color: var(--text); }
 
 .map-legend {
   position: absolute; bottom: 14px; left: 14px; z-index: 1000;

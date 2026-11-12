@@ -74,6 +74,9 @@ export const IconFolder = (p) => (
 export const IconPlay = (p) => (
   <svg {...base} {...p} fill="currentColor" stroke="none"><path d="M7 4.5v15l12-7.5Z" /></svg>
 );
+export const IconAnalysis = (p) => (
+  <svg {...base} {...p}><path d="M4 20V10M11 20V4M18 20v-7" /></svg>
+);
 export const IconClose = (p) => (
   <svg {...base} {...p}><path d="M5 5l14 14M19 5 5 19" /></svg>
 );
