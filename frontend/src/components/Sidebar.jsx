@@ -20,6 +20,7 @@ export default function Sidebar({ models, selectedModels, onToggleModel, image, 
   const [dragOver, setDragOver] = useState(false);
   const [uploadError, setUploadError] = useState(null);
   const [batchQueue, setBatchQueue] = useState([]); // [{filename, status: "uploading"|"done"|"error", image?, error?}]
+  const [pendingFiles, setPendingFiles] = useState([]); // picked but not yet uploaded
 
   async function doUpload(file) {
     if (!file) return;
@@ -71,6 +72,26 @@ export default function Sidebar({ models, selectedModels, onToggleModel, image, 
 
   function removeBatchItem(filename) {
     setBatchQueue((q) => q.filter((item) => item.filename !== filename));
+  }
+
+  function handlePickFolder(fileList) {
+    const files = Array.from(fileList || []).filter((f) => /\.tiff?$/i.test(f.name));
+    setPendingFiles(files); // counting only — nothing uploads until "Upload" is clicked
+  }
+
+  function confirmUploadPending() {
+    handleBatchFiles(pendingFiles);
+    setPendingFiles([]);
+  }
+
+  function clearPending() {
+    setPendingFiles([]);
+  }
+
+  const pendingBytes = pendingFiles.reduce((sum, f) => sum + f.size, 0);
+  function formatPendingSize(bytes) {
+    const mb = bytes / (1024 * 1024);
+    return mb >= 1024 ? `${(mb / 1024).toFixed(2)} GB` : `${mb.toFixed(1)} MB`;
   }
 
   const batchImages = batchQueue.filter((q) => q.status === "done").map((q) => q.image);
@@ -129,7 +150,7 @@ export default function Sidebar({ models, selectedModels, onToggleModel, image, 
       ) : (
         <>
           <button className="import-button" onClick={() => batchInput.current?.click()}>
-            ⇪ Import Folder / Files
+            ⇪ Import
           </button>
           <input
             ref={batchInput}
@@ -139,13 +160,34 @@ export default function Sidebar({ models, selectedModels, onToggleModel, image, 
             webkitdirectory=""
             hidden
             onChange={(e) => {
-              handleBatchFiles(e.target.files);
+              handlePickFolder(e.target.files);
               e.target.value = "";
             }}
           />
+
+          {pendingFiles.length === 0 ? (
+            <div className="folder-pick-zone" onClick={() => batchInput.current?.click()}>
+              <span className="folder-pick-icon">📁</span>
+              <div className="folder-pick-title">Pick a folder</div>
+              <div className="folder-pick-hint">Counts .tif/.tiff files (incl. subdirs). Nothing uploads yet.</div>
+            </div>
+          ) : (
+            <div className="folder-pick-confirm-row">
+              <span className="note">
+                {pendingFiles.length} .tif/.tiff file{pendingFiles.length === 1 ? "" : "s"} found · {formatPendingSize(pendingBytes)}
+              </span>
+              <div style={{ display: "flex", gap: 6 }}>
+                <button className="batch-queue-remove" onClick={clearPending} title="Clear selection">✕</button>
+                <button className="import-button" style={{ padding: "4px 10px" }} onClick={confirmUploadPending}>
+                  Upload {pendingFiles.length}
+                </button>
+              </div>
+            </div>
+          )}
+
           <div className="note" style={{ marginBottom: 8 }}>
             {batchQueue.length === 0
-              ? "No files queued yet — click Import to select multiple GeoTIFFs."
+              ? "No files uploaded yet."
               : `${batchImages.length}/${batchQueue.length} uploaded`}
           </div>
           <div className="batch-queue-list">

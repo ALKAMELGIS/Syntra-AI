@@ -186,6 +186,8 @@ export default function App() {
             measurement={measurement}
             onMeasurementChange={setMeasurement}
             onOpenDatasetManager={() => setView("models")}
+            onSelectLibraryImage={setImage}
+            currentImageId={image?.image_id}
           />
           <AnalysisPanel entries={analysisEntries} colorFor={colorFor} />
         </div>

@@ -1,6 +1,8 @@
 import React, { useState } from "react";
 import { MapContainer, TileLayer, GeoJSON, useMap } from "react-leaflet";
 import MapDrawTools from "./MapDrawTools.jsx";
+import ImageLibrary from "./ImageLibrary.jsx";
+import SettingsPanel from "./SettingsPanel.jsx";
 
 const BASEMAPS = {
   satellite: {
@@ -23,7 +25,7 @@ const BASEMAPS = {
 // Lives inside <MapContainer> so it can reach the Leaflet map instance via
 // react-leaflet's useMap() hook -- these buttons actually drive the map,
 // they are not decorative.
-function MapToolbar({ layers, basemap, onBasemapChange, legendOpen, onLegendToggle }) {
+function MapToolbar({ layers, basemap, onBasemapChange, legendOpen, onLegendToggle, onOpenLibrary, onOpenSettings }) {
   const map = useMap();
 
   function zoomToFit() {
@@ -57,6 +59,13 @@ function MapToolbar({ layers, basemap, onBasemapChange, legendOpen, onLegendTogg
       >
         ☰
       </button>
+      <div className="map-toolbar-sep" />
+      <button className="map-tool-btn" title="Image library" onClick={onOpenLibrary}>
+        🖼
+      </button>
+      <button className="map-tool-btn" title="Settings" onClick={onOpenSettings}>
+        ⚙
+      </button>
     </div>
   );
 }
@@ -89,13 +98,22 @@ function L_boundsFromGeojson(geojson) {
 export default function MapView({
   layers, detectionsVisible = true, onToggleDetections,
   aoi, onAoiChange, measurement, onMeasurementChange, onOpenDatasetManager,
+  onSelectLibraryImage, currentImageId,
 }) {
   const [basemap, setBasemap] = useState("satellite");
   const [legendOpen, setLegendOpen] = useState(true);
+  const [libraryOpen, setLibraryOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [iconStyle, setIconStyle] = useState(() => localStorage.getItem("syntra_icon_style") || "mono");
   const bm = BASEMAPS[basemap];
 
+  function changeIconStyle(style) {
+    setIconStyle(style);
+    localStorage.setItem("syntra_icon_style", style);
+  }
+
   return (
-    <div className="map-area">
+    <div className={`map-area icon-style-${iconStyle}`}>
       <MapContainer center={[24.7, 46.7]} zoom={5} scrollWheelZoom>
         <TileLayer attribution={bm.attribution} url={bm.url} />
         {detectionsVisible &&
@@ -121,6 +139,8 @@ export default function MapView({
           onBasemapChange={setBasemap}
           legendOpen={legendOpen}
           onLegendToggle={() => setLegendOpen((o) => !o)}
+          onOpenLibrary={() => setLibraryOpen(true)}
+          onOpenSettings={() => setSettingsOpen(true)}
         />
         <MapDrawTools
           detectionsVisible={detectionsVisible}
@@ -132,6 +152,21 @@ export default function MapView({
           onOpenDatasetManager={onOpenDatasetManager}
         />
       </MapContainer>
+      <ImageLibrary
+        open={libraryOpen}
+        onClose={() => setLibraryOpen(false)}
+        onSelectImage={(img) => {
+          onSelectLibraryImage?.(img);
+          setLibraryOpen(false);
+        }}
+        currentImageId={currentImageId}
+      />
+      <SettingsPanel
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        iconStyle={iconStyle}
+        onChangeIconStyle={changeIconStyle}
+      />
       {legendOpen && (
         <div className="map-legend">
           <div className="map-legend-title">Legend</div>

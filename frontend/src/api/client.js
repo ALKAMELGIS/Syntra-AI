@@ -17,6 +17,7 @@ export const api = {
   getModel: (modelId) => fetch(`${BASE}/models/${modelId}`).then(handle),
   gsdCheck: (modelId, gsd) => fetch(`${BASE}/models/${modelId}/gsd-check?gsd=${gsd}`).then(handle),
   listImages: () => fetch(`${BASE}/images`).then(handle),
+  getImage: (imageId) => fetch(`${BASE}/images/${imageId}`).then(handle),
   uploadImage: (file) => {
     const form = new FormData();
     form.append("file", file);

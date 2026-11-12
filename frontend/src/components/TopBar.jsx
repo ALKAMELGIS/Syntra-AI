@@ -16,9 +16,16 @@ function FileMenu({ hasImage, hasJob, onExport }) {
   const ref = useRef(null);
   useOutsideClose(ref, () => setOpen(false));
 
-  function newProject() {
+  function createNewProject() {
     if (confirm("Start a new project? This clears the current image and results from view.")) {
       localStorage.removeItem("syntra_project");
+      window.location.reload();
+    }
+    setOpen(false);
+  }
+
+  function closeProject() {
+    if (confirm("Close the current project? Unsaved work in this view will be lost.")) {
       window.location.reload();
     }
     setOpen(false);
@@ -59,12 +66,14 @@ function FileMenu({ hasImage, hasJob, onExport }) {
       </button>
       {open && (
         <div className="file-menu-dropdown">
-          <button className="file-menu-item" onClick={newProject}>New Project</button>
+          <button className="file-menu-item" onClick={createNewProject}>📄 Create New Project</button>
           <label className="file-menu-item">
-            Open Project…
+            📂 Import Project
             <input type="file" accept="application/json" hidden onChange={openProjectFile} />
           </label>
-          <button className="file-menu-item" onClick={saveProject}>Save Project As…</button>
+          <div className="file-menu-divider" />
+          <button className="file-menu-item" disabled={!hasImage} onClick={saveProject}>💾 Save project</button>
+          <button className="file-menu-item" disabled={!hasImage} onClick={closeProject}>✕ Close project</button>
           <div className="file-menu-divider" />
           <button className="file-menu-item" disabled={!hasJob} onClick={() => onExport("geojson")}>
             Export Results — GeoJSON
