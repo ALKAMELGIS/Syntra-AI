@@ -8,10 +8,12 @@ ported from the GeoSyntra AI QGIS plugin's own exporter. Runs as a
 background job tracked in-memory, same pattern as /api/predict.
 
 NOTE: `points_px` are expected in the raster's own pixel coordinate space
-(column, row). Converting the polygons drawn on the Leaflet map (lon/lat)
-into that space is the next wiring step once this endpoint is in place —
-until then, callers that already have pixel-space annotations (e.g. a
-script, or a test) can use this directly.
+(column, row). Passing `image_id` instead of `image_path`/`class_names`/
+`annotations` pulls them from app.annotations.store — the per-image
+annotations saved by the map's Annotate tool — converted to pixel space
+already; this is the normal way to call this endpoint from the wizard now.
+Pixel-space annotations can still be given directly (e.g. a script, or a
+test) when there's no saved image annotation set to draw from.
 """
 from __future__ import annotations
 
@@ -36,9 +38,10 @@ class AnnotationIn(BaseModel):
 
 
 class ExportDatasetRequest(BaseModel):
-    image_path: str
-    class_names: list[str]
-    annotations: list[AnnotationIn]
+    image_id: str | None = None      # shortcut: pulls image_path/class_names/annotations from the Annotate store
+    image_path: str | None = None
+    class_names: list[str] | None = None
+    annotations: list[AnnotationIn] | None = None
     out_dir: str | None = None       # defaults to DATA_DIR/datasets/<job_id>
     tile: int = 640
     overlap: int = 64
@@ -91,8 +94,30 @@ def _run_job(job_id: str, req: ExportDatasetRequest):
             _JOBS[job_id].update(status="error", error=str(exc))
 
 
+def _resolve_from_image_id(req: ExportDatasetRequest) -> ExportDatasetRequest:
+    from app.annotations import store
+    from app.core.image_library import find_entry_by_image_id
+
+    entry = find_entry_by_image_id(settings.UPLOAD_DIR, req.image_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail=f"No library image with id '{req.image_id}'.")
+    anns = store.load_annotations(entry["path"])
+    if not anns:
+        raise HTTPException(status_code=409, detail="No annotations saved for this image yet — use the Annotate step first.")
+    class_names, annotations = store.to_export_payload(anns)
+    return req.model_copy(update={
+        "image_path": entry["path"],
+        "class_names": class_names,
+        "annotations": [AnnotationIn(**a) for a in annotations],
+    })
+
+
 @router.post("/export-dataset")
 def export_dataset(req: ExportDatasetRequest, background_tasks: BackgroundTasks):
+    if req.image_id:
+        req = _resolve_from_image_id(req)
+    if not req.image_path:
+        raise HTTPException(status_code=400, detail="Provide either image_id or image_path.")
     if not Path(req.image_path).exists():
         raise HTTPException(status_code=404, detail=f"Image not found: {req.image_path}")
     if not req.annotations:
