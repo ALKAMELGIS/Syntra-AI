@@ -269,6 +269,8 @@ function TrainStep() {
   const [job, setJob] = useState(null);
   const [error, setError] = useState(null);
   const pollRef = useRef(null);
+  const [modelName, setModelName] = useState("");
+  const [registerState, setRegisterState] = useState(null); // null | "saving" | {model_id,...} | {error}
 
   function set(field, value) {
     setForm((f) => ({ ...f, [field]: value }));
@@ -279,6 +281,7 @@ function TrainStep() {
   async function submit() {
     setError(null);
     setJob(null);
+    setRegisterState(null);
     try {
       const payload = {
         data_yaml: form.data_yaml,
@@ -307,6 +310,17 @@ function TrainStep() {
 
   async function cancel() {
     if (jobId) await api.trainingCancel(jobId).catch(() => {});
+  }
+
+  async function registerModel() {
+    if (!jobId) return;
+    setRegisterState("saving");
+    try {
+      const entry = await api.registerTrainedModel(jobId, { name: modelName || "Trained model" });
+      setRegisterState(entry);
+    } catch (err) {
+      setRegisterState({ error: err.detail?.message || err.message });
+    }
   }
 
   const p = job?.progress;
@@ -374,9 +388,38 @@ function TrainStep() {
           ) : job.status === "canceled" ? (
             <span style={{ color: "var(--warn)" }}>Canceled at epoch {p?.epoch ?? "?"}.</span>
           ) : job.status === "done" || job.status === "completed" ? (
-            <span style={{ color: "var(--ready)" }}>
-              ✓ Done — best weights at <code>{job.result?.best}</code>
-            </span>
+            <>
+              <span style={{ color: "var(--ready)" }}>
+                ✓ Done — best weights at <code>{job.result?.best}</code>
+              </span>
+              {job.result?.best && (
+                <div style={{ marginTop: 10, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                  <input
+                    value={modelName}
+                    onChange={(e) => setModelName(e.target.value)}
+                    placeholder="Name this model (e.g. Palm Trees — Site A)"
+                    style={{ minWidth: 240 }}
+                    disabled={registerState?.model_id != null}
+                  />
+                  <button
+                    className="chip-button"
+                    onClick={registerModel}
+                    disabled={registerState === "saving" || !modelName.trim() || registerState?.model_id != null}
+                  >
+                    {registerState?.model_id ? "Added to Detect ✓" : "Add to Detect models"}
+                  </button>
+                </div>
+              )}
+              {registerState?.model_id && (
+                <p className="note" style={{ color: "var(--ready)", marginTop: 6 }}>
+                  ✓ Registered as <code>{registerState.model_id}</code> — classes: {Object.values(registerState.class_names || {}).join(", ")}.
+                  It's now selectable on the Detect step/Full Map, marked "validation" (real weights, not yet benchmarked) until you check its results.
+                </p>
+              )}
+              {registerState?.error && (
+                <p className="note" style={{ color: "var(--error)", marginTop: 6 }}>⚠ {registerState.error}</p>
+              )}
+            </>
           ) : p ? (
             <>
               <span>Epoch {p.epoch}/{p.epochs} — loss {p.box_loss?.toFixed?.(3)} · precision {p.precision?.toFixed?.(2)} ·
@@ -415,9 +458,10 @@ function DetectStep({ onViewChange }) {
     <div className="panel wizard-coming-soon">
       <p className="section-title">Detect</p>
       <p className="note" style={{ maxWidth: 640 }}>
-        Detection runs on the Full Map: pick an uploaded image and a ready model, then Run Prediction
-        from the sidebar. This step will gain a direct link to a model you just trained once the
-        Train step below is wired up.
+        Detection runs on the Full Map: pick an uploaded image and a model, then Run Prediction from
+        the sidebar. A model you trained in the Train step and added with "Add to Detect models"
+        shows up in that same model list, marked "validation" (real weights, no benchmark run yet)
+        until you've checked its results — it is not silently promoted to "ready" on its own.
       </p>
       <button className="run-button" style={{ width: "auto", marginTop: 12, padding: "8px 18px" }}
         onClick={() => onViewChange?.("detect")}>

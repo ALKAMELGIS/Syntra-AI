@@ -12,6 +12,7 @@ understands the risk (see ModelRegistry.get_runnable).
 from __future__ import annotations
 
 from app.models.base import GsdRange, ModelMetadata, ModelStatus
+from app.models.custom_registry import list_custom_models
 
 # ---------------------------------------------------------------------------
 # Catalog entries. `runtime` points at the concrete DetectionModel subclass
@@ -357,11 +358,48 @@ CATALOG: dict[str, ModelMetadata] = {
 }
 
 
+def _custom_catalog() -> dict[str, ModelMetadata]:
+    """The dynamic half of the catalog: models actually trained via the
+    wizard's Train step (app.models.custom_registry), turned into the same
+    ModelMetadata shape as every static CATALOG entry above. Re-read on
+    every call (like app.core.image_library) rather than cached, so a model
+    trained or deleted a moment ago shows up immediately with no restart."""
+    from app.core.config import settings
+
+    out: dict[str, ModelMetadata] = {}
+    for e in list_custom_models(settings.DATA_DIR):
+        out[e.model_id] = ModelMetadata(
+            model_id=e.model_id,
+            name=e.name,
+            model_type="segmentation" if e.task == "segment" else "detection",
+            version=f"trained-{e.created_at or 'unknown'}",
+            # GSD compatibility for a user-trained model hasn't been measured —
+            # a wide, honestly-unvalidated range rather than a guessed-tight one.
+            supported_gsd=GsdRange(0.02, 5.0),
+            supported_image_sources=["satellite", "drone"],
+            supported_formats=["GeoTIFF", "COG"],
+            status=ModelStatus.VALIDATION,
+            hardware_compatibility=["cpu", "cuda"],
+            default_confidence_threshold=0.25,
+            class_names=e.class_names,
+            notes=(
+                e.notes
+                or "Trained via the Model Setup wizard's Train step on your own annotated "
+                "imagery — real fine-tuned weights, but no benchmark report has been run "
+                "yet. Treat detections as indicative until validated against a held-out set."
+            ),
+        )
+    return out
+
+
 def list_catalog() -> list[ModelMetadata]:
-    return list(CATALOG.values())
+    return list(CATALOG.values()) + list(_custom_catalog().values())
 
 
 def get_metadata(model_id: str) -> ModelMetadata:
-    if model_id not in CATALOG:
-        raise KeyError(f"Unknown model_id '{model_id}'. Known: {list(CATALOG)}")
-    return CATALOG[model_id]
+    if model_id in CATALOG:
+        return CATALOG[model_id]
+    custom = _custom_catalog()
+    if model_id in custom:
+        return custom[model_id]
+    raise KeyError(f"Unknown model_id '{model_id}'. Known: {list(CATALOG) + list(custom)}")

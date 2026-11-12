@@ -25,8 +25,10 @@ from __future__ import annotations
 import csv
 import json
 import os
+import re
 import shutil
 import time
+from pathlib import Path
 
 import numpy as np
 
@@ -59,6 +61,27 @@ def write_data_yaml(path: str, root: str, class_names: list[str], task: str) -> 
     lines += ["  %d: %s" % (i, json.dumps(n, ensure_ascii=False)) for i, n in enumerate(class_names)]
     with open(path, "w", encoding="utf-8") as fh:
         fh.write("\n".join(lines) + "\n")
+
+
+def read_data_yaml_names(path: str) -> list[str]:
+    """Reads back the `names:` block this module itself wrote (see
+    write_data_yaml above) — a tiny hand-rolled parser instead of a PyYAML
+    dependency, same reasoning as app.api.training._count_train_images.
+    Used when registering a just-trained model (app.models.custom_registry)
+    so its real class names come from the dataset, not a guess."""
+    names: dict[int, str] = {}
+    text = Path(path).read_text(encoding="utf-8")
+    in_names = False
+    for line in text.splitlines():
+        if line.strip() == "names:":
+            in_names = True
+            continue
+        if in_names:
+            m = re.match(r"^\s+(\d+):\s*(.+?)\s*$", line)
+            if not m:
+                break
+            names[int(m.group(1))] = json.loads(m.group(2))
+    return [names[i] for i in sorted(names)]
 
 
 class DatasetBuilder:

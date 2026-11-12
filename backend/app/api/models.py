@@ -4,6 +4,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 
 from app.core.config import settings
+from app.models.custom_registry import delete_custom_model, get_custom_model
 from app.models.registry import get_metadata, list_catalog
 from app.models.stats import get_stats
 
@@ -39,6 +40,20 @@ def get_model(model_id: str):
         return _serialize(get_metadata(model_id))
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
+
+
+@router.delete("/{model_id}")
+def delete_model(model_id: str):
+    """Only a model registered from a training run (app.models.
+    custom_registry) can be removed here — the static catalog above is a
+    fixed product category list, not user data."""
+    if get_custom_model(settings.DATA_DIR, model_id) is None:
+        raise HTTPException(
+            status_code=404 if model_id not in {m.model_id for m in list_catalog()} else 409,
+            detail=f"'{model_id}' is not a trained model you registered — nothing to delete here.",
+        )
+    delete_custom_model(settings.DATA_DIR, model_id)
+    return {"deleted": model_id}
 
 
 @router.get("/{model_id}/gsd-check")

@@ -16,6 +16,7 @@ export const api = {
   listModels: () => fetch(`${BASE}/models`).then(handle),
   getModel: (modelId) => fetch(`${BASE}/models/${modelId}`).then(handle),
   gsdCheck: (modelId, gsd) => fetch(`${BASE}/models/${modelId}/gsd-check?gsd=${gsd}`).then(handle),
+  deleteModel: (modelId) => fetch(`${BASE}/models/${modelId}`, { method: "DELETE" }).then(handle),
   listImages: () => fetch(`${BASE}/images`).then(handle),
   getImage: (imageId) => fetch(`${BASE}/images/${imageId}`).then(handle),
   // Uses XMLHttpRequest (not fetch) because only XHR exposes real upload
@@ -94,6 +95,15 @@ export const api = {
   trainingStatus: (jobId) => fetch(`${BASE}/training/train/${jobId}`).then(handle),
   trainingCancel: (jobId) =>
     fetch(`${BASE}/training/train/${jobId}/cancel`, { method: "POST" }).then(handle),
+  // Closes the Train -> Detect loop: turns a finished run's best.pt into a
+  // real, selectable model (class names read back from that run's own
+  // data.yaml server-side) -- see app.models.custom_registry.
+  registerTrainedModel: (jobId, payload) =>
+    fetch(`${BASE}/training/train/${jobId}/register-model`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(handle),
   // --- Annotate step: class-labeled boxes/polygons saved per image ---
   listAnnotations: (imageId) => fetch(`${BASE}/images/${imageId}/annotations`).then(handle),
   addAnnotation: (imageId, payload) =>

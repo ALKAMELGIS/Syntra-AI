@@ -11,6 +11,14 @@ from app.models.registry import get_metadata
 
 
 def build_model(model_id: str) -> DetectionModel:
+    from app.core.config import settings
+    from app.models.custom_registry import get_custom_model
+
+    custom_entry = get_custom_model(settings.DATA_DIR, model_id)
+    if custom_entry is not None:
+        from app.models.custom_detector import CustomYoloDetector
+        return CustomYoloDetector(get_metadata(model_id), weights_path=custom_entry.weights_path)
+
     metadata = get_metadata(model_id)
 
     if model_id in ("car_detection", "ship_detection", "aircraft_detection"):

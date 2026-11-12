@@ -260,8 +260,24 @@ function PrepareDatasetForm({ models, defaultModelId, onDone }) {
   );
 }
 
-function ModelCard({ model, expanded, onToggle, datasetReloadToken }) {
+function ModelCard({ model, expanded, onToggle, datasetReloadToken, onDeleted }) {
   const m = model;
+  const isCustom = m.model_id.startsWith("custom_");
+  const [deleting, setDeleting] = useState(false);
+
+  async function handleDelete(e) {
+    e.stopPropagation();
+    if (!window.confirm(`Remove "${m.name}" from the model list? The weights file on disk are not deleted.`)) return;
+    setDeleting(true);
+    try {
+      await api.deleteModel(m.model_id);
+      onDeleted?.(m.model_id);
+    } catch (err) {
+      window.alert(err.detail?.message || err.message);
+      setDeleting(false);
+    }
+  }
+
   return (
     <div className="model-card">
       <div className="model-card-main" onClick={onToggle}>
@@ -290,6 +306,12 @@ function ModelCard({ model, expanded, onToggle, datasetReloadToken }) {
             <span className="detail-label">Dataset versions</span>
             <DatasetVersions modelId={m.model_id} reloadToken={datasetReloadToken} />
           </div>
+          {isCustom && (
+            <button className="chip-button" style={{ marginTop: 14, color: "var(--error)" }}
+              onClick={handleDelete} disabled={deleting}>
+              {deleting ? "Removing…" : "Remove this trained model"}
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -343,6 +365,7 @@ export default function ModelsDashboard() {
             expanded={expandedId === m.model_id}
             onToggle={() => setExpandedId(expandedId === m.model_id ? null : m.model_id)}
             datasetReloadToken={datasetReloadToken}
+            onDeleted={() => { setExpandedId(null); refresh(); }}
           />
         ))}
       </div>

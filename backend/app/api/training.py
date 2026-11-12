@@ -227,7 +227,7 @@ def start_training(req: TrainRequest, background_tasks: BackgroundTasks):
         raise HTTPException(status_code=404, detail=f"data.yaml not found: {req.data_yaml}")
     job_id = str(uuid.uuid4())
     with _TRAIN_LOCK:
-        _TRAIN_JOBS[job_id] = {"status": "queued"}
+        _TRAIN_JOBS[job_id] = {"status": "queued", "data_yaml": req.data_yaml}
     background_tasks.add_task(_run_train_job, job_id, req)
     return {"job_id": job_id, "status": "queued"}
 
@@ -254,3 +254,52 @@ def train_cancel(job_id: str):
         raise HTTPException(status_code=409, detail="Training hasn't started yet — nothing to cancel.")
     request_cancel(flag_path)
     return {"job_id": job_id, "cancel_requested": True}
+
+
+class RegisterModelRequest(BaseModel):
+    name: str
+    notes: str | None = None
+
+
+@router.post("/train/{job_id}/register-model")
+def register_trained_model(job_id: str, req: RegisterModelRequest):
+    """Closes the Train -> Detect loop: turns this run's best.pt into a
+    real, selectable catalog entry (app.models.custom_registry), with its
+    class names read straight back from the run's own data.yaml — not
+    retyped by hand, so they can't drift from what was actually trained."""
+    with _TRAIN_LOCK:
+        job = _TRAIN_JOBS.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Unknown job_id")
+    if job.get("status") not in ("done", "completed"):
+        raise HTTPException(status_code=409, detail=f"Training isn't finished yet (status: {job.get('status')}).")
+
+    best = (job.get("result") or {}).get("best")
+    if not best:
+        raise HTTPException(status_code=409, detail="No best.pt weights were produced by this run.")
+
+    data_yaml = job.get("data_yaml")
+    class_names: dict[int, str] = {}
+    if data_yaml and Path(data_yaml).exists():
+        from app.training.dataset_builder import read_data_yaml_names
+        try:
+            class_names = dict(enumerate(read_data_yaml_names(data_yaml)))
+        except Exception:
+            class_names = {}
+    if not class_names:
+        raise HTTPException(status_code=409, detail="Could not read class names from this run's data.yaml.")
+
+    from app.models.custom_registry import register_custom_model
+    try:
+        entry = register_custom_model(
+            settings.DATA_DIR,
+            name=req.name,
+            weights_path=best,
+            class_names=class_names,
+            source_job_id=job_id,
+            data_yaml=data_yaml,
+            notes=req.notes or "",
+        )
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    return entry.to_dict()
