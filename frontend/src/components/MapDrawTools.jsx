@@ -37,10 +37,19 @@ function polylineToPolygon(latlngs) {
   return { type: "Feature", properties: { shape: "freehand" }, geometry: { type: "Polygon", coordinates: [coords] } };
 }
 
-export default function MapDrawTools({ detectionsVisible, onToggleDetections, onAoiChange, onMeasurementChange, onOpenDatasetManager }) {
+export default function MapDrawTools({ detectionsVisible, onToggleDetections, onAoiChange, onMeasurementChange, onOpenDatasetManager, suspended = false }) {
   const map = useMap();
   const [mode, setMode] = useState(null); // null | "rect" | "circle" | "ruler" | "pencil"
   const drawState = useRef({ overlay: null, start: null, points: [] });
+
+  // When the Annotate tool is active it binds its own mousedown/mouseup
+  // handlers to the same map to draw class-labeled shapes; running both
+  // drawing modes at once would fire both on the same drag. `suspended`
+  // just drops our own mode back to idle, it changes none of the AOI/
+  // measurement logic itself.
+  useEffect(() => {
+    if (suspended) setMode(null);
+  }, [suspended]);
 
   function clearOverlay() {
     if (drawState.current.overlay) {
@@ -57,7 +66,7 @@ export default function MapDrawTools({ detectionsVisible, onToggleDetections, on
   }
 
   useEffect(() => {
-    if (!mode) return;
+    if (!mode || suspended) return;
     map.dragging.disable();
     map.getContainer().style.cursor = "crosshair";
 
@@ -135,7 +144,7 @@ export default function MapDrawTools({ detectionsVisible, onToggleDetections, on
       map.dragging.enable();
       map.getContainer().style.cursor = "";
     };
-  }, [mode, map, onAoiChange, onMeasurementChange]);
+  }, [mode, map, onAoiChange, onMeasurementChange, suspended]);
 
   function toggle(next) {
     drawState.current.points = [];
@@ -153,10 +162,10 @@ export default function MapDrawTools({ detectionsVisible, onToggleDetections, on
         {detectionsVisible ? <IconEye /> : <IconEyeOff />}
       </button>
       <div className="map-toolbar-sep" />
-      <button className={`map-tool-btn ${mode === "rect" ? "active" : ""}`} title="Draw rectangle AOI" onClick={() => toggle("rect")}><IconRectangle /></button>
-      <button className={`map-tool-btn ${mode === "circle" ? "active" : ""}`} title="Draw circle AOI" onClick={() => toggle("circle")}><IconCircle /></button>
-      <button className={`map-tool-btn ${mode === "pencil" ? "active" : ""}`} title="Freehand AOI (click to add points, double-click to finish)" onClick={() => toggle("pencil")}><IconPencil /></button>
-      <button className={`map-tool-btn ${mode === "ruler" ? "active" : ""}`} title="Measure distance (click two points)" onClick={() => toggle("ruler")}><IconRuler /></button>
+      <button disabled={suspended} className={`map-tool-btn ${mode === "rect" ? "active" : ""}`} title="Draw rectangle AOI" onClick={() => toggle("rect")}><IconRectangle /></button>
+      <button disabled={suspended} className={`map-tool-btn ${mode === "circle" ? "active" : ""}`} title="Draw circle AOI" onClick={() => toggle("circle")}><IconCircle /></button>
+      <button disabled={suspended} className={`map-tool-btn ${mode === "pencil" ? "active" : ""}`} title="Freehand AOI (click to add points, double-click to finish)" onClick={() => toggle("pencil")}><IconPencil /></button>
+      <button disabled={suspended} className={`map-tool-btn ${mode === "ruler" ? "active" : ""}`} title="Measure distance (click two points)" onClick={() => toggle("ruler")}><IconRuler /></button>
       <button className="map-tool-btn" title="Clear AOI / measurement" onClick={clearAll}><IconTrash /></button>
     </div>
   );

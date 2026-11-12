@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from "react";
 import { MapContainer, TileLayer, GeoJSON, ImageOverlay, useMap } from "react-leaflet";
 import MapDrawTools from "./MapDrawTools.jsx";
+import AnnotationTool from "./AnnotationTool.jsx";
 import ImageLibrary from "./ImageLibrary.jsx";
 import SettingsPanel from "./SettingsPanel.jsx";
-import { IconExpand, IconBasemap, IconLegend, IconGallery, IconGear, IconAnalysis } from "./Icons.jsx";
+import { IconExpand, IconBasemap, IconLegend, IconGallery, IconGear, IconAnalysis, IconPencil } from "./Icons.jsx";
 
 const BASEMAPS = {
   satellite: {
@@ -29,6 +30,7 @@ const BASEMAPS = {
 function MapToolbar({
   layers, sourceImage, basemap, onBasemapChange, legendOpen, onLegendToggle,
   onOpenLibrary, onOpenSettings, analysisOpen, onToggleAnalysis, analysisCount,
+  annotateOpen, onToggleAnnotate,
 }) {
   const map = useMap();
 
@@ -84,6 +86,14 @@ function MapToolbar({
         <IconAnalysis />
         {analysisCount > 0 && <span className="map-tool-badge">{analysisCount}</span>}
       </button>
+      <button
+        className={`map-tool-btn ${annotateOpen ? "active" : ""}`}
+        title="Annotate: draw class-labeled shapes for training"
+        onClick={onToggleAnnotate}
+        disabled={!sourceImage?.image_id}
+      >
+        <IconPencil />
+      </button>
     </div>
   );
 }
@@ -137,6 +147,7 @@ export default function MapView({
   const [legendOpen, setLegendOpen] = useState(true);
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [annotateOpen, setAnnotateOpen] = useState(false);
   const [iconStyle, setIconStyle] = useState(() => localStorage.getItem("syntra_icon_style") || "mono");
   const bm = BASEMAPS[basemap];
 
@@ -189,6 +200,8 @@ export default function MapView({
           analysisOpen={analysisOpen}
           onToggleAnalysis={onToggleAnalysis}
           analysisCount={analysisCount}
+          annotateOpen={annotateOpen}
+          onToggleAnnotate={() => setAnnotateOpen((o) => !o)}
         />
         <MapDrawTools
           detectionsVisible={detectionsVisible}
@@ -198,7 +211,9 @@ export default function MapView({
           measurement={measurement}
           onMeasurementChange={onMeasurementChange}
           onOpenDatasetManager={onOpenDatasetManager}
+          suspended={annotateOpen}
         />
+        <AnnotationTool active={annotateOpen} sourceImage={sourceImage} />
       </MapContainer>
       <ImageLibrary
         open={libraryOpen}

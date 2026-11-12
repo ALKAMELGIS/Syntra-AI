@@ -228,6 +228,25 @@ body {
   font-size: 11px; color: var(--text-dim); line-height: 1.5; margin-top: 6px;
 }
 
+/* Annotate tool (draw class-labeled training shapes) — a horizontal bar
+   along the top-left so it never collides with the vertical toolbar
+   (top-right) or the AOI/measurement toolbar (bottom-right). */
+.map-toolbar-annotate {
+  flex-direction: row; align-items: center; flex-wrap: wrap;
+  top: 14px; left: 14px; right: auto; max-width: min(70vw, 480px);
+}
+.annotate-class-input {
+  width: 110px; background: var(--bg); border: 1px solid var(--panel-border);
+  border-radius: 6px; color: var(--text); font-size: 12px; padding: 5px 8px;
+}
+.annotate-class-input:focus { outline: 1px solid var(--accent); }
+.annotate-count {
+  font-size: 11px; color: var(--text-dim); min-width: 16px; text-align: center; padding: 0 2px;
+}
+.annotate-error {
+  display: flex; align-items: center; gap: 4px; color: #ff7a7a; font-size: 11px;
+}
+
 .result-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--panel-border); font-size: 12px; }
 .result-count { color: var(--accent); font-weight: 700; }
 

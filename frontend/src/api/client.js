@@ -94,4 +94,16 @@ export const api = {
   trainingStatus: (jobId) => fetch(`${BASE}/training/train/${jobId}`).then(handle),
   trainingCancel: (jobId) =>
     fetch(`${BASE}/training/train/${jobId}/cancel`, { method: "POST" }).then(handle),
+  // --- Annotate step: class-labeled boxes/polygons saved per image ---
+  listAnnotations: (imageId) => fetch(`${BASE}/images/${imageId}/annotations`).then(handle),
+  addAnnotation: (imageId, payload) =>
+    fetch(`${BASE}/images/${imageId}/annotations`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(handle),
+  deleteAnnotation: (imageId, annotationId) =>
+    fetch(`${BASE}/images/${imageId}/annotations/${annotationId}`, { method: "DELETE" }).then(handle),
+  clearAnnotations: (imageId) =>
+    fetch(`${BASE}/images/${imageId}/annotations`, { method: "DELETE" }).then(handle),
 };
