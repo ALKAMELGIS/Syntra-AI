@@ -66,6 +66,11 @@ function DatasetStep() {
     neg_ratio: 0.1,
     task: "detect",
   });
+  const [advanced, setAdvanced] = useState(false);
+  const [images, setImages] = useState([]);
+  const [imageId, setImageId] = useState("");
+  // null = nothing picked yet, "loading" = fetching, otherwise {count, class_names}
+  const [annPreview, setAnnPreview] = useState(null);
   const [jobId, setJobId] = useState(null);
   const [job, setJob] = useState(null);
   const [error, setError] = useState(null);
@@ -75,29 +80,54 @@ function DatasetStep() {
     setForm((f) => ({ ...f, [field]: value }));
   }
 
+  // Populate the "pick from library" dropdown once — this is the shortcut
+  // that closes the loop with the Annotate step (gap ②): no more hand-typed
+  // image_path + annotations_json for the common case.
+  useEffect(() => {
+    api.listImages().then(setImages).catch(() => setImages([]));
+  }, []);
+
+  useEffect(() => {
+    if (advanced || !imageId) {
+      setAnnPreview(null);
+      return;
+    }
+    setAnnPreview("loading");
+    let cancelled = false;
+    api.listAnnotations(imageId)
+      .then((r) => { if (!cancelled) setAnnPreview({ count: r.count, class_names: r.class_names }); })
+      .catch(() => { if (!cancelled) setAnnPreview({ count: 0, class_names: [] }); });
+    return () => { cancelled = true; };
+  }, [advanced, imageId]);
+
   useEffect(() => () => clearInterval(pollRef.current), []);
 
   async function submit() {
     setError(null);
     setJob(null);
-    let annotations;
-    try {
-      annotations = JSON.parse(form.annotations_json);
-    } catch {
-      setError("Annotations must be valid JSON — a list of {\"class_id\": 0, \"points_px\": [[x,y], ...]}.");
-      return;
-    }
-    try {
-      const payload = {
+    let payload;
+    if (advanced) {
+      let annotations;
+      try {
+        annotations = JSON.parse(form.annotations_json);
+      } catch {
+        setError("Annotations must be valid JSON — a list of {\"class_id\": 0, \"points_px\": [[x,y], ...]}.");
+        return;
+      }
+      payload = {
         image_path: form.image_path,
         class_names: form.class_names.split(",").map((s) => s.trim()).filter(Boolean),
         annotations,
-        tile: parseInt(form.tile, 10),
-        overlap: parseInt(form.overlap, 10),
-        val_split: parseFloat(form.val_split),
-        neg_ratio: parseFloat(form.neg_ratio),
-        task: form.task,
       };
+    } else {
+      payload = { image_id: imageId };
+    }
+    try {
+      payload.tile = parseInt(form.tile, 10);
+      payload.overlap = parseInt(form.overlap, 10);
+      payload.val_split = parseFloat(form.val_split);
+      payload.neg_ratio = parseFloat(form.neg_ratio);
+      payload.task = form.task;
       const r = await api.exportDataset(payload);
       setJobId(r.job_id);
       setJob({ status: "queued" });
@@ -114,34 +144,69 @@ function DatasetStep() {
     }
   }
 
+  const canSubmit = advanced
+    ? Boolean(form.image_path && form.class_names)
+    : Boolean(imageId && annPreview && annPreview !== "loading" && annPreview.count > 0);
+
   return (
     <div className="panel wizard-coming-soon">
       <p className="section-title">Dataset</p>
       <p className="note" style={{ maxWidth: 640 }}>
         Tiles the image below into {form.tile}px tiles ({form.overlap}px overlap), converts the
         annotations into YOLO labels, filters black tiles, samples background tiles, and splits
-        train/val. Until drawing on the map feeds this directly (next step), annotations are given
-        as pixel-coordinate JSON.
+        train/val. Pick an image you've already annotated (Annotate step) below, or fall back to
+        pasting pixel-coordinate JSON by hand.
       </p>
       <div className="prepare-grid">
-        <label className="prepare-wide">
-          Image path
-          <input value={form.image_path} onChange={(e) => set("image_path", e.target.value)} placeholder="/path/to/orthomosaic.tif" />
-        </label>
-        <label className="prepare-wide">
-          Class names (comma-separated)
-          <input value={form.class_names} onChange={(e) => set("class_names", e.target.value)} placeholder="tree, building" />
-        </label>
-        <label className="prepare-wide">
-          Annotations (JSON — pixel coordinates)
-          <textarea
-            value={form.annotations_json}
-            onChange={(e) => set("annotations_json", e.target.value)}
-            placeholder='[{"class_id": 0, "points_px": [[100,100],[160,100],[160,160],[100,160]]}]'
-            rows={4}
-            style={{ fontFamily: "monospace", fontSize: 11.5 }}
-          />
-        </label>
+        {!advanced ? (
+          <>
+            <label className="prepare-wide">
+              Image (annotated in the library)
+              <select value={imageId} onChange={(e) => setImageId(e.target.value)}>
+                <option value="">— select an image —</option>
+                {images.map((img) => (
+                  <option key={img.image_id} value={img.image_id}>{img.filename}</option>
+                ))}
+              </select>
+            </label>
+            <div className="prepare-wide note" style={{ marginTop: -4 }}>
+              {!imageId ? (
+                "Pick an image you drew annotations on with the Annotate tool on the map."
+              ) : annPreview === "loading" ? (
+                "Checking annotations…"
+              ) : annPreview?.count > 0 ? (
+                <span style={{ color: "var(--ready)" }}>
+                  ✓ {annPreview.count} annotation(s) — classes: {annPreview.class_names.join(", ")}
+                </span>
+              ) : (
+                <span style={{ color: "var(--error)" }}>
+                  ⚠ No annotations saved for this image yet — open it on the map and use the Annotate tool first.
+                </span>
+              )}
+            </div>
+          </>
+        ) : (
+          <>
+            <label className="prepare-wide">
+              Image path
+              <input value={form.image_path} onChange={(e) => set("image_path", e.target.value)} placeholder="/path/to/orthomosaic.tif" />
+            </label>
+            <label className="prepare-wide">
+              Class names (comma-separated)
+              <input value={form.class_names} onChange={(e) => set("class_names", e.target.value)} placeholder="tree, building" />
+            </label>
+            <label className="prepare-wide">
+              Annotations (JSON — pixel coordinates)
+              <textarea
+                value={form.annotations_json}
+                onChange={(e) => set("annotations_json", e.target.value)}
+                placeholder='[{"class_id": 0, "points_px": [[100,100],[160,100],[160,160],[100,160]]}]'
+                rows={4}
+                style={{ fontFamily: "monospace", fontSize: 11.5 }}
+              />
+            </label>
+          </>
+        )}
         <label>
           Tile size (px)
           <input type="number" value={form.tile} onChange={(e) => set("tile", e.target.value)} />
@@ -167,10 +232,15 @@ function DatasetStep() {
           </select>
         </label>
       </div>
-      <button className="run-button" style={{ width: "auto", padding: "8px 18px" }}
-        onClick={submit} disabled={!form.image_path || !form.class_names || job?.status === "processing"}>
-        Export Dataset
-      </button>
+      <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+        <button className="run-button" style={{ width: "auto", padding: "8px 18px" }}
+          onClick={submit} disabled={!canSubmit || job?.status === "processing"}>
+          Export Dataset
+        </button>
+        <button className="chip-button" onClick={() => setAdvanced((a) => !a)}>
+          {advanced ? "Use an annotated image from the library" : "Advanced: manual path + JSON"}
+        </button>
+      </div>
       {error && <p className="note" style={{ color: "var(--error)", marginTop: 8 }}>⚠ {error}</p>}
       {job && (
         <div className="note" style={{ marginTop: 10 }}>
