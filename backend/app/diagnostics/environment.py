@@ -20,6 +20,7 @@ against whatever interpreter this process is actually running in.
 from __future__ import annotations
 
 import importlib
+import re
 import sys
 from pathlib import Path
 
@@ -47,6 +48,50 @@ REQUIRED: list[tuple[str, str, str]] = [
 ]
 
 BACKEND_ENV_PATH = Path(__file__).resolve().parent.parent.parent / ".env"
+REQUIREMENTS_PATH = Path(__file__).resolve().parent.parent.parent / "requirements.txt"
+
+
+def parse_requirements() -> dict[str, str]:
+    """pip package base-name (lowercased, no extras/markers) -> full pinned requirement line."""
+    lines: dict[str, str] = {}
+    if not REQUIREMENTS_PATH.exists():
+        return lines
+    for raw in REQUIREMENTS_PATH.read_text().splitlines():
+        line = raw.split("#", 1)[0].strip()
+        if not line:
+            continue
+        base = re.split(r"[\[=<>!~; ]", line, maxsplit=1)[0].strip().lower()
+        if base:
+            lines[base] = line
+    return lines
+
+
+def resolve_install_targets(modules: list[str]) -> list[str]:
+    """
+    Module names (e.g. "cv2", "ultralytics") -> their pinned requirements.txt
+    lines, for a per-library install/repair/update. Used by the "pick a library,
+    install just that one" flow in the Library Status panel, so a single-row
+    install still gets the exact pinned version the project is tested against,
+    never an unpinned "latest".
+
+    Raises ValueError naming any module that isn't a known dependency, or that
+    is known but has no pinned line in requirements.txt.
+    """
+    pip_name_by_module = {module: pip_name for module, pip_name, _ in REQUIRED}
+    req_lines = parse_requirements()
+    resolved: list[str] = []
+    unresolved: list[str] = []
+    for module in modules:
+        pip_name = pip_name_by_module.get(module)
+        base = re.split(r"[\[]", pip_name, maxsplit=1)[0].strip().lower() if pip_name else None
+        line = req_lines.get(base) if base else None
+        if line:
+            resolved.append(line)
+        else:
+            unresolved.append(module)
+    if unresolved:
+        raise ValueError(f"Not a known/pinned dependency: {', '.join(unresolved)}")
+    return resolved
 
 
 def load_backend_env() -> dict:

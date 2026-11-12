@@ -23,7 +23,7 @@ from pathlib import Path
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel
 
-from app.diagnostics.environment import build_report
+from app.diagnostics.environment import build_report, resolve_install_targets
 
 router = APIRouter(prefix="/api/environment", tags=["environment"])
 
@@ -57,10 +57,19 @@ class BuildOption(str, Enum):
 class ActionRequest(BaseModel):
     action: ActionKind
     build: BuildOption = BuildOption.AUTO
+    # Optional list of module names (e.g. "cv2", "ultralytics") to install/repair/
+    # update individually instead of the whole requirements.txt. Each name is
+    # resolved to its *pinned* line in requirements.txt, so a per-library install
+    # still gets the exact version the project is tested against — never an
+    # unpinned "latest".
+    targets: list[str] | None = None
 
 
-def _pip_command(action: ActionKind, build: BuildOption) -> list[str]:
-    cmd = [sys.executable, "-m", "pip", "install", "-r", str(REQUIREMENTS_PATH)]
+def _pip_command(action: ActionKind, build: BuildOption, targets: list[str] | None = None) -> list[str]:
+    if targets:
+        cmd = [sys.executable, "-m", "pip", "install", *resolve_install_targets(targets)]
+    else:
+        cmd = [sys.executable, "-m", "pip", "install", "-r", str(REQUIREMENTS_PATH)]
     if action == ActionKind.UPDATE:
         cmd.append("--upgrade")
     elif action == ActionKind.REPAIR:
@@ -109,11 +118,16 @@ def start_action(req: ActionRequest, background_tasks: BackgroundTasks):
     if not REQUIREMENTS_PATH.exists():
         raise HTTPException(status_code=500, detail=f"requirements.txt not found at {REQUIREMENTS_PATH}")
 
-    cmd = _pip_command(req.action, req.build)
+    try:
+        cmd = _pip_command(req.action, req.build, req.targets)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
     job_id = str(uuid.uuid4())
     with _LOCK:
         _JOBS[job_id] = {
-            "status": "queued", "action": req.action.value, "build": req.build.value, "log_tail": [],
+            "status": "queued", "action": req.action.value, "build": req.build.value,
+            "targets": req.targets or [], "log_tail": [],
         }
     background_tasks.add_task(_run_job, job_id, cmd)
     return {"job_id": job_id, "status": "queued", "command": " ".join(cmd)}
