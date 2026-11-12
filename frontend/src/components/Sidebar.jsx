@@ -212,7 +212,7 @@ export default function Sidebar({ models, selectedModels, onToggleModel, image, 
           >
             <span className="model-name">
               <input type="checkbox" readOnly checked={selectedModels.includes(m.model_id)} />
-              {m.name}
+              <span className="model-name-text">{m.name}</span>
             </span>
             <span className={`status-pill status-${m.status}`}>{STATUS_LABEL[m.status] || m.status}</span>
           </div>
