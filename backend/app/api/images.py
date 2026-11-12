@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Response, UploadFile
+from starlette.concurrency import run_in_threadpool
 
 from app.core.config import settings
 from app.core.image_library import build_entry, find_entry_by_image_id, list_library, write_entry
@@ -22,20 +23,32 @@ async def upload_image(file: UploadFile):
 
     image_id = str(uuid.uuid4())
     dest = settings.UPLOAD_DIR / f"{image_id}_{file.filename}"
-    with dest.open("wb") as f:
-        shutil.copyfileobj(file.file, f)
+
+    # Both the disk copy and the rasterio metadata reads below are blocking
+    # (synchronous file I/O / C-extension calls). On a multi-GB GeoTIFF the
+    # copy alone can run for a long time; running it directly in this `async
+    # def` handler would stall FastAPI's single event loop for that whole
+    # duration, freezing *every other* request the frontend is making in the
+    # background (job/usage/environment polling) — which is what made the
+    # whole app, not just the upload, look hung on a large upload. Running it
+    # in a worker thread keeps the server responsive while the copy proceeds.
+    def _copy():
+        with dest.open("wb") as f:
+            shutil.copyfileobj(file.file, f, length=8 * 1024 * 1024)
+
+    await run_in_threadpool(_copy)
 
     raster_meta = None
     raster_meta_note = None
     bounds_wgs84 = None
     try:
         from app.engine.raster_io import compute_wgs84_bounds, read_raster_info
-        info = read_raster_info(dest)
+        info = await run_in_threadpool(read_raster_info, dest)
         raster_meta = {
             "width": info.width, "height": info.height, "bands": info.count,
             "dtype": info.dtype, "crs": info.crs, "gsd_x_m": info.gsd_x, "gsd_y_m": info.gsd_y,
         }
-        bounds_wgs84 = compute_wgs84_bounds(dest)
+        bounds_wgs84 = await run_in_threadpool(compute_wgs84_bounds, dest)
     except ImportError:
         raster_meta_note = "rasterio not installed in this environment — metadata unavailable until deployed with full requirements.txt"
     except Exception as exc:

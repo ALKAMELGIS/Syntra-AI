@@ -23,9 +23,10 @@ export default function Sidebar({ models, selectedModels, onToggleModel, image, 
   const batchInput = useRef(null);
   const [mode, setMode] = useState("single"); // "single" | "batch"
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [dragOver, setDragOver] = useState(false);
   const [uploadError, setUploadError] = useState(null);
-  const [batchQueue, setBatchQueue] = useState([]); // [{filename, status: "uploading"|"done"|"error", image?, error?}]
+  const [batchQueue, setBatchQueue] = useState([]); // [{filename, status: "uploading"|"done"|"error", image?, error?, progress?}]
   const [pendingFiles, setPendingFiles] = useState([]); // picked but not yet uploaded
 
   async function doUpload(file) {
@@ -36,8 +37,9 @@ export default function Sidebar({ models, selectedModels, onToggleModel, image, 
     }
     setUploadError(null);
     setUploading(true);
+    setUploadProgress(0);
     try {
-      const result = await api.uploadImage(file);
+      const result = await api.uploadImage(file, setUploadProgress);
       onImageUploaded(result);
     } catch (err) {
       setUploadError(err.message);
@@ -64,7 +66,11 @@ export default function Sidebar({ models, selectedModels, onToggleModel, image, 
     setBatchQueue((q) => [...q, ...initial]);
     for (const file of files) {
       try {
-        const result = await api.uploadImage(file);
+        const result = await api.uploadImage(file, (p) => {
+          setBatchQueue((q) =>
+            q.map((item) => (item.filename === file.name && item.status === "uploading" ? { ...item, progress: p } : item))
+          );
+        });
         setBatchQueue((q) =>
           q.map((item) => (item.filename === file.name && item.status === "uploading" ? { ...item, status: "done", image: result } : item))
         );
@@ -137,8 +143,19 @@ export default function Sidebar({ models, selectedModels, onToggleModel, image, 
           >
             <input ref={fileInput} type="file" accept=".tif,.tiff" hidden onChange={handleFile} />
             <IconUpload className="dropzone-icon" />
-            <span>{uploading ? "Uploading…" : image ? image.filename : "Drop GeoTIFF to begin, or click to browse · .tif · 0.25–0.70 m"}</span>
+            <span>
+              {uploading
+                ? `Uploading… ${Math.round(uploadProgress * 100)}%`
+                : image
+                ? image.filename
+                : "Drop GeoTIFF to begin, or click to browse · .tif · 0.25–0.70 m"}
+            </span>
           </div>
+          {uploading && (
+            <div className="upload-progress-bar">
+              <div className="upload-progress-fill" style={{ width: `${Math.round(uploadProgress * 100)}%` }} />
+            </div>
+          )}
           {uploadError && <p className="note" style={{ color: "var(--error)" }}>⚠ {uploadError}</p>}
           {image && (
             <p className="note">
@@ -193,6 +210,9 @@ export default function Sidebar({ models, selectedModels, onToggleModel, image, 
               <div key={item.filename} className="batch-queue-row">
                 <span className={`model-status-dot ${item.status === "done" ? "dot-ready" : item.status === "error" ? "dot-error" : "dot-info"}`} />
                 <span className="batch-queue-name">{item.filename}</span>
+                {item.status === "uploading" && item.progress != null && (
+                  <span className="note" style={{ margin: 0 }}>{Math.round(item.progress * 100)}%</span>
+                )}
                 {item.status === "error" && <span className="note" style={{ color: "var(--error)" }}>{item.error}</span>}
                 <button className="batch-queue-remove" onClick={() => removeBatchItem(item.filename)}><IconClose /></button>
               </div>

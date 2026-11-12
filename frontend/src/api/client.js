@@ -18,11 +18,34 @@ export const api = {
   gsdCheck: (modelId, gsd) => fetch(`${BASE}/models/${modelId}/gsd-check?gsd=${gsd}`).then(handle),
   listImages: () => fetch(`${BASE}/images`).then(handle),
   getImage: (imageId) => fetch(`${BASE}/images/${imageId}`).then(handle),
-  uploadImage: (file) => {
-    const form = new FormData();
-    form.append("file", file);
-    return fetch(`${BASE}/images`, { method: "POST", body: form }).then(handle);
-  },
+  // Uses XMLHttpRequest (not fetch) because only XHR exposes real upload
+  // progress events — needed for honest percentage feedback on multi-GB
+  // GeoTIFF uploads, instead of a static "Uploading…" that looks frozen.
+  uploadImage: (file, onProgress) =>
+    new Promise((resolve, reject) => {
+      const form = new FormData();
+      form.append("file", file);
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", `${BASE}/images`);
+      xhr.upload.onprogress = (e) => {
+        if (onProgress && e.lengthComputable) onProgress(e.loaded / e.total);
+      };
+      xhr.onload = () => {
+        let body = {};
+        try { body = JSON.parse(xhr.responseText); } catch { /* non-JSON error body */ }
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve(body);
+        } else {
+          const detail = body.detail;
+          const message = typeof detail === "string" ? detail : detail?.message || `Request failed: ${xhr.status}`;
+          const err = new Error(message);
+          err.detail = detail;
+          reject(err);
+        }
+      };
+      xhr.onerror = () => reject(new Error("Network error during upload."));
+      xhr.send(form);
+    }),
   devices: () => fetch(`${BASE}/compute`).then(handle),
   startPrediction: (payload) =>
     fetch(`${BASE}/predict`, {
