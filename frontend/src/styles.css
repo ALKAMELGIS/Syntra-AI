@@ -296,10 +296,15 @@ body {
   border-radius: 6px; padding: 6px 8px; font-size: 12px;
 }
 
-/* --- Library Status / Installation Options (Environment panel) --- */
-.environment-panel {
+/* --- Library Status / Installation Options (Environment panel) ---
+   Laid out as two separate cards, stacked, matching the reference app's
+   "Library Status" / "Installation Options" card split (compact rows with
+   a dot + name + "⋯" details toggle + status pill; a 2x2 action-button
+   grid; a collapsible "Python and library folder" advanced section). */
+.environment-panel-group { display: flex; flex-direction: column; gap: 12px; margin-bottom: 4px; }
+.env-card {
   background: var(--panel); border: 1px solid var(--panel-border); border-radius: var(--radius);
-  padding: 14px; margin-bottom: 4px;
+  padding: 14px;
 }
 .env-summary { flex-wrap: wrap; row-gap: 6px; }
 
@@ -311,32 +316,66 @@ body {
 
 .lib-row-list { display: flex; flex-direction: column; gap: 4px; }
 .lib-row {
-  display: flex; align-items: center; gap: 10px; padding: 8px 10px;
   border-radius: 7px; background: #0b0f17; border: 1px solid var(--panel-border);
-  cursor: pointer; transition: border-color 0.12s, background 0.12s;
+  transition: border-color 0.12s, background 0.12s; overflow: hidden;
 }
 .lib-row:hover { border-color: var(--accent); }
 .lib-row-selected { border-color: var(--accent); background: var(--accent-soft); }
+.lib-row-main { display: flex; align-items: center; gap: 10px; padding: 8px 10px; }
 .lib-row-checkbox {
   flex: none; width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer;
 }
-.lib-row-text { flex: 1 1 auto; font-size: 12px; }
-
-.install-options-row {
-  display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 10px;
+.lib-row-name { font-size: 12px; white-space: nowrap; }
+.lib-row-spacer { flex: 1 1 auto; }
+.lib-row-more {
+  flex: none; background: transparent; border: 1px solid var(--panel-border); color: var(--text-dim);
+  border-radius: 5px; width: 22px; height: 20px; line-height: 1; cursor: pointer; font-size: 13px;
 }
+.lib-row-more:hover { color: var(--text); border-color: var(--accent); }
+.lib-row-details {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 0 10px 10px 37px; border-top: 1px dashed var(--panel-border); margin-top: 0;
+}
+.lib-row-details .note { padding-top: 8px; }
+
+.build-select-block { flex-direction: column; align-items: flex-start; gap: 4px; margin-bottom: 10px; }
 .build-select {
   display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-dim);
 }
 .build-select select {
   background: #0b0f17; border: 1px solid var(--panel-border); color: var(--text);
-  border-radius: 6px; padding: 6px 8px; font-size: 12px;
+  border-radius: 6px; padding: 6px 8px; font-size: 12px; min-width: 220px;
 }
+.install-buttons-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px;
+}
+.install-buttons-grid .chip-button { width: 100%; }
 .chip-button.chip-primary {
   background: linear-gradient(135deg, var(--accent), #4169e8); color: white; border: none;
 }
 .chip-button:disabled { opacity: 0.5; cursor: not-allowed; }
 .chip-button.chip-small { padding: 3px 9px; font-size: 11px; border-radius: 5px; flex: none; }
+
+.env-collapse-toggle {
+  display: flex; align-items: center; gap: 6px; background: transparent; border: none;
+  color: var(--text-dim); font-size: 12px; cursor: pointer; padding: 4px 0;
+}
+.env-collapse-toggle:hover { color: var(--text); }
+.env-collapse-caret { display: inline-block; transition: transform 0.12s; font-size: 9px; }
+.env-collapse-caret.open { transform: rotate(90deg); }
+
+.env-folder-info {
+  display: flex; flex-direction: column; gap: 6px; margin: 6px 0 2px;
+  padding: 8px 10px; background: #0b0f17; border: 1px solid var(--panel-border); border-radius: 7px;
+}
+.env-folder-row { display: flex; align-items: center; gap: 8px; }
+.env-folder-label {
+  flex: none; width: 50px; font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.04em;
+}
+.env-folder-path {
+  flex: 1 1 auto; font-size: 11px; font-family: monospace; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 
 .job-log-card {
   margin-top: 12px; background: #0b0f17; border: 1px solid var(--panel-border);

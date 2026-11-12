@@ -22,6 +22,7 @@ from __future__ import annotations
 import importlib
 import re
 import sys
+import sysconfig
 from pathlib import Path
 
 # (import name, pip/conda package name, why it's needed)
@@ -178,6 +179,12 @@ def build_report() -> dict:
     return {
         "python": sys.version.split()[0],
         "platform": sys.platform,
+        # The actual interpreter and site-packages this backend process is
+        # running under — real values (sys.executable / sysconfig), shown in
+        # the "Python and library folder" advanced section so the person can
+        # confirm which Python a fix actually needs to target, never guessed.
+        "python_executable": sys.executable,
+        "site_packages_dir": sysconfig.get_paths().get("purelib"),
         "results": results,
         "missing_count": len(missing),
         "total_count": len(results),
