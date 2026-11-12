@@ -11,6 +11,13 @@ const BASEMAPS = {
     label: "Satellite",
     url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
     attribution: "&copy; Esri, Maxar, Earthstar Geographics",
+    // Esri's World_Imagery service only actually renders tiles up to about
+    // z19 in most of the world (higher in a handful of flagship cities).
+    // Past that there are no native tiles, so maxNativeZoom tells Leaflet
+    // to keep serving/upscaling the z19 tile rather than requesting (and
+    // failing to get) tiles that don't exist -- the user can still zoom
+    // all the way in past this, the image just gets blurrier.
+    maxNativeZoom: 19,
   },
   streets: {
     // CARTO's free basemap tiles (basemaps.cartocdn.com) now require an API
@@ -21,8 +28,18 @@ const BASEMAPS = {
     label: "Streets",
     url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
     attribution: "&copy; OpenStreetMap contributors",
+    // Standard OSM raster tiles stop at z19 natively; same upscale behavior
+    // as above beyond that.
+    maxNativeZoom: 19,
   },
 };
+
+// Hard ceiling for how far the user can zoom in, on either basemap or on an
+// uploaded image overlay. 24 matches what the user asked for and is well
+// past what raw satellite/orthophoto GSD can usefully show, but Leaflet
+// will happily keep upscaling (or, for the ImageOverlay, keep showing the
+// full-res source image) past native tile zoom to get there.
+const MAX_ZOOM = 24;
 
 // Lives inside <MapContainer> so it can reach the Leaflet map instance via
 // react-leaflet's useMap() hook -- these buttons actually drive the map,
@@ -158,8 +175,13 @@ export default function MapView({
 
   return (
     <div className={`map-area icon-style-${iconStyle} ${libraryOpen ? "library-open" : ""}`}>
-      <MapContainer center={[24.7, 46.7]} zoom={5} scrollWheelZoom>
-        <TileLayer attribution={bm.attribution} url={bm.url} />
+      <MapContainer center={[24.7, 46.7]} zoom={5} maxZoom={MAX_ZOOM} scrollWheelZoom>
+        <TileLayer
+          attribution={bm.attribution}
+          url={bm.url}
+          maxZoom={MAX_ZOOM}
+          maxNativeZoom={bm.maxNativeZoom}
+        />
         {sourceImage?.bounds_wgs84 && sourceImage?.image_id && (
           <ImageOverlay
             key={sourceImage.image_id}
