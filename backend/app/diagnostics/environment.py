@@ -41,7 +41,7 @@ REQUIRED: list[tuple[str, str, str]] = [
     ("torchvision", "torchvision", "vision model utilities"),
     ("ultralytics", "ultralytics", "YOLO-family detectors"),
     ("segmentation_models_pytorch", "segmentation-models-pytorch", "field-boundary segmentation backbone"),
-    ("onnxruntime", "onnxruntime-gpu", "optional faster inference path"),
+    ("onnxruntime", "onnxruntime", "optional faster inference path (CPU build; swap for onnxruntime-gpu on a CUDA host)"),
     ("yaml", "pyyaml", "dataset/config YAML parsing"),
     ("dotenv", "python-dotenv", ".env config loading"),
 ]

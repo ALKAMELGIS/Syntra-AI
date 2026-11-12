@@ -25,7 +25,12 @@ torch==2.5.1
 torchvision==0.20.1
 ultralytics==8.3.49          # YOLO-family + RT-DETR
 segmentation-models-pytorch==0.3.4   # U-Net / DeepLab for field-boundary segmentation
-onnxruntime-gpu==1.20.1       # optional faster inference path
+# CPU-only build: this project only ever installs the plain "onnxruntime"
+# wheel, never "onnxruntime-gpu" — the GPU wheel has no Windows/py3.12
+# build for this pin and, more importantly, would be the wrong package on
+# a machine with no CUDA device (this one). On a real GPU deployment,
+# swap this one line for onnxruntime-gpu instead.
+onnxruntime==1.20.1            # optional faster inference path
 
 # Utilities
 pyyaml==6.0.2
