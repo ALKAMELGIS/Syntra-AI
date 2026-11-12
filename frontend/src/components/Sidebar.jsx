@@ -1,5 +1,6 @@
 import React, { useRef, useState } from "react";
 import { api } from "../api/client.js";
+import { IconUpload, IconFolder, IconPlay, IconClose, IconDashboard } from "./Icons.jsx";
 
 function formatBytes(bytes) {
   const mb = bytes / (1024 * 1024);
@@ -111,7 +112,7 @@ export default function Sidebar({ models, selectedModels, onToggleModel, image, 
 
   return (
     <div className="panel">
-      <p className="section-title">Source Image</p>
+      <p className="section-title section-title-icon"><IconUpload /> Source Image</p>
 
       <div className="source-mode-tabs">
         <button className={`source-mode-tab ${mode === "single" ? "active" : ""}`} onClick={() => setMode("single")}>
@@ -135,7 +136,8 @@ export default function Sidebar({ models, selectedModels, onToggleModel, image, 
             onDrop={handleDrop}
           >
             <input ref={fileInput} type="file" accept=".tif,.tiff" hidden onChange={handleFile} />
-            {uploading ? "Uploading…" : image ? image.filename : "Drop GeoTIFF to begin, or click to browse · .tif · 0.25–0.70 m"}
+            <IconUpload className="dropzone-icon" />
+            <span>{uploading ? "Uploading…" : image ? image.filename : "Drop GeoTIFF to begin, or click to browse · .tif · 0.25–0.70 m"}</span>
           </div>
           {uploadError && <p className="note" style={{ color: "var(--error)" }}>⚠ {uploadError}</p>}
           {image && (
@@ -163,7 +165,7 @@ export default function Sidebar({ models, selectedModels, onToggleModel, image, 
 
           {pendingFiles.length === 0 ? (
             <div className="folder-pick-zone" onClick={() => batchInput.current?.click()}>
-              <span className="folder-pick-icon">📁</span>
+              <IconFolder className="folder-pick-icon" />
               <div className="folder-pick-title">Pick a folder</div>
               <div className="folder-pick-hint">Counts .tif/.tiff files (incl. subdirs). Nothing uploads yet.</div>
             </div>
@@ -173,7 +175,7 @@ export default function Sidebar({ models, selectedModels, onToggleModel, image, 
                 {pendingFiles.length} .tif/.tiff file{pendingFiles.length === 1 ? "" : "s"} found · {formatBytes(pendingBytes)}
               </span>
               <div style={{ display: "flex", gap: 6 }}>
-                <button className="batch-queue-remove" onClick={clearPending} title="Clear selection">✕</button>
+                <button className="batch-queue-remove" onClick={clearPending} title="Clear selection"><IconClose /></button>
                 <button className="import-button" style={{ padding: "4px 10px" }} onClick={confirmUploadPending}>
                   Upload {pendingFiles.length}
                 </button>
@@ -192,15 +194,15 @@ export default function Sidebar({ models, selectedModels, onToggleModel, image, 
                 <span className={`model-status-dot ${item.status === "done" ? "dot-ready" : item.status === "error" ? "dot-error" : "dot-info"}`} />
                 <span className="batch-queue-name">{item.filename}</span>
                 {item.status === "error" && <span className="note" style={{ color: "var(--error)" }}>{item.error}</span>}
-                <button className="batch-queue-remove" onClick={() => removeBatchItem(item.filename)}>✕</button>
+                <button className="batch-queue-remove" onClick={() => removeBatchItem(item.filename)}><IconClose /></button>
               </div>
             ))}
           </div>
         </>
       )}
 
-      <p className="section-title" style={{ marginTop: 20 }}>
-        Detection Models
+      <p className="section-title section-title-icon" style={{ marginTop: 20 }}>
+        <IconDashboard /> Detection Models
       </p>
       <div className="detection-model-list">
         {models.map((m) => (
@@ -220,7 +222,7 @@ export default function Sidebar({ models, selectedModels, onToggleModel, image, 
       </div>
 
       <button className="run-button" disabled={!canRun} onClick={handleRunClick}>
-        {running ? "Running…" : "Run Prediction"}
+        {running ? "Running…" : <><IconPlay /> Run Prediction</>}
       </button>
     </div>
   );

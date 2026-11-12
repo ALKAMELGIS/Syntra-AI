@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useMap } from "react-leaflet";
 import L from "leaflet";
+import { IconDatabase, IconEye, IconEyeOff, IconRectangle, IconCircle, IconPencil, IconRuler, IconTrash } from "./Icons.jsx";
 
 // A real, working annotation/AOI toolbar living inside <MapContainer> (via
 // useMap()) — every tool here actually drives the Leaflet map instance, none
@@ -143,20 +144,20 @@ export default function MapDrawTools({ detectionsVisible, onToggleDetections, on
 
   return (
     <div className="map-toolbar map-toolbar-draw">
-      <button className="map-tool-btn" title="Jump to Dataset &amp; Model Manager" onClick={onOpenDatasetManager}>🗄</button>
+      <button className="map-tool-btn" title="Jump to Dataset &amp; Model Manager" onClick={onOpenDatasetManager}><IconDatabase /></button>
       <button
         className={`map-tool-btn ${!detectionsVisible ? "active" : ""}`}
         title="Toggle detections visibility"
         onClick={onToggleDetections}
       >
-        👁
+        {detectionsVisible ? <IconEye /> : <IconEyeOff />}
       </button>
       <div className="map-toolbar-sep" />
-      <button className={`map-tool-btn ${mode === "rect" ? "active" : ""}`} title="Draw rectangle AOI" onClick={() => toggle("rect")}>▭</button>
-      <button className={`map-tool-btn ${mode === "circle" ? "active" : ""}`} title="Draw circle AOI" onClick={() => toggle("circle")}>◯</button>
-      <button className={`map-tool-btn ${mode === "pencil" ? "active" : ""}`} title="Freehand AOI (click to add points, double-click to finish)" onClick={() => toggle("pencil")}>✎</button>
-      <button className={`map-tool-btn ${mode === "ruler" ? "active" : ""}`} title="Measure distance (click two points)" onClick={() => toggle("ruler")}>📏</button>
-      <button className="map-tool-btn" title="Clear AOI / measurement" onClick={clearAll}>🗑</button>
+      <button className={`map-tool-btn ${mode === "rect" ? "active" : ""}`} title="Draw rectangle AOI" onClick={() => toggle("rect")}><IconRectangle /></button>
+      <button className={`map-tool-btn ${mode === "circle" ? "active" : ""}`} title="Draw circle AOI" onClick={() => toggle("circle")}><IconCircle /></button>
+      <button className={`map-tool-btn ${mode === "pencil" ? "active" : ""}`} title="Freehand AOI (click to add points, double-click to finish)" onClick={() => toggle("pencil")}><IconPencil /></button>
+      <button className={`map-tool-btn ${mode === "ruler" ? "active" : ""}`} title="Measure distance (click two points)" onClick={() => toggle("ruler")}><IconRuler /></button>
+      <button className="map-tool-btn" title="Clear AOI / measurement" onClick={clearAll}><IconTrash /></button>
     </div>
   );
 }

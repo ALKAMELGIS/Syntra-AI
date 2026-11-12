@@ -3,6 +3,7 @@ import { MapContainer, TileLayer, GeoJSON, ImageOverlay, useMap } from "react-le
 import MapDrawTools from "./MapDrawTools.jsx";
 import ImageLibrary from "./ImageLibrary.jsx";
 import SettingsPanel from "./SettingsPanel.jsx";
+import { IconExpand, IconBasemap, IconLegend, IconGallery, IconGear } from "./Icons.jsx";
 
 const BASEMAPS = {
   satellite: {
@@ -52,24 +53,24 @@ function MapToolbar({ layers, sourceImage, basemap, onBasemapChange, legendOpen,
   return (
     <div className="map-toolbar">
       <button className="map-tool-btn" title="Zoom to detections / reset view" onClick={zoomToFit}>
-        ⛶
+        <IconExpand />
       </button>
       <button className="map-tool-btn" title="Toggle basemap" onClick={toggleBasemap}>
-        ◧
+        <IconBasemap />
       </button>
       <button
         className={`map-tool-btn ${legendOpen ? "active" : ""}`}
         title="Toggle legend"
         onClick={onLegendToggle}
       >
-        ☰
+        <IconLegend />
       </button>
       <div className="map-toolbar-sep" />
       <button className="map-tool-btn" title="Image library" onClick={onOpenLibrary}>
-        🖼
+        <IconGallery />
       </button>
       <button className="map-tool-btn" title="Settings" onClick={onOpenSettings}>
-        ⚙
+        <IconGear />
       </button>
     </div>
   );

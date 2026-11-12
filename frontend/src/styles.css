@@ -105,6 +105,7 @@ body {
 }
 
 .dropzone {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
   border: 1px dashed var(--panel-border);
   border-radius: var(--radius);
   padding: 18px;
@@ -115,6 +116,10 @@ body {
 }
 .dropzone:hover { border-color: var(--accent); color: var(--text); }
 .dropzone.drag-over { border-color: var(--accent); background: var(--accent-soft); color: var(--text); }
+.dropzone-icon { font-size: 22px; color: var(--accent); }
+
+.section-title-icon { display: flex; align-items: center; gap: 6px; }
+.section-title-icon svg { font-size: 13px; }
 
 .model-row {
   display: flex; align-items: center; gap: 8px;
@@ -179,10 +184,10 @@ body {
 }
 
 .run-button {
-  width: 100%;
+  width: 100%; display: flex; align-items: center; justify-content: center; gap: 7px;
   background: linear-gradient(135deg, var(--accent), #4169e8);
   color: white; border: none; border-radius: 8px;
-  padding: 10px; font-weight: 600; cursor: pointer; margin-top: 10px;
+  padding: 10px; font-weight: 600; cursor: pointer; margin-top: 10px; font-size: 15px;
 }
 .run-button:disabled { opacity: 0.5; cursor: not-allowed; }
 
@@ -202,9 +207,11 @@ body {
 
 .topbar-tabs { display: flex; gap: 4px; }
 .tab-button {
+  display: inline-flex; align-items: center; gap: 6px;
   background: transparent; border: none; color: var(--text-dim);
   padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600;
 }
+.tab-button svg { font-size: 15px; }
 .tab-button:hover { color: var(--text); background: #18203a; }
 .tab-button.active { color: var(--accent); background: var(--accent-soft); }
 
@@ -428,10 +435,12 @@ body {
   display: flex; flex-direction: column;
 }
 .file-menu-item {
-  display: block; width: 100%; text-align: left; background: transparent; border: none;
+  display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+  background: transparent; border: none;
   color: var(--text); font-size: 12px; padding: 8px 10px; border-radius: 6px; cursor: pointer;
   font-family: inherit;
 }
+.file-menu-item svg { font-size: 14px; color: var(--text-dim); flex: none; }
 .file-menu-item:hover { background: #18203a; }
 .file-menu-item:disabled { opacity: 0.4; cursor: not-allowed; }
 .file-menu-divider { height: 1px; background: var(--panel-border); margin: 4px 2px; }
@@ -481,6 +490,7 @@ body {
 }
 .batch-queue-name { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .batch-queue-remove {
+  display: flex; align-items: center; flex: none;
   background: transparent; border: none; color: var(--text-dim); cursor: pointer; font-size: 11px;
 }
 .batch-queue-remove:hover { color: var(--error); }
@@ -584,7 +594,7 @@ body {
   color: var(--text-dim); cursor: pointer; margin-bottom: 8px;
 }
 .folder-pick-zone:hover { border-color: var(--accent); color: var(--text); }
-.folder-pick-icon { font-size: 20px; display: block; margin-bottom: 6px; }
+.folder-pick-icon { font-size: 22px; display: block; margin: 0 auto 6px; color: var(--accent); }
 .folder-pick-title { font-weight: 600; color: var(--text); margin-bottom: 2px; }
 .folder-pick-hint { font-size: 11px; }
 .folder-pick-confirm-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }

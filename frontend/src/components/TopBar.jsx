@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { api } from "../api/client.js";
+import { IconMap, IconDashboard, IconFolder, IconClose, IconUpload } from "./Icons.jsx";
 
 function useOutsideClose(ref, close) {
   useEffect(() => {
@@ -66,14 +67,14 @@ function FileMenu({ hasImage, hasJob, onExport }) {
       </button>
       {open && (
         <div className="file-menu-dropdown">
-          <button className="file-menu-item" onClick={createNewProject}>📄 Create New Project</button>
+          <button className="file-menu-item" onClick={createNewProject}><IconFolder /> Create New Project</button>
           <label className="file-menu-item">
-            📂 Import Project
+            <IconFolder /> Import Project
             <input type="file" accept="application/json" hidden onChange={openProjectFile} />
           </label>
           <div className="file-menu-divider" />
-          <button className="file-menu-item" disabled={!hasImage} onClick={saveProject}>💾 Save project</button>
-          <button className="file-menu-item" disabled={!hasImage} onClick={closeProject}>✕ Close project</button>
+          <button className="file-menu-item" disabled={!hasImage} onClick={saveProject}><IconUpload style={{ transform: "rotate(180deg)" }} /> Save project</button>
+          <button className="file-menu-item" disabled={!hasImage} onClick={closeProject}><IconClose /> Close project</button>
           <div className="file-menu-divider" />
           <button className="file-menu-item" disabled={!hasJob} onClick={() => onExport("geojson")}>
             Export Results — GeoJSON
@@ -176,10 +177,10 @@ export default function TopBar({ view, onViewChange, devices, enabledGpus, onTog
 
       <div className="topbar-tabs">
         <button className={`tab-button ${view === "detect" ? "active" : ""}`} onClick={() => onViewChange("detect")}>
-          🗺️ Full Map
+          <IconMap /> Full Map
         </button>
         <button className={`tab-button ${view === "models" ? "active" : ""}`} onClick={() => onViewChange("models")}>
-          📊 Dashboard
+          <IconDashboard /> Dashboard
         </button>
       </div>
 
