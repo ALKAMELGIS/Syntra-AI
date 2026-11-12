@@ -146,7 +146,7 @@ export default function MapView({
   }
 
   return (
-    <div className={`map-area icon-style-${iconStyle}`}>
+    <div className={`map-area icon-style-${iconStyle} ${libraryOpen ? "library-open" : ""}`}>
       <MapContainer center={[24.7, 46.7]} zoom={5} scrollWheelZoom>
         <TileLayer attribution={bm.attribution} url={bm.url} />
         {sourceImage?.bounds_wgs84 && sourceImage?.image_id && (
