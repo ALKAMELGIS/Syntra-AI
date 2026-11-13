@@ -95,7 +95,7 @@ export default function App() {
         const key = jobKey(img.image_id, modelId);
         try {
           const started = await api.startPrediction({
-            image_path: img.path,
+            image_id: img.image_id,
             model_id: modelId,
             gpu_indices: gpuIndices,
           });

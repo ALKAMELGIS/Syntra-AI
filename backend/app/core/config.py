@@ -50,6 +50,9 @@ class Settings:
     CPU0_THREADS: int = int(os.getenv("SYNTRA_CPU0_THREADS", 4))
     CPU1_THREADS: int = int(os.getenv("SYNTRA_CPU1_THREADS", os.cpu_count() or 8))
 
+    # --- Uploads -------------------------------------------------------------
+    MAX_UPLOAD_MB: int = int(os.getenv("SYNTRA_MAX_UPLOAD_MB", 20480))  # 20 GB: large orthomosaics are normal
+
     # --- API ---------------------------------------------------------------
     CORS_ORIGINS: list[str] = os.getenv("SYNTRA_CORS_ORIGINS", "http://localhost:5173").split(",")
 

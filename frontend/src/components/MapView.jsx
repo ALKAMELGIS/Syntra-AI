@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { api } from "../api/client";
 import { MapContainer, TileLayer, GeoJSON, ImageOverlay, useMap } from "react-leaflet";
 import MapDrawTools from "./MapDrawTools.jsx";
 import AnnotationTool from "./AnnotationTool.jsx";
@@ -185,7 +186,7 @@ export default function MapView({
         {sourceImage?.bounds_wgs84 && sourceImage?.image_id && (
           <ImageOverlay
             key={sourceImage.image_id}
-            url={`/api/images/${sourceImage.image_id}/preview.png`}
+            url={api.imagePreviewUrl(sourceImage.image_id)}
             bounds={[
               [sourceImage.bounds_wgs84.south, sourceImage.bounds_wgs84.west],
               [sourceImage.bounds_wgs84.north, sourceImage.bounds_wgs84.east],

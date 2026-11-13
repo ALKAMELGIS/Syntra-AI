@@ -112,6 +112,7 @@ export default function EnvironmentPanel() {
   }
 
   const busy = job && (job.status === "queued" || job.status === "running");
+  const locked = report?.actions_allowed === false;
   const missing = useMemo(() => (report ? report.results.filter((r) => !r.installed) : []), [report]);
   const selectedList = useMemo(() => Array.from(selected), [selected]);
   const installingModule = busy && job.targets && job.targets.length === 1 ? job.targets[0] : null;
@@ -252,6 +253,13 @@ export default function EnvironmentPanel() {
           </select>
         </label>
 
+        {locked && (
+          <p className="env-locked-note">
+            Package installs are disabled for remote browsers. Run them on the server, or set
+            {" "}<code>SYNTRA_ALLOW_ENV_ACTIONS=1</code> in <code>backend/.env</code>.
+          </p>
+        )}
+
         <div className="install-buttons-grid">
           <button className="chip-button" onClick={() => runAction("check")} disabled={busy}>
             Check Dependencies
@@ -259,21 +267,21 @@ export default function EnvironmentPanel() {
           <button
             className="chip-button chip-primary"
             onClick={() => runAction("install", selectedList.length ? selectedList : null)}
-            disabled={busy || (selectedList.length === 0 && missing.length === 0)}
+            disabled={locked || busy || (selectedList.length === 0 && missing.length === 0)}
           >
             {selectedList.length ? `Install Selected (${selectedList.length})` : "Install Libraries"}
           </button>
           <button
             className="chip-button"
             onClick={() => runAction("repair", selectedList.length ? selectedList : null)}
-            disabled={busy}
+            disabled={locked || busy}
           >
             {selectedList.length ? `Repair Selected (${selectedList.length})` : "Repair Installation"}
           </button>
           <button
             className="chip-button"
             onClick={() => runAction("update", selectedList.length ? selectedList : null)}
-            disabled={busy}
+            disabled={locked || busy}
           >
             {selectedList.length ? `Update Selected (${selectedList.length})` : "Update Libraries"}
           </button>

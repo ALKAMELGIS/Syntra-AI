@@ -25,6 +25,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel
 
 from app.core.config import settings
+from app.core.security import confine_path
 
 router = APIRouter(prefix="/api/training", tags=["training"])
 
@@ -118,8 +119,10 @@ def export_dataset(req: ExportDatasetRequest, background_tasks: BackgroundTasks)
         req = _resolve_from_image_id(req)
     if not req.image_path:
         raise HTTPException(status_code=400, detail="Provide either image_id or image_path.")
-    if not Path(req.image_path).exists():
-        raise HTTPException(status_code=404, detail=f"Image not found: {req.image_path}")
+    req = req.model_copy(update={
+        "image_path": str(confine_path(req.image_path, field="image_path", must_exist=True)),
+        "out_dir": str(confine_path(req.out_dir, field="out_dir")) if req.out_dir else None,
+    })
     if not req.annotations:
         raise HTTPException(status_code=400, detail="At least one annotation is required to export a dataset.")
     if req.overlap >= req.tile:
@@ -223,8 +226,10 @@ def _run_train_job(job_id: str, req: TrainRequest):
 
 @router.post("/train")
 def start_training(req: TrainRequest, background_tasks: BackgroundTasks):
-    if not Path(req.data_yaml).exists():
-        raise HTTPException(status_code=404, detail=f"data.yaml not found: {req.data_yaml}")
+    req = req.model_copy(update={
+        "data_yaml": str(confine_path(req.data_yaml, field="data_yaml", must_exist=True)),
+        "out_dir": str(confine_path(req.out_dir, field="out_dir")) if req.out_dir else None,
+    })
     job_id = str(uuid.uuid4())
     with _TRAIN_LOCK:
         _TRAIN_JOBS[job_id] = {"status": "queued", "data_yaml": req.data_yaml}

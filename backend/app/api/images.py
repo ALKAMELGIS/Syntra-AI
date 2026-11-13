@@ -1,7 +1,6 @@
 """Source-image management: upload, list, and metadata inspection."""
 from __future__ import annotations
 
-import shutil
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -10,6 +9,7 @@ from fastapi import APIRouter, HTTPException, Response, UploadFile
 from starlette.concurrency import run_in_threadpool
 
 from app.core.config import settings
+from app.core.security import safe_filename
 from app.core.image_library import build_entry, find_entry_by_image_id, list_library, write_entry
 
 router = APIRouter(prefix="/api/images", tags=["images"])
@@ -18,11 +18,13 @@ router = APIRouter(prefix="/api/images", tags=["images"])
 @router.post("")
 async def upload_image(file: UploadFile):
     settings.ensure_dirs()
-    if not file.filename.lower().endswith((".tif", ".tiff")):
+    filename = safe_filename(file.filename)
+    if not filename.lower().endswith((".tif", ".tiff")):
         raise HTTPException(status_code=400, detail="Only GeoTIFF (.tif/.tiff) uploads are supported.")
 
     image_id = str(uuid.uuid4())
-    dest = settings.UPLOAD_DIR / f"{image_id}_{file.filename}"
+    dest = settings.UPLOAD_DIR / f"{image_id}_{filename}"
+    max_bytes = settings.MAX_UPLOAD_MB * 1024 * 1024
 
     # Both the disk copy and the rasterio metadata reads below are blocking
     # (synchronous file I/O / C-extension calls). On a multi-GB GeoTIFF the
@@ -32,11 +34,22 @@ async def upload_image(file: UploadFile):
     # background (job/usage/environment polling) — which is what made the
     # whole app, not just the upload, look hung on a large upload. Running it
     # in a worker thread keeps the server responsive while the copy proceeds.
-    def _copy():
+    def _copy() -> bool:
+        written = 0
         with dest.open("wb") as f:
-            shutil.copyfileobj(file.file, f, length=8 * 1024 * 1024)
+            while chunk := file.file.read(8 * 1024 * 1024):
+                written += len(chunk)
+                if written > max_bytes:
+                    return False
+                f.write(chunk)
+        return True
 
-    await run_in_threadpool(_copy)
+    if not await run_in_threadpool(_copy):
+        dest.unlink(missing_ok=True)
+        raise HTTPException(
+            status_code=413,
+            detail=f"File exceeds the {settings.MAX_UPLOAD_MB} MB upload limit (SYNTRA_MAX_UPLOAD_MB).",
+        )
 
     raster_meta = None
     raster_meta_note = None
@@ -57,7 +70,7 @@ async def upload_image(file: UploadFile):
 
     entry = build_entry(
         image_id=image_id,
-        filename=file.filename,
+        filename=filename,
         path=dest,
         size_bytes=dest.stat().st_size,
         uploaded_at=datetime.now(timezone.utc).isoformat(),
