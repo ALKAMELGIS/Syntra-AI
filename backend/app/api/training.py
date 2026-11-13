@@ -17,20 +17,20 @@ test) when there's no saved image annotation set to draw from.
 """
 from __future__ import annotations
 
-import threading
-import uuid
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel
 
 from app.core.config import settings
+from app.core.jobs import get_store
 from app.core.security import confine_path
 
 router = APIRouter(prefix="/api/training", tags=["training"])
 
-_JOBS: dict[str, dict] = {}
-_LOCK = threading.Lock()
+EXPORT_KIND = "dataset_export"
+TRAIN_KIND = "train"
+_LOG_MAX = 500
 
 
 class AnnotationIn(BaseModel):
@@ -56,8 +56,8 @@ class ExportDatasetRequest(BaseModel):
 def _run_job(job_id: str, req: ExportDatasetRequest):
     import numpy as np
 
-    with _LOCK:
-        _JOBS[job_id]["status"] = "processing"
+    jobs = get_store()
+    jobs.update(job_id, status="processing")
     try:
         from app.training.dataset_builder import DatasetBuilder
         from app.training.raster_window import RasterReader
@@ -67,18 +67,16 @@ def _run_job(job_id: str, req: ExportDatasetRequest):
         out_dir = req.out_dir or str(settings.DATA_DIR / "datasets" / job_id)
 
         def progress(pct, message=None):
-            with _LOCK:
-                _JOBS[job_id]["progress"] = round(pct, 1)
-                if message:
-                    _JOBS[job_id]["message"] = message
+            fields = {"progress": round(pct, 1)}
+            if message:
+                fields["message"] = message
+            jobs.update(job_id, **fields)
 
         def log(message):
-            with _LOCK:
-                _JOBS[job_id].setdefault("log", []).append(message)
+            jobs.append(job_id, "log", message, max_len=_LOG_MAX)
 
         def canceled():
-            with _LOCK:
-                return _JOBS[job_id].get("cancel_requested", False)
+            return bool((jobs.get(job_id) or {}).get("cancel_requested"))
 
         builder = DatasetBuilder(
             reader, anns, req.class_names, out_dir,
@@ -88,11 +86,9 @@ def _run_job(job_id: str, req: ExportDatasetRequest):
         )
         yaml_path, info = builder.run()
         reader.close()
-        with _LOCK:
-            _JOBS[job_id].update(status="completed", data_yaml=yaml_path, info=info)
+        jobs.update(job_id, status="completed", data_yaml=yaml_path, info=info)
     except Exception as exc:
-        with _LOCK:
-            _JOBS[job_id].update(status="error", error=str(exc))
+        jobs.update(job_id, status="error", error=str(exc))
 
 
 def _resolve_from_image_id(req: ExportDatasetRequest) -> ExportDatasetRequest:
@@ -128,17 +124,14 @@ def export_dataset(req: ExportDatasetRequest, background_tasks: BackgroundTasks)
     if req.overlap >= req.tile:
         raise HTTPException(status_code=400, detail="overlap must be smaller than tile.")
 
-    job_id = str(uuid.uuid4())
-    with _LOCK:
-        _JOBS[job_id] = {"status": "queued", "progress": 0.0}
+    job_id = get_store().create(EXPORT_KIND, progress=0.0, image_id=req.image_id)
     background_tasks.add_task(_run_job, job_id, req)
     return {"job_id": job_id, "status": "queued"}
 
 
 @router.get("/export-dataset/{job_id}")
 def export_dataset_status(job_id: str):
-    with _LOCK:
-        job = _JOBS.get(job_id)
+    job = get_store().get(job_id, EXPORT_KIND)
     if job is None:
         raise HTTPException(status_code=404, detail="Unknown job_id")
     return job
@@ -146,17 +139,14 @@ def export_dataset_status(job_id: str):
 
 @router.post("/export-dataset/{job_id}/cancel")
 def export_dataset_cancel(job_id: str):
-    with _LOCK:
-        job = _JOBS.get(job_id)
-        if job is None:
-            raise HTTPException(status_code=404, detail="Unknown job_id")
-        job["cancel_requested"] = True
+    jobs = get_store()
+    if jobs.get(job_id, EXPORT_KIND) is None:
+        raise HTTPException(status_code=404, detail="Unknown job_id")
+    jobs.update(job_id, cancel_requested=True)
     return {"job_id": job_id, "cancel_requested": True}
 
 
 # --------------------------------------------------------------------- Train
-_TRAIN_JOBS: dict[str, dict] = {}
-_TRAIN_LOCK = threading.Lock()
 
 
 class TrainRequest(BaseModel):
@@ -184,8 +174,8 @@ def _count_train_images(data_yaml: str) -> int:
 
 
 def _run_train_job(job_id: str, req: TrainRequest):
-    with _TRAIN_LOCK:
-        _TRAIN_JOBS[job_id]["status"] = "processing"
+    jobs = get_store()
+    jobs.update(job_id, status="processing")
     try:
         from app.training.trainer import build_job_config, run_training
 
@@ -201,27 +191,20 @@ def _run_train_job(job_id: str, req: TrainRequest):
             },
             cancel_flag_path=cancel_flag,
         )
-        with _TRAIN_LOCK:
-            _TRAIN_JOBS[job_id]["config"] = cfg
-            _TRAIN_JOBS[job_id]["cancel_flag_path"] = cancel_flag
+        jobs.update(job_id, config=cfg, cancel_flag_path=cancel_flag)
 
         def on_event(event):
-            with _TRAIN_LOCK:
-                if event.get("type") == "epoch":
-                    _TRAIN_JOBS[job_id]["progress"] = event
-                    _TRAIN_JOBS[job_id].setdefault("history", []).append(event)
-                elif event.get("type") in ("done", "canceled", "error"):
-                    _TRAIN_JOBS[job_id]["status"] = event["type"]
-                    _TRAIN_JOBS[job_id]["result"] = event
+            if event.get("type") == "epoch":
+                jobs.update(job_id, progress=event)
+                jobs.append(job_id, "history", event, max_len=_LOG_MAX)
+            elif event.get("type") in ("done", "canceled", "error"):
+                jobs.update(job_id, status=event["type"], result=event)
 
         final = run_training(cfg, on_event)
-        with _TRAIN_LOCK:
-            if _TRAIN_JOBS[job_id]["status"] == "processing":
-                _TRAIN_JOBS[job_id]["status"] = final.get("type", "error")
-                _TRAIN_JOBS[job_id]["result"] = final
+        if (jobs.get(job_id) or {}).get("status") == "processing":
+            jobs.update(job_id, status=final.get("type", "error"), result=final)
     except Exception as exc:
-        with _TRAIN_LOCK:
-            _TRAIN_JOBS[job_id].update(status="error", error=str(exc))
+        jobs.update(job_id, status="error", error=str(exc))
 
 
 @router.post("/train")
@@ -230,17 +213,14 @@ def start_training(req: TrainRequest, background_tasks: BackgroundTasks):
         "data_yaml": str(confine_path(req.data_yaml, field="data_yaml", must_exist=True)),
         "out_dir": str(confine_path(req.out_dir, field="out_dir")) if req.out_dir else None,
     })
-    job_id = str(uuid.uuid4())
-    with _TRAIN_LOCK:
-        _TRAIN_JOBS[job_id] = {"status": "queued", "data_yaml": req.data_yaml}
+    job_id = get_store().create(TRAIN_KIND, data_yaml=req.data_yaml)
     background_tasks.add_task(_run_train_job, job_id, req)
     return {"job_id": job_id, "status": "queued"}
 
 
 @router.get("/train/{job_id}")
 def train_status(job_id: str):
-    with _TRAIN_LOCK:
-        job = _TRAIN_JOBS.get(job_id)
+    job = get_store().get(job_id, TRAIN_KIND)
     if job is None:
         raise HTTPException(status_code=404, detail="Unknown job_id")
     return job
@@ -250,11 +230,12 @@ def train_status(job_id: str):
 def train_cancel(job_id: str):
     from app.training.trainer import request_cancel
 
-    with _TRAIN_LOCK:
-        job = _TRAIN_JOBS.get(job_id)
-        if job is None:
-            raise HTTPException(status_code=404, detail="Unknown job_id")
-        flag_path = job.get("cancel_flag_path")
+    job = get_store().get(job_id, TRAIN_KIND)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Unknown job_id")
+    if job.get("status") not in ("queued", "processing"):
+        raise HTTPException(status_code=409, detail=f"This training run is not running (status: {job.get('status')}).")
+    flag_path = job.get("cancel_flag_path")
     if not flag_path:
         raise HTTPException(status_code=409, detail="Training hasn't started yet — nothing to cancel.")
     request_cancel(flag_path)
@@ -272,8 +253,7 @@ def register_trained_model(job_id: str, req: RegisterModelRequest):
     real, selectable catalog entry (app.models.custom_registry), with its
     class names read straight back from the run's own data.yaml — not
     retyped by hand, so they can't drift from what was actually trained."""
-    with _TRAIN_LOCK:
-        job = _TRAIN_JOBS.get(job_id)
+    job = get_store().get(job_id, TRAIN_KIND)
     if job is None:
         raise HTTPException(status_code=404, detail="Unknown job_id")
     if job.get("status") not in ("done", "completed"):
