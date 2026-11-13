@@ -80,3 +80,18 @@ export const IconAnalysis = (p) => (
 export const IconClose = (p) => (
   <svg {...base} {...p}><path d="M5 5l14 14M19 5 5 19" /></svg>
 );
+// Edit menu: the pen nib used for the single "Edit / draw" toolbar entry.
+export const IconEdit = (p) => (
+  <svg {...base} {...p}><path d="m12 19 7-7 3 3-7 7-3-3Z" /><path d="m18 13-1.5-7.5L2 2l3.5 14.5L13 18l5-5Z" /><path d="m2 2 7.6 7.6" /><circle cx="11" cy="11" r="2" /></svg>
+);
+// Freehand polygon: a closed shape through clicked vertices.
+export const IconPolygon = (p) => (
+  <svg {...base} {...p}><path d="M5 7 12 3l7 5-2 10H7Z" /><circle cx="5" cy="7" r="1.2" /><circle cx="12" cy="3" r="1.2" /><circle cx="19" cy="8" r="1.2" /><circle cx="17" cy="18" r="1.2" /><circle cx="7" cy="18" r="1.2" /></svg>
+);
+// Annotate for training: a label tag.
+export const IconTag = (p) => (
+  <svg {...base} {...p}><path d="M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9Z" /><circle cx="8" cy="8" r="1.5" /></svg>
+);
+export const IconChevronDown = (p) => (
+  <svg {...base} {...p}><path d="m6 9 6 6 6-6" /></svg>
+);
