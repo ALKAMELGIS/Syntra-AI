@@ -4,8 +4,8 @@ Trained-model runtime.
 Loads a user's own fine-tuned YOLO weights — produced by POST
 /api/training/train (see app/training/train_worker.py), registered via
 app.models.custom_registry — and runs real inference with them, exactly
-like app.models.generic_detector.GenericYoloDetector does for the
-COCO-pretrained car/ship/aircraft placeholders.
+like app.models.aerial_obb_detector.AerialObbDetector does for the
+DOTA-pretrained car/ship/aircraft/oil-tank/bridge models.
 
 The one real difference: a custom-trained model has no COCO proxy mapping
 to do. Its classes ARE the classes the user labeled with the Annotate tool

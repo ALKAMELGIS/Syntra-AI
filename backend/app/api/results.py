@@ -16,6 +16,20 @@ from app.engine.shapefile_export import write_shapefile
 router = APIRouter(prefix="/api/results", tags=["results"])
 
 
+WGS84_PRJ = (
+    'GEOGCS["GCS_WGS_1984",DATUM["D_WGS_1984",SPHEROID["WGS_1984",6378137.0,298.257223563]],'
+    'PRIMEM["Greenwich",0.0],UNIT["Degree",0.0174532925199433]]'
+)
+
+
+def _result_crs(job_id: str, model_id: str) -> str | None:
+    manifest = _result_path(job_id, model_id).with_name(f"{model_id}.manifest.json")
+    try:
+        return json.loads(manifest.read_text()).get("crs")
+    except (OSError, ValueError):
+        return None
+
+
 def _result_path(job_id: str, model_id: str) -> Path:
     """Map (job_id, model_id) to a GeoJSON file, refusing anything that
     would escape RESULTS_DIR (e.g. a job_id of '..')."""
@@ -55,6 +69,9 @@ def get_shapefile(job_id: str, model_id: str):
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
             for key in ("shp", "shx", "dbf"):
                 zf.write(paths[key], arcname=f"{model_id}.{key}")
+            if _result_crs(job_id, model_id) == "EPSG:4326":
+                # Without a .prj, QGIS/ArcGIS ask the user to guess the CRS.
+                zf.writestr(f"{model_id}.prj", WGS84_PRJ)
         buf.seek(0)
 
     return Response(

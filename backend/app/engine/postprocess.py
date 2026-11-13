@@ -26,12 +26,25 @@ def tile_detections_to_global(
     georeferenced records ready for cross-tile merging and export.
 
     Each input detection: {"box": (x1,y1,x2,y2), "score": float, "class_id": int}
+    plus an optional "polygon": [(x, y), ...] in tile pixels (e.g. an oriented
+    bounding box). With a polygon, that rotated outline is what gets exported
+    and box_geo is its envelope, so cross-tile NMS keeps working unchanged.
     """
     out = []
     for det in tile_detections:
         x1, y1, x2, y2 = det["box"]
-        ring_geo = box_pixel_to_geo((x1, y1, x2, y2), tile_transform)
-        centroid_geo = point_pixel_to_geo((x1 + x2) / 2, (y1 + y2) / 2, tile_transform)
+        polygon_px = det.get("polygon")
+        if polygon_px:
+            ring_px = [tuple(map(float, pt)) for pt in polygon_px]
+            if ring_px[0] != ring_px[-1]:
+                ring_px.append(ring_px[0])
+            ring_geo = polygon_pixel_to_geo(ring_px, tile_transform)
+            cx = sum(p[0] for p in ring_px[:-1]) / (len(ring_px) - 1)
+            cy = sum(p[1] for p in ring_px[:-1]) / (len(ring_px) - 1)
+            centroid_geo = point_pixel_to_geo(cx, cy, tile_transform)
+        else:
+            ring_geo = box_pixel_to_geo((x1, y1, x2, y2), tile_transform)
+            centroid_geo = point_pixel_to_geo((x1 + x2) / 2, (y1 + y2) / 2, tile_transform)
         # NOTE: do not assume ring_geo[0] is the min corner and ring_geo[2] is
         # the max corner. box_pixel_to_geo() maps pixel-space corners in
         # pixel order (x1,y1)->(x2,y2), but a standard north-up affine

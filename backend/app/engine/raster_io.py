@@ -145,6 +145,18 @@ def _window_grid(width: int, height: int, tile_size: int, overlap_frac: float) -
             break
 
 
+def count_tiles(width: int, height: int, tile_size: int, overlap: float) -> int:
+    """How many tiles iter_tiles() will yield, for an honest progress total."""
+    return sum(1 for _ in _window_grid(width, height, tile_size, overlap))
+
+
+def raster_crs_and_size(path: str | Path) -> tuple[str | None, int, int]:
+    import rasterio  # lazy import
+
+    with rasterio.open(path) as ds:
+        return (ds.crs.to_string() if ds.crs else None), ds.width, ds.height
+
+
 def iter_tiles(
     path: str | Path,
     tile_size: int = settings.DEFAULT_TILE_SIZE,

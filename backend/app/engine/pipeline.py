@@ -20,7 +20,7 @@ from typing import Callable, Iterable
 import numpy as np
 
 from app.core.compute import DeviceOption, resolve_device
-from app.engine.geo import GeoTransform
+from app.engine.geo import GeoTransform, reproject_detections_to_wgs84
 from app.engine.postprocess import merge_and_dedupe
 from app.models.base import DetectionModel
 
@@ -51,6 +51,8 @@ class DetectionEngine:
         nms_iou: float = 0.45,
         progress_cb: Callable[[int, int | None], None] | None = None,
         allowed_gpu_indices: list[int] | None = None,
+        source_crs: str | None = None,             # raster CRS; output is reprojected to WGS84
+        tiles_total: int | None = None,            # for progress reporting only
     ) -> RunResult:
         t0 = time.time()
 
@@ -71,10 +73,11 @@ class DetectionEngine:
             all_global_detections.extend(geo_dets)
             tiles_processed += 1
             if progress_cb:
-                progress_cb(tiles_processed, None)
+                progress_cb(tiles_processed, tiles_total)
 
         raw_count = len(all_global_detections)
         merged = merge_and_dedupe(all_global_detections, iou_threshold=nms_iou)
+        merged, output_crs = reproject_detections_to_wgs84(merged, source_crs)
 
         export = self.model.export_results(
             str(out_dir),
@@ -84,6 +87,8 @@ class DetectionEngine:
                 "device_reason": profile.reason,
                 "tiles_processed": tiles_processed,
                 "raw_detection_count": raw_count,
+                "source_crs": source_crs,
+                "crs": output_crs,
             },
         )
 

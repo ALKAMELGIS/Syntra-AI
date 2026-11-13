@@ -21,9 +21,10 @@ def build_model(model_id: str) -> DetectionModel:
 
     metadata = get_metadata(model_id)
 
-    if model_id in ("car_detection", "ship_detection", "aircraft_detection"):
-        from app.models.generic_detector import GenericYoloDetector
-        return GenericYoloDetector(metadata)
+    from app.models.aerial_obb_detector import DOTA_CLASS_MAP
+    if model_id in DOTA_CLASS_MAP:
+        from app.models.aerial_obb_detector import AerialObbDetector
+        return AerialObbDetector(metadata)
 
     if model_id == "field_boundary_segmentation":
         from app.models.segmentation import FieldBoundarySegmenter

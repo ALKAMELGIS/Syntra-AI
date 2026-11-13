@@ -72,3 +72,45 @@ def point_pixel_to_geo(x: float, y: float, transform: GeoTransform) -> tuple[flo
 
 def polygon_pixel_to_geo(ring_px: list[tuple[float, float]], transform: GeoTransform) -> list[tuple[float, float]]:
     return [transform.pixel_to_geo(c, r) for c, r in ring_px]
+
+
+WGS84 = "EPSG:4326"
+
+
+def reproject_detections_to_wgs84(detections: list[dict], source_crs: str | None) -> tuple[list[dict], str | None]:
+    """Reproject merged detections from the raster's CRS to WGS84 lon/lat.
+
+    GeoJSON (RFC 7946), KML and Leaflet all expect WGS84. Cross-tile NMS runs
+    *before* this, in the raster's own CRS, where projected units are metres
+    and IoU is meaningful.
+
+    Returns (detections, output_crs). With no source CRS the coordinates are
+    left untouched and output_crs is None: there is no honest way to place an
+    unreferenced raster on Earth, so we don't pretend to.
+    """
+    if not source_crs:
+        return detections, None
+    from pyproj import CRS, Transformer  # lazy: GDAL/PROJ stack
+
+    src = CRS.from_user_input(source_crs)
+    if src == CRS.from_epsg(4326):
+        return detections, WGS84
+    tf = Transformer.from_crs(src, CRS.from_epsg(4326), always_xy=True)
+
+    def ring(points):
+        xs, ys = zip(*points)
+        lons, lats = tf.transform(xs, ys)
+        return [(float(lo), float(la)) for lo, la in zip(lons, lats)]
+
+    out = []
+    for d in detections:
+        d = dict(d)
+        if d.get("polygon_geo"):
+            d["polygon_geo"] = ring(d["polygon_geo"])
+            lons = [pt[0] for pt in d["polygon_geo"]]
+            lats = [pt[1] for pt in d["polygon_geo"]]
+            d["box_geo"] = (min(lons), min(lats), max(lons), max(lats))
+        if d.get("centroid_geo"):
+            d["centroid_geo"] = ring([d["centroid_geo"]])[0]
+        out.append(d)
+    return out, WGS84

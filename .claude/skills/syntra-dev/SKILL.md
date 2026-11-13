@@ -21,8 +21,13 @@ real, what is written but unrun, and how it was verified.
   and its `build_model()` / `predict()` raises `NotProductionReadyError`. Never
   return placeholder detections to make a demo look complete; the user has
   explicitly rejected that.
-- A model running on proxy weights (stock COCO YOLO for cars, ships,
-  aircraft) is `VALIDATION`, shown as "Unvalidated" in the UI.
+- A model running on pretrained but unbenchmarked weights (the DOTA-OBB
+  models for cars, ships, aircraft, oil tanks, bridges) is `VALIDATION`,
+  shown as "Unvalidated" in the UI. Map new categories by DOTA class *name*
+  in `DOTA_CLASS_MAP`, never by index.
+- Exported geometry is WGS84 lon/lat. Do cross-tile merging in the raster
+  CRS, then reproject (`reproject_detections_to_wgs84`). Never write
+  projected coordinates into GeoJSON or KML.
 - When you add or change a capability, update its README row: what changed,
   and how you verified it (test name, live check, or "not run, needs X").
 - Never claim something ran if it did not. "Written, not built" is a fine
