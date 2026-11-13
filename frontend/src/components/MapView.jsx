@@ -173,7 +173,7 @@ export default function MapView({
   layers, detectionsVisible = true, onToggleDetections,
   aoi, onAoiChange, measurement, onMeasurementChange, onOpenDatasetManager,
   onSelectLibraryImage, currentImageId, sourceImage,
-  analysisOpen, onToggleAnalysis, analysisCount,
+  analysisOpen, onToggleAnalysis, analysisCount, analysisPanel,
 }) {
   const [basemap, setBasemap] = useState("satellite");
   const [legendOpen, setLegendOpen] = useState(true);
@@ -254,6 +254,7 @@ export default function MapView({
         />
         <AnnotationTool active={annotateOpen} sourceImage={sourceImage} />
       </MapContainer>
+      {analysisOpen && analysisPanel}
       <ImageLibrary
         open={libraryOpen}
         onClose={() => setLibraryOpen(false)}
@@ -288,10 +289,10 @@ export default function MapView({
           {measurement != null && (
             <div className="map-legend-row dim">Measured: {measurement}</div>
           )}
-          <div className="map-legend-row dim">Basemap: {bm.label}</div>
+
           {sourceImage?.filename && (
             <div className="map-legend-row dim">
-              Source: {sourceImage.filename}{!sourceImage.bounds_wgs84 ? " (no CRS — not shown on map)" : ""}
+              {sourceImage.filename}{!sourceImage.bounds_wgs84 ? " · no CRS" : ""}
             </div>
           )}
         </div>
