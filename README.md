@@ -44,6 +44,23 @@ real and has passing tests. The ML models themselves need your GPU box,
 your datasets, and a normal internet connection to install dependencies and
 train/fine-tune.
 
+## Security defaults
+
+The API is safe to run on a single machine out of the box, and has switches
+for when it is exposed to a network (all in `backend/.env.example`):
+
+- Request paths (`image_path`, dataset folders, `out_dir`) must lie inside
+  `SYNTRA_DATA_DIR`; add more folders with `SYNTRA_EXTRA_DATA_ROOTS`.
+  `/api/predict` now takes `image_id` from the image library.
+- Upload filenames are sanitised and capped by `SYNTRA_MAX_UPLOAD_MB`.
+- Library Status install/repair/update (which runs `pip`) only works from
+  the server itself unless `SYNTRA_ALLOW_ENV_ACTIONS=1`.
+- `SYNTRA_API_KEY` turns on a shared key for every `/api/*` route except
+  `/api/health`; set `VITE_API_KEY` in `frontend/.env` to match. This is a
+  LAN gate, not per-user login, which is the next step.
+
+Verified by `backend/tests/test_security_offline.py` (19 tests).
+
 ## Project layout
 
 ```

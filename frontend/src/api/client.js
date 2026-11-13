@@ -1,5 +1,22 @@
 const BASE = "/api";
 
+// Optional shared API key (matches SYNTRA_API_KEY on the backend). Set
+// VITE_API_KEY in frontend/.env for builds that talk to a protected server.
+const API_KEY = import.meta.env.VITE_API_KEY || "";
+
+function request(url, init = {}) {
+  const headers = { ...(init.headers || {}) };
+  if (API_KEY) headers["X-API-Key"] = API_KEY;
+  return fetch(url, { ...init, headers });
+}
+
+// For URLs the browser loads directly (<img>, <a download>), which cannot
+// carry custom headers.
+export function withKey(url) {
+  if (!API_KEY) return url;
+  return `${url}${url.includes("?") ? "&" : "?"}api_key=${encodeURIComponent(API_KEY)}`;
+}
+
 async function handle(res) {
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -13,12 +30,12 @@ async function handle(res) {
 }
 
 export const api = {
-  listModels: () => fetch(`${BASE}/models`).then(handle),
-  getModel: (modelId) => fetch(`${BASE}/models/${modelId}`).then(handle),
-  gsdCheck: (modelId, gsd) => fetch(`${BASE}/models/${modelId}/gsd-check?gsd=${gsd}`).then(handle),
-  deleteModel: (modelId) => fetch(`${BASE}/models/${modelId}`, { method: "DELETE" }).then(handle),
-  listImages: () => fetch(`${BASE}/images`).then(handle),
-  getImage: (imageId) => fetch(`${BASE}/images/${imageId}`).then(handle),
+  listModels: () => request(`${BASE}/models`).then(handle),
+  getModel: (modelId) => request(`${BASE}/models/${modelId}`).then(handle),
+  gsdCheck: (modelId, gsd) => request(`${BASE}/models/${modelId}/gsd-check?gsd=${gsd}`).then(handle),
+  deleteModel: (modelId) => request(`${BASE}/models/${modelId}`, { method: "DELETE" }).then(handle),
+  listImages: () => request(`${BASE}/images`).then(handle),
+  getImage: (imageId) => request(`${BASE}/images/${imageId}`).then(handle),
   // Uses XMLHttpRequest (not fetch) because only XHR exposes real upload
   // progress events — needed for honest percentage feedback on multi-GB
   // GeoTIFF uploads, instead of a static "Uploading…" that looks frozen.
@@ -28,6 +45,7 @@ export const api = {
       form.append("file", file);
       const xhr = new XMLHttpRequest();
       xhr.open("POST", `${BASE}/images`);
+      if (API_KEY) xhr.setRequestHeader("X-API-Key", API_KEY);
       xhr.upload.onprogress = (e) => {
         if (onProgress && e.lengthComputable) onProgress(e.loaded / e.total);
       };
@@ -47,73 +65,74 @@ export const api = {
       xhr.onerror = () => reject(new Error("Network error during upload."));
       xhr.send(form);
     }),
-  devices: () => fetch(`${BASE}/compute`).then(handle),
+  devices: () => request(`${BASE}/compute`).then(handle),
   startPrediction: (payload) =>
-    fetch(`${BASE}/predict`, {
+    request(`${BASE}/predict`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     }).then(handle),
-  jobStatus: (jobId) => fetch(`${BASE}/predict/${jobId}`).then(handle),
-  getGeojson: (jobId, modelId) => fetch(`${BASE}/results/${jobId}/${modelId}`).then(handle),
-  listDatasetVersions: (modelId) => fetch(`${BASE}/datasets/${modelId}/versions`).then(handle),
+  jobStatus: (jobId) => request(`${BASE}/predict/${jobId}`).then(handle),
+  getGeojson: (jobId, modelId) => request(`${BASE}/results/${jobId}/${modelId}`).then(handle),
+  listDatasetVersions: (modelId) => request(`${BASE}/datasets/${modelId}/versions`).then(handle),
   getDatasetVersion: (modelId, versionId) =>
-    fetch(`${BASE}/datasets/${modelId}/versions/${versionId}`).then(handle),
+    request(`${BASE}/datasets/${modelId}/versions/${versionId}`).then(handle),
   prepareDataset: (payload) =>
-    fetch(`${BASE}/datasets/prepare`, {
+    request(`${BASE}/datasets/prepare`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     }).then(handle),
-  getEnvironment: () => fetch(`${BASE}/environment`).then(handle),
+  getEnvironment: () => request(`${BASE}/environment`).then(handle),
   startEnvironmentAction: (action, build, targets) =>
-    fetch(`${BASE}/environment/actions`, {
+    request(`${BASE}/environment/actions`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action, build, targets: targets && targets.length ? targets : null }),
     }).then(handle),
-  environmentActionStatus: (jobId) => fetch(`${BASE}/environment/actions/${jobId}`).then(handle),
-  usageSummary: () => fetch(`${BASE}/usage`).then(handle),
+  environmentActionStatus: (jobId) => request(`${BASE}/environment/actions/${jobId}`).then(handle),
+  usageSummary: () => request(`${BASE}/usage`).then(handle),
   resultDownloadUrl: (jobId, modelId, format) =>
-    format === "geojson" ? `${BASE}/results/${jobId}/${modelId}` : `${BASE}/results/${jobId}/${modelId}/${format}`,
+    withKey(format === "geojson" ? `${BASE}/results/${jobId}/${modelId}` : `${BASE}/results/${jobId}/${modelId}/${format}`),
+  imagePreviewUrl: (imageId) => withKey(`${BASE}/images/${imageId}/preview.png`),
   // --- Model Setup wizard: Dataset export + Train steps ---
   exportDataset: (payload) =>
-    fetch(`${BASE}/training/export-dataset`, {
+    request(`${BASE}/training/export-dataset`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     }).then(handle),
-  exportDatasetStatus: (jobId) => fetch(`${BASE}/training/export-dataset/${jobId}`).then(handle),
+  exportDatasetStatus: (jobId) => request(`${BASE}/training/export-dataset/${jobId}`).then(handle),
   exportDatasetCancel: (jobId) =>
-    fetch(`${BASE}/training/export-dataset/${jobId}/cancel`, { method: "POST" }).then(handle),
+    request(`${BASE}/training/export-dataset/${jobId}/cancel`, { method: "POST" }).then(handle),
   startTraining: (payload) =>
-    fetch(`${BASE}/training/train`, {
+    request(`${BASE}/training/train`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     }).then(handle),
-  trainingStatus: (jobId) => fetch(`${BASE}/training/train/${jobId}`).then(handle),
+  trainingStatus: (jobId) => request(`${BASE}/training/train/${jobId}`).then(handle),
   trainingCancel: (jobId) =>
-    fetch(`${BASE}/training/train/${jobId}/cancel`, { method: "POST" }).then(handle),
+    request(`${BASE}/training/train/${jobId}/cancel`, { method: "POST" }).then(handle),
   // Closes the Train -> Detect loop: turns a finished run's best.pt into a
   // real, selectable model (class names read back from that run's own
   // data.yaml server-side) -- see app.models.custom_registry.
   registerTrainedModel: (jobId, payload) =>
-    fetch(`${BASE}/training/train/${jobId}/register-model`, {
+    request(`${BASE}/training/train/${jobId}/register-model`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     }).then(handle),
   // --- Annotate step: class-labeled boxes/polygons saved per image ---
-  listAnnotations: (imageId) => fetch(`${BASE}/images/${imageId}/annotations`).then(handle),
+  listAnnotations: (imageId) => request(`${BASE}/images/${imageId}/annotations`).then(handle),
   addAnnotation: (imageId, payload) =>
-    fetch(`${BASE}/images/${imageId}/annotations`, {
+    request(`${BASE}/images/${imageId}/annotations`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     }).then(handle),
   deleteAnnotation: (imageId, annotationId) =>
-    fetch(`${BASE}/images/${imageId}/annotations/${annotationId}`, { method: "DELETE" }).then(handle),
+    request(`${BASE}/images/${imageId}/annotations/${annotationId}`, { method: "DELETE" }).then(handle),
   clearAnnotations: (imageId) =>
-    fetch(`${BASE}/images/${imageId}/annotations`, { method: "DELETE" }).then(handle),
+    request(`${BASE}/images/${imageId}/annotations`, { method: "DELETE" }).then(handle),
 };

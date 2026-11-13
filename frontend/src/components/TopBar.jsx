@@ -168,8 +168,8 @@ export default function TopBar({ view, onViewChange, devices, enabledGpus, onTog
     <div className="topbar">
       <div className="topbar-left">
         <div className="brand">
-          <div className="brand-mark" />
-          <span className="brand-name">SYNTRA AI</span>
+          <div className="brand-mark" aria-hidden="true" />
+          <span className="brand-name">Syntra AI</span>
           <span className="brand-sub">Detection Engine</span>
         </div>
         <FileMenu hasImage={hasImage} hasJob={hasJob} onExport={onExport} />
@@ -177,10 +177,10 @@ export default function TopBar({ view, onViewChange, devices, enabledGpus, onTog
 
       <div className="topbar-tabs">
         <button className={`tab-button ${view === "detect" ? "active" : ""}`} onClick={() => onViewChange("detect")}>
-          <IconMap /> Full Map
+          <IconMap /> Full map
         </button>
         <button className={`tab-button ${view === "models" ? "active" : ""}`} onClick={() => onViewChange("models")}>
-          <IconDashboard /> Model Setup
+          <IconDashboard /> Model setup
         </button>
       </div>
 

@@ -10,13 +10,14 @@ from __future__ import annotations
 
 import threading
 import uuid
-from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel
 
 from app.core.compute import DeviceOption
 from app.core.config import settings
+from app.core.image_library import find_entry_by_image_id
+from app.core.security import confine_path
 from app.models.base import ModelStatus
 from app.models.registry import get_metadata
 from app.models.stats import record_run
@@ -28,7 +29,11 @@ _LOCK = threading.Lock()
 
 
 class PredictRequest(BaseModel):
-    image_path: str
+    # Preferred: the library id returned by POST /api/images. The server maps
+    # it to a file inside UPLOAD_DIR, so clients never send raw paths.
+    image_id: str | None = None
+    # Legacy: a path, accepted only if it resolves inside an allowed data root.
+    image_path: str | None = None
     model_id: str
     device: DeviceOption = DeviceOption.AUTO
     confidence_threshold: float | None = None
@@ -72,6 +77,17 @@ def _run_job(job_id: str, req: PredictRequest):
         record_run(settings.DATA_DIR, req.model_id, status="error")
 
 
+def _resolve_image_path(req: PredictRequest) -> str:
+    if req.image_id:
+        entry = find_entry_by_image_id(settings.UPLOAD_DIR, req.image_id)
+        if entry is None:
+            raise HTTPException(status_code=404, detail=f"No library image with id '{req.image_id}'.")
+        return str(confine_path(entry["path"], field="image_id", must_exist=True))
+    if req.image_path:
+        return str(confine_path(req.image_path, field="image_path", must_exist=True))
+    raise HTTPException(status_code=400, detail="Provide image_id (preferred) or image_path.")
+
+
 @router.post("")
 def start_prediction(req: PredictRequest, background_tasks: BackgroundTasks):
     meta = get_metadata(req.model_id)
@@ -83,8 +99,7 @@ def start_prediction(req: PredictRequest, background_tasks: BackgroundTasks):
                 f"Refusing to generate fake detections. Details: {meta.notes}"
             ),
         )
-    if not Path(req.image_path).exists():
-        raise HTTPException(status_code=404, detail=f"Image not found: {req.image_path}")
+    req = req.model_copy(update={"image_path": _resolve_image_path(req)})
 
     job_id = str(uuid.uuid4())
     with _LOCK:

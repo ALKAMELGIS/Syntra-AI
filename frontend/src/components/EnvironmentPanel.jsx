@@ -32,9 +32,11 @@ function LibraryRow({ r, checked, open, onToggleCheck, onToggleOpen, onInstallOn
           ⋯
         </button>
         <span className="lib-row-spacer" />
-        <span className={`status-pill ${r.installed ? "status-ready" : "status-not_production_ready"}`}>
-          {r.installed ? (r.detail ? r.detail : "Installed") : "Missing"}
-        </span>
+        {r.installed ? (
+          <span className="lib-row-version">{r.detail || "Installed"}</span>
+        ) : (
+          <span className="status-pill status-missing">Missing</span>
+        )}
       </div>
       {open && (
         <div className="lib-row-details">
@@ -112,6 +114,7 @@ export default function EnvironmentPanel() {
   }
 
   const busy = job && (job.status === "queued" || job.status === "running");
+  const locked = report?.actions_allowed === false;
   const missing = useMemo(() => (report ? report.results.filter((r) => !r.installed) : []), [report]);
   const selectedList = useMemo(() => Array.from(selected), [selected]);
   const installingModule = busy && job.targets && job.targets.length === 1 ? job.targets[0] : null;
@@ -170,8 +173,8 @@ export default function EnvironmentPanel() {
       {/* --- Card 1: Library Status --- */}
       <div className="env-card">
         <div className="models-dashboard-header">
-          <p className="section-title" style={{ margin: 0 }}>Library Status</p>
-          <span className={`status-pill ${report.production_ready ? "status-ready" : "status-not_production_ready"}`}>
+          <p className="section-title" style={{ margin: 0 }}>Library status</p>
+          <span className={`status-pill ${report.production_ready ? "status-ready" : "status-validation"}`}>
             {report.production_ready
               ? "Ready for training and detection"
               : `${report.missing_count}/${report.total_count} missing`}
@@ -241,7 +244,7 @@ export default function EnvironmentPanel() {
 
       {/* --- Card 2: Installation Options --- */}
       <div className="env-card">
-        <p className="section-title" style={{ margin: "0 0 10px" }}>Installation Options</p>
+        <p className="section-title" style={{ margin: "0 0 10px" }}>Installation options</p>
 
         <label className="build-select build-select-block">
           Build
@@ -252,6 +255,13 @@ export default function EnvironmentPanel() {
           </select>
         </label>
 
+        {locked && (
+          <p className="env-locked-note">
+            Package installs are disabled for remote browsers. Run them on the server, or set
+            {" "}<code>SYNTRA_ALLOW_ENV_ACTIONS=1</code> in <code>backend/.env</code>.
+          </p>
+        )}
+
         <div className="install-buttons-grid">
           <button className="chip-button" onClick={() => runAction("check")} disabled={busy}>
             Check Dependencies
@@ -259,23 +269,23 @@ export default function EnvironmentPanel() {
           <button
             className="chip-button chip-primary"
             onClick={() => runAction("install", selectedList.length ? selectedList : null)}
-            disabled={busy || (selectedList.length === 0 && missing.length === 0)}
+            disabled={locked || busy || (selectedList.length === 0 && missing.length === 0)}
           >
-            {selectedList.length ? `Install Selected (${selectedList.length})` : "Install Libraries"}
+            {selectedList.length ? `Install selected (${selectedList.length})` : "Install libraries"}
           </button>
           <button
             className="chip-button"
             onClick={() => runAction("repair", selectedList.length ? selectedList : null)}
-            disabled={busy}
+            disabled={locked || busy}
           >
-            {selectedList.length ? `Repair Selected (${selectedList.length})` : "Repair Installation"}
+            {selectedList.length ? `Repair selected (${selectedList.length})` : "Repair installation"}
           </button>
           <button
             className="chip-button"
             onClick={() => runAction("update", selectedList.length ? selectedList : null)}
-            disabled={busy}
+            disabled={locked || busy}
           >
-            {selectedList.length ? `Update Selected (${selectedList.length})` : "Update Libraries"}
+            {selectedList.length ? `Update selected (${selectedList.length})` : "Update libraries"}
           </button>
         </div>
 

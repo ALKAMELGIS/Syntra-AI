@@ -25,18 +25,22 @@ jobs:
           python-version: "3.11"
 
       - name: Install lightweight test dependencies
-        run: pip install numpy pillow opencv-python-headless
+        run: pip install numpy pillow opencv-python-headless pyyaml python-dotenv pytest httpx fastapi==0.115.6 pydantic==2.10.4 python-multipart==0.0.20
 
-      - name: Run offline test suite
+      - name: Run offline test suite (every tests/test_*.py)
         working-directory: backend
-        run: |
-          python tests/test_pipeline_offline.py
-          python tests/test_datasets_offline.py
-          python tests/test_benchmark_offline.py
-          python tests/test_export_formats_offline.py
-          python tests/test_measurements_offline.py
-          python tests/test_stats_offline.py
-          python tests/test_shapefile_export_offline.py
+        run: python -m pytest -q tests
+
+  frontend-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install and build
+        working-directory: frontend
+        run: npm install && npm run build
 
   # Full-stack job: installs requirements.txt (torch/ultralytics/rasterio
   # included) and would run model-level tests once any exist. Currently a

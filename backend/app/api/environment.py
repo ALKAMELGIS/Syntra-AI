@@ -20,9 +20,10 @@ import uuid
 from enum import Enum
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from pydantic import BaseModel
 
+from app.core.security import environment_actions_allowed
 from app.diagnostics.environment import build_report, resolve_install_targets
 
 router = APIRouter(prefix="/api/environment", tags=["environment"])
@@ -109,12 +110,23 @@ def _run_job(job_id: str, cmd: list[str]):
 
 
 @router.get("")
-def get_environment():
-    return build_report()
+def get_environment(request: Request):
+    report = build_report()
+    if isinstance(report, dict):
+        report["actions_allowed"] = environment_actions_allowed(request)
+    return report
 
 
 @router.post("/actions")
-def start_action(req: ActionRequest, background_tasks: BackgroundTasks):
+def start_action(req: ActionRequest, background_tasks: BackgroundTasks, request: Request):
+    if not environment_actions_allowed(request):
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Installing packages from the web UI is disabled for remote clients. "
+                "Run it on the server itself, or set SYNTRA_ALLOW_ENV_ACTIONS=1 in backend/.env."
+            ),
+        )
     if not REQUIREMENTS_PATH.exists():
         raise HTTPException(status_code=500, detail=f"requirements.txt not found at {REQUIREMENTS_PATH}")
 

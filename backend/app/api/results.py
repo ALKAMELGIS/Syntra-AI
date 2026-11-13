@@ -16,19 +16,25 @@ from app.engine.shapefile_export import write_shapefile
 router = APIRouter(prefix="/api/results", tags=["results"])
 
 
+def _result_path(job_id: str, model_id: str) -> Path:
+    """Map (job_id, model_id) to a GeoJSON file, refusing anything that
+    would escape RESULTS_DIR (e.g. a job_id of '..')."""
+    root = settings.RESULTS_DIR.resolve()
+    path = (settings.RESULTS_DIR / job_id / f"{model_id}.geojson").resolve()
+    if root not in path.parents or not path.exists():
+        raise HTTPException(status_code=404, detail="No results found for this job/model.")
+    return path
+
+
 @router.get("/{job_id}/{model_id}")
 def get_geojson(job_id: str, model_id: str):
-    path = settings.RESULTS_DIR / job_id / f"{model_id}.geojson"
-    if not path.exists():
-        raise HTTPException(status_code=404, detail="No results found for this job/model.")
+    path = _result_path(job_id, model_id)
     return json.loads(path.read_text())
 
 
 @router.get("/{job_id}/{model_id}/kml")
 def get_kml(job_id: str, model_id: str):
-    path = settings.RESULTS_DIR / job_id / f"{model_id}.geojson"
-    if not path.exists():
-        raise HTTPException(status_code=404, detail="No results found for this job/model.")
+    path = _result_path(job_id, model_id)
     geojson = json.loads(path.read_text())
     kml = geojson_to_kml(geojson, document_name=f"Syntra AI — {model_id}")
     return Response(content=kml, media_type="application/vnd.google-earth.kml+xml")
@@ -36,9 +42,7 @@ def get_kml(job_id: str, model_id: str):
 
 @router.get("/{job_id}/{model_id}/shapefile")
 def get_shapefile(job_id: str, model_id: str):
-    path = settings.RESULTS_DIR / job_id / f"{model_id}.geojson"
-    if not path.exists():
-        raise HTTPException(status_code=404, detail="No results found for this job/model.")
+    path = _result_path(job_id, model_id)
     geojson = json.loads(path.read_text())
 
     with tempfile.TemporaryDirectory() as tmp:

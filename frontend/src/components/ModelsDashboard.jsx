@@ -345,7 +345,7 @@ export default function ModelsDashboard() {
       <EnvironmentPanel />
 
       <div className="models-dashboard-header" style={{ marginTop: 22 }}>
-        <p className="section-title" style={{ margin: 0 }}>Detection Models — Status</p>
+        <p className="section-title" style={{ margin: 0 }}>Detection models — Status</p>
         <button className="run-button" style={{ width: "auto", marginTop: 0, padding: "6px 14px" }} onClick={refresh}>
           Refresh
         </button>
