@@ -135,6 +135,7 @@ export default function App() {
             image_id: img.image_id,
             model_id: modelId,
             gpu_indices: gpuIndices,
+            ...(aoi ? { aoi } : {}),
           });
           setJobs((prev) => ({
             ...prev,
@@ -216,6 +217,8 @@ export default function App() {
             onImageUploaded={setImage}
             onRun={handleRun}
             running={running}
+            hasAoi={!!aoi}
+            onClearAoi={() => setAoi(null)}
           />
           <MapView
             layers={mapLayers}

@@ -19,7 +19,7 @@ const STATUS_LABEL = {
   disabled: "Disabled",
 };
 
-export default function Sidebar({ models, selectedModels, onToggleModel, image, onImageUploaded, onRun, running }) {
+export default function Sidebar({ models, selectedModels, onToggleModel, image, onImageUploaded, onRun, running, hasAoi = false, onClearAoi }) {
   const fileInput = useRef(null);
   const batchInput = useRef(null);
   const [mode, setMode] = useState("single"); // "single" | "batch"
@@ -243,8 +243,17 @@ export default function Sidebar({ models, selectedModels, onToggleModel, image, 
         ))}
       </div>
 
+      {hasAoi && (
+        <div className="aoi-chip">
+          <span className="aoi-chip-swatch" />
+          <span className="aoi-chip-label">Drawn area only</span>
+          <button className="aoi-chip-clear" title="Analyse the whole image" onClick={onClearAoi}>
+            <IconClose />
+          </button>
+        </div>
+      )}
       <button className="run-button" disabled={!canRun} onClick={handleRunClick}>
-        {running ? "Running…" : <><IconPlay /> Run prediction</>}
+        {running ? "Running…" : <><IconPlay /> {hasAoi ? "Run in area" : "Run prediction"}</>}
       </button>
     </div>
   );

@@ -37,11 +37,17 @@ function JobRow({ entry, color }) {
         <span className="analysis-swatch" style={{ background: color }} />
         <span className="analysis-name">{modelMeta?.name || job.model_id}</span>
         {job.status === "completed" && job.result && (
-          <span className="analysis-count mono">{job.result.final_detection_count}</span>
+          <span className="analysis-count mono">
+            {job.result.summary ? `${job.result.summary.vegetation_area_ha} ha` : job.result.final_detection_count}
+          </span>
         )}
       </div>
       <div className="analysis-row-meta">
         <span className="analysis-file">{stripUuid(imageName)}</span>
+        {job.has_aoi && <span className="analysis-tag">Area</span>}
+        {job.result?.summary?.tree_candidates != null && (
+          <span className="analysis-meta mono" title="Estimated tree crowns">{job.result.summary.tree_candidates} trees</span>
+        )}
         <span className="analysis-meta mono">{meta}</span>
         {unvalidated && <span className="status-pill status-validation">Unvalidated</span>}
       </div>

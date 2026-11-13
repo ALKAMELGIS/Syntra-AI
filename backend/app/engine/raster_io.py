@@ -153,6 +153,8 @@ def iter_tiles(
     overlap: float = settings.DEFAULT_TILE_OVERLAP,
     rgb_plan=None,
     on_skip=None,
+    window: tuple[int, int, int, int] | None = None,
+    tile_filter=None,
 ) -> Iterator[Tile]:
     """
     Stream tiles from a GeoTIFF/orthomosaic using windowed reads (rasterio),
@@ -162,6 +164,10 @@ def iter_tiles(
     from the planned bands only, stretched to 8-bit RGB with the scene-wide
     stretch, and tiles with no valid pixels are skipped (`on_skip()` is
     called for each, so progress can still count them).
+
+    `window` (col_off, row_off, width, height) limits tiling to part of the
+    raster (an AOI's bounding box); `tile_filter(transform, col, row, w, h)`
+    can skip tiles inside it (counted through `on_skip` too).
     """
     import rasterio  # lazy import
     from rasterio.windows import Window
@@ -173,17 +179,23 @@ def iter_tiles(
         if rgb_plan is not None:
             uniq = sorted(set(rgb_plan.bands))
             order = [uniq.index(b) for b in rgb_plan.bands]
-        for col_off, row_off, w, h in _window_grid(ds.width, ds.height, tile_size, overlap):
-            window = Window(col_off, row_off, w, h)
+        wc, wr, ww, wh = window or (0, 0, ds.width, ds.height)
+        for col_off, row_off, w, h in _window_grid(ww, wh, tile_size, overlap):
+            col_off, row_off = col_off + wc, row_off + wr
+            if tile_filter is not None and not tile_filter(ds.transform, col_off, row_off, w, h):
+                if on_skip:
+                    on_skip()
+                continue
+            window_ = Window(col_off, row_off, w, h)
             if rgb_plan is not None:
-                raw = ds.read(indexes=uniq, window=window)          # (len(uniq), h, w)
+                raw = ds.read(indexes=uniq, window=window_)          # (len(uniq), h, w)
                 if not tile_has_data(raw, rgb_plan.nodata):
                     if on_skip:
                         on_skip()
                     continue
                 data = to_uint8(raw[order], rgb_plan.lo, rgb_plan.hi)
             else:
-                data = ds.read(window=window)                 # (bands, h, w)
+                data = ds.read(window=window_)                 # (bands, h, w)
                 data = np.moveaxis(data, 0, -1)                # -> (h, w, bands)
                 if data.shape[-1] >= 3:
                     data = data[..., :3]

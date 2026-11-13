@@ -23,9 +23,9 @@ from app.models.registry import CATALOG, get_metadata, list_catalog  # noqa: E40
 from app.models.segmentation import NotProductionReadyError  # noqa: E402
 
 
-def test_catalog_has_19_unique_entries():
+def test_catalog_has_20_unique_entries():
     cat = list_catalog()
-    assert len(cat) == 19
+    assert len(cat) == 20
     ids = [m.model_id for m in cat]
     assert len(ids) == len(set(ids)), "duplicate model_id in catalog"
 
