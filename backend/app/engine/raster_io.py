@@ -74,35 +74,25 @@ def read_preview_png(path: str | Path, max_dim: int = 1024) -> bytes:
     from rasterio.enums import Resampling
     from PIL import Image
 
+    from app.engine.raster_prep import plan_rgb, to_uint8
+
+    plan = plan_rgb(path)
     with rasterio.open(path) as ds:
         scale = min(1.0, max_dim / max(ds.width, ds.height))
         out_w = max(1, round(ds.width * scale))
         out_h = max(1, round(ds.height * scale))
-        band_count = min(ds.count, 3)
-        data = ds.read(
-            indexes=list(range(1, band_count + 1)),
-            out_shape=(band_count, out_h, out_w),
-            resampling=Resampling.bilinear,
-        )
-
-    data = np.moveaxis(data, 0, -1)  # (h, w, bands)
-    if data.shape[-1] == 1:
-        data = np.repeat(data, 3, axis=-1)
-
-    # Stretch whatever bit depth the source is (8/16-bit) to displayable uint8
-    # using real per-band min/max from the decimated sample, not a hardcoded
-    # guess — some orthomosaics are 16-bit and would render solid black
-    # without this.
-    data = data.astype(np.float32)
-    lo = np.percentile(data, 1, axis=(0, 1), keepdims=True)
-    hi = np.percentile(data, 99, axis=(0, 1), keepdims=True)
-    span = np.where(hi > lo, hi - lo, 1)
-    data = np.clip((data - lo) / span, 0, 1)
-    data = (data * 255).astype(np.uint8)
+        uniq = sorted(set(plan.bands))
+        sample = ds.read(indexes=uniq, out_shape=(len(uniq), out_h, out_w), resampling=Resampling.nearest)
+    ordered = np.stack([sample[uniq.index(b)] for b in plan.bands])
+    # Same band choice and scene-wide stretch the detector sees, so what the
+    # analyst looks at on the map is what the model was given.
+    data = to_uint8(ordered, plan.lo, plan.hi)
 
     import io
     buf = io.BytesIO()
-    Image.fromarray(data, mode="RGB").save(buf, format="PNG")
+    nd = 0 if plan.nodata is None else plan.nodata
+    alpha = np.where(np.all(ordered == nd, axis=0), 0, 255).astype(np.uint8)   # empty footprint -> transparent
+    Image.fromarray(np.dstack([data, alpha]), mode="RGBA").save(buf, format="PNG")
     return buf.getvalue()
 
 
@@ -161,24 +151,44 @@ def iter_tiles(
     path: str | Path,
     tile_size: int = settings.DEFAULT_TILE_SIZE,
     overlap: float = settings.DEFAULT_TILE_OVERLAP,
+    rgb_plan=None,
+    on_skip=None,
 ) -> Iterator[Tile]:
     """
     Stream tiles from a GeoTIFF/orthomosaic using windowed reads (rasterio),
     never materializing the full raster in memory.
+
+    With an `rgb_plan` (app.engine.raster_prep.plan_rgb) each tile is read
+    from the planned bands only, stretched to 8-bit RGB with the scene-wide
+    stretch, and tiles with no valid pixels are skipped (`on_skip()` is
+    called for each, so progress can still count them).
     """
     import rasterio  # lazy import
     from rasterio.windows import Window
 
+    from app.engine.raster_prep import tile_has_data, to_uint8
+
     with rasterio.open(path) as ds:
         base_transform = GeoTransform.from_rasterio_transform(ds.transform)
+        if rgb_plan is not None:
+            uniq = sorted(set(rgb_plan.bands))
+            order = [uniq.index(b) for b in rgb_plan.bands]
         for col_off, row_off, w, h in _window_grid(ds.width, ds.height, tile_size, overlap):
             window = Window(col_off, row_off, w, h)
-            data = ds.read(window=window)                 # (bands, h, w)
-            data = np.moveaxis(data, 0, -1)                # -> (h, w, bands)
-            if data.shape[-1] >= 3:
-                data = data[..., :3]
+            if rgb_plan is not None:
+                raw = ds.read(indexes=uniq, window=window)          # (len(uniq), h, w)
+                if not tile_has_data(raw, rgb_plan.nodata):
+                    if on_skip:
+                        on_skip()
+                    continue
+                data = to_uint8(raw[order], rgb_plan.lo, rgb_plan.hi)
             else:
-                data = np.repeat(data[..., :1], 3, axis=-1)
+                data = ds.read(window=window)                 # (bands, h, w)
+                data = np.moveaxis(data, 0, -1)                # -> (h, w, bands)
+                if data.shape[-1] >= 3:
+                    data = data[..., :3]
+                else:
+                    data = np.repeat(data[..., :1], 3, axis=-1)
             yield Tile(
                 data=data,
                 col_off=col_off,

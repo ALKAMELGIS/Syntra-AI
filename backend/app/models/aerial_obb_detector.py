@@ -45,14 +45,21 @@ _MODEL_CACHE_LOCK = threading.Lock()
 
 
 def _load_yolo(weights: str, device: str):
+    """ultralytics YOLO for .pt weights; torch-free onnxruntime for .onnx."""
     key = (weights, device)
     with _MODEL_CACHE_LOCK:
         model = _MODEL_CACHE.get(key)
         if model is None:
-            from ultralytics import YOLO  # lazy: needs torch + ultralytics
+            if str(weights).lower().endswith(".onnx"):
+                from app.models.onnx_obb import OnnxObbModel
 
-            model = YOLO(weights)
-            model.to(device)
+                providers = ["CUDAExecutionProvider", "CPUExecutionProvider"] if device.startswith("cuda") else None
+                model = OnnxObbModel(weights, providers=providers)
+            else:
+                from ultralytics import YOLO  # lazy: needs torch + ultralytics
+
+                model = YOLO(weights)
+                model.to(device)
             _MODEL_CACHE[key] = model
         return model
 
@@ -112,6 +119,19 @@ class AerialObbDetector(DetectionModel):
 
         # ultralytics treats numpy input as BGR (OpenCV order); our tiles are RGB.
         tile_bgr = np.ascontiguousarray(tile_rgb[..., ::-1])
+        from app.models.onnx_obb import OnnxObbModel
+        if isinstance(self._model, OnnxObbModel):
+            dets = self._model.predict(tile_bgr, conf=conf, classes=sorted(self._dota_to_ours))
+            return [
+                RawDetection(
+                    box=(float(d.corners[:, 0].min()), float(d.corners[:, 1].min()),
+                         float(d.corners[:, 0].max()), float(d.corners[:, 1].max())),
+                    score=d.score,
+                    class_id=self._dota_to_ours[d.cls],
+                    polygon=[(float(x), float(y)) for x, y in d.corners],
+                )
+                for d in dets if d.cls in self._dota_to_ours
+            ]
         results = self._model.predict(
             source=tile_bgr,
             conf=conf,

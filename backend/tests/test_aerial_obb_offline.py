@@ -126,3 +126,60 @@ def test_axis_aligned_detections_unchanged_without_polygon():
     [geo] = tile_detections_to_global([{"box": (0, 0, 10, 10), "score": 0.5, "class_id": 0}], t, {0: "car"})
     assert len(geo["polygon_geo"]) == 5
     assert geo["box_geo"] == (0.0, 90.0, 10.0, 100.0)
+
+
+# --- torch-free ONNX path ------------------------------------------------------
+def test_onnx_decode_rotated_boxes_and_nms():
+    import math
+
+    from app.models.onnx_obb import decode_obb
+
+    nc = 15
+    # three candidates: two overlapping ships (one should be suppressed), one small vehicle
+    cand = [
+        # cx, cy, w, h, cls, score, angle
+        (100, 100, 40, 10, 1, 0.90, 0.0),
+        (101, 100, 40, 10, 1, 0.80, 0.02),
+        (300, 200, 10, 30, 10, 0.70, 0.0),   # h > w: regularized to w=30, h=10, angle+90deg
+        (500, 500, 20, 20, 1, 0.10, 0.0),    # below conf
+    ]
+    out = np.zeros((4 + nc + 1, len(cand)), dtype=np.float32)
+    for i, (cx, cy, w, h, c, s, a) in enumerate(cand):
+        out[0:4, i] = (cx, cy, w, h)
+        out[4 + c, i] = s
+        out[4 + nc, i] = a
+    dets = decode_obb(out, nc, ratio=0.5, pad_x=0, pad_y=0, conf=0.25, iou=0.45)
+    assert sorted((d.cls, round(d.score, 2)) for d in dets) == [(1, 0.9), (10, 0.7)]
+    ship = next(d for d in dets if d.cls == 1)
+    # coordinates are scaled back by 1/ratio: centre (200, 200), 80 x 20 box, axis-aligned
+    assert np.allclose(ship.corners.mean(0), (200, 200), atol=1e-3)
+    xs, ys = ship.corners[:, 0], ship.corners[:, 1]
+    assert np.isclose(xs.max() - xs.min(), 80, atol=1e-3) and np.isclose(ys.max() - ys.min(), 20, atol=1e-3)
+    car = next(d for d in dets if d.cls == 10)
+    xs, ys = car.corners[:, 0], car.corners[:, 1]
+    assert np.isclose(ys.max() - ys.min(), 60, atol=1e-2)   # long side vertical after regularization
+    assert math.isclose(xs.max() - xs.min(), 20, abs_tol=1e-2)
+
+    assert decode_obb(out, nc, 1.0, 0, 0, conf=0.95) == []
+    assert [d.cls for d in decode_obb(out, nc, 1.0, 0, 0, conf=0.25, classes=[10])] == [10]
+
+
+def test_aerial_detector_uses_onnx_model_when_given(monkeypatch):
+    from app.models import aerial_obb_detector as mod
+    from app.models.onnx_obb import ObbDetection, OnnxObbModel
+
+    class FakeOnnx(OnnxObbModel):
+        def __init__(self):  # no onnxruntime session
+            self.names = DOTA_NAMES
+            self.imgsz = 1024
+
+        def predict(self, image_bgr, conf=0.25, iou=0.45, classes=None, max_det=1000):
+            assert classes == [2]                       # only 'storage tank' requested
+            quad = np.array([[10, 10], [30, 10], [30, 30], [10, 30]], dtype=float)
+            return [ObbDetection(corners=quad, cls=2, score=0.8)]
+
+    det = mod.AerialObbDetector(get_metadata("oil_tank_detection"), weights="x.onnx")
+    det._model = FakeOnnx()
+    det._bind_classes()
+    out = det.predict(np.zeros((64, 64, 3), dtype=np.uint8))
+    assert len(out) == 1 and out[0].class_id == 0 and out[0].box == (10.0, 10.0, 30.0, 30.0)

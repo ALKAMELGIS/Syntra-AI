@@ -40,6 +40,7 @@ class LibraryEntry:
     area_km2: float | None = None
     bounds_wgs84: dict[str, float] | None = None  # {south, west, north, east} — for map ImageOverlay placement
     raster_meta_note: str | None = None  # set when raster metadata couldn't be read
+    health: dict[str, Any] | None = None  # app.engine.raster_health.check_raster(...).to_dict()
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -62,6 +63,7 @@ def build_entry(
     raster_meta: dict[str, Any] | None = None,
     raster_meta_note: str | None = None,
     bounds_wgs84: dict[str, float] | None = None,
+    health: dict[str, Any] | None = None,
 ) -> LibraryEntry:
     raster_meta = raster_meta or {}
     width = raster_meta.get("width")
@@ -84,6 +86,7 @@ def build_entry(
         area_km2=compute_area_km2(width, height, gsd_x_m, gsd_y_m),
         bounds_wgs84=bounds_wgs84,
         raster_meta_note=raster_meta_note,
+        health=health,
     )
 
 

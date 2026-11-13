@@ -25,7 +25,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install lightweight test dependencies
-        run: pip install numpy pillow opencv-python-headless pyyaml python-dotenv pytest httpx pyproj fastapi==0.115.6 pydantic==2.10.4 python-multipart==0.0.20
+        run: pip install numpy pillow opencv-python-headless pyyaml python-dotenv pytest httpx pyproj rasterio fastapi==0.115.6 pydantic==2.10.4 python-multipart==0.0.20
 
       - name: Run offline test suite (every tests/test_*.py)
         working-directory: backend
