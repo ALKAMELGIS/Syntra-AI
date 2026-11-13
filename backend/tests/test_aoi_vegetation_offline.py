@@ -127,6 +127,8 @@ def test_calibration_applied_from_sidecar(tmp_path):
     from app.engine.vegetation import run_vegetation
 
     d = np.full((8, 200, 200), 1000, dtype=np.uint16)
+    d[2] = 1500                                                # sand: red radiance > NIR -> NDVI ~0.06
+    d[2, 20:80, 20:80] = 1000                                  # vegetation: red low
     d[3, 20:80, 20:80] = 1800                                  # band 4 = NIR for SVN3
     path = tmp_path / "SVN3-01_TEST_MUX.tif"
     _write(path, d)
