@@ -57,7 +57,12 @@ SENSOR_ESUN: dict[str, dict[str, float]] = {
 
 DEFAULT_THRESHOLD = {"NDVI": 0.20, "VARI": 0.10}
 TREE_MIN_SPACING_M = 3.0
-TREE_MAX_PIXEL_M = 2.5
+# Crowns of 3-8 m are only resolvable at about 1 m or finer. Tested on a
+# 2 m SuperView MUX scene: a 117 ha continuous intertidal patch produced
+# ~10,000 "maxima" that were just the spacing grid of a flat plateau, so
+# counts are withheld above 1 m and each maximum must also stand out.
+TREE_MAX_PIXEL_M = 1.0
+TREE_MIN_PROMINENCE = 0.05
 
 
 class VegetationError(ValueError):
@@ -128,7 +133,20 @@ def tree_candidates(index: np.ndarray, veg: np.ndarray, pixel_m: float, min_valu
     sm = cv2.GaussianBlur(np.nan_to_num(index, nan=-1).astype(np.float32), (0, 0), sigma)
     k = max(3, int(round(TREE_MIN_SPACING_M / pixel_m)) | 1)
     dil = cv2.dilate(sm, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k)))
-    return (sm >= dil) & veg & (sm >= min_value)
+    # prominence: the crown must rise above the lowest value in a ring ~2 crowns wide
+    low = cv2.erode(sm, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * k + 1, 2 * k + 1)))
+    peaks = (sm >= dil) & veg & (sm >= min_value) & (sm - low >= TREE_MIN_PROMINENCE)
+    # A real crown blurs to a compact peak of a few pixels; a flat patch makes
+    # long ridges of equal "maxima" along its edge. Keep compact components
+    # only, one point each.
+    n, lab, stats, cent = cv2.connectedComponentsWithStats(peaks.astype(np.uint8), connectivity=8)
+    out = np.zeros_like(peaks, dtype=bool)
+    max_px = max(4, (k * k) // 4)
+    for i in range(1, n):
+        if stats[i, cv2.CC_STAT_AREA] <= max_px:
+            cx, cy = cent[i]
+            out[int(round(cy)), int(round(cx))] = True
+    return out
 
 
 def run_vegetation(
@@ -272,8 +290,13 @@ def run_vegetation(
         "radiometry": radiometry,
         "decimation_factor": f,
         "min_area_m2": min_area_m2,
+        "note": (
+            "Positive NDVI means chlorophyll, not necessarily trees: on coasts, intertidal algal mats and "
+            "seagrass in very shallow water also score as vegetation."
+        ),
         "tree_count_note": (
-            "Local maxima of the smoothed index at least 3 m apart: an estimate of crown centres, not a validated count."
+            "Local maxima of the smoothed index at least 3 m apart that stand out from their surroundings: "
+            "an estimate of crown centres, not a validated count."
             if resolve_trees else f"Not computed: pixels are {pixel_m:.1f} m, too coarse to separate crowns."
         ),
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),

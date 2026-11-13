@@ -90,7 +90,8 @@ def test_vegetation_polygons_areas_and_trees(scene, tmp_path):
     assert feats[1]["properties"]["area_m2"] == pytest.approx(100, rel=0.12)
     assert feats[0]["properties"]["density"] == "dense"
     assert feats[0]["properties"]["mean_ndvi"] == pytest.approx(0.71, abs=0.03)
-    assert all(f["properties"]["tree_candidates"] >= 1 for f in feats)
+    # flat squares with a one-pixel bump are not crowns (see the orchard test for real crowns)
+    assert all(f["properties"]["tree_candidates"] <= 1 for f in feats)
     lon, lat = feats[0]["geometry"]["coordinates"][0][0]
     assert 55.2 < lon < 55.3 and 25.0 < lat < 25.1                      # WGS84, not UTM
     s = res["summary"]
@@ -213,3 +214,39 @@ def test_predict_rejects_aoi_off_the_image(scene, tmp_path, monkeypatch):
         job = client.get(f"/api/predict/{r.json()['job_id']}").json()
         assert job["status"] == "completed", job.get("error")
         assert job["result"]["final_detection_count"] == 1 and job["has_aoi"] is True
+
+
+def test_tree_count_needs_distinct_crowns_not_a_flat_patch(tmp_path):
+    """Regression: a uniform vegetated patch used to yield thousands of
+    'trees' (one per spacing cell). Only crowns that stand out count."""
+    from app.engine.vegetation import run_vegetation
+
+    d = np.full((4, 300, 300), 1000, dtype=np.uint16)
+    d[2] = 1500
+    d[2, 20:140, 20:140], d[3, 20:140, 20:140] = 500, 2000          # flat 60x60 m patch
+    yy, xx = np.mgrid[0:300, 0:300]
+    for cy, cx in ((200, 180), (200, 220), (240, 200), (260, 250)):  # 4 crowns, ~5 m wide, 20 m apart
+        crown = (yy - cy) ** 2 + (xx - cx) ** 2 <= 5 ** 2
+        d[2][crown], d[3][crown] = 500, 2600
+    path = tmp_path / "orchard.tif"
+    _write(path, d)
+    run_vegetation(str(path), tmp_path / "out", "veg", min_area_m2=5)
+    feats = json.loads((tmp_path / "out" / "veg.geojson").read_text())["features"]
+    flat = max(feats, key=lambda f: f["properties"]["area_m2"])["properties"]
+    crowns = [f["properties"] for f in feats if f["properties"]["area_m2"] < 200]
+    assert flat["tree_candidates"] <= 2, flat
+    assert len(crowns) == 4 and all(c["tree_candidates"] == 1 for c in crowns), crowns
+
+
+def test_no_tree_count_at_coarse_resolution(tmp_path):
+    from app.engine.vegetation import run_vegetation
+
+    d = np.full((4, 100, 100), 1000, dtype=np.uint16)
+    d[2] = 1500
+    d[2, 20:60, 20:60], d[3, 20:60, 20:60] = 500, 2000
+    path = tmp_path / "coarse.tif"
+    with rasterio.open(path, "w", driver="GTiff", height=100, width=100, count=4, dtype="uint16",
+                       crs="EPSG:32640", transform=from_origin(*ORIGIN, 2.0, 2.0)) as f:
+        f.write(d)
+    res = run_vegetation(str(path), tmp_path / "out", "veg")
+    assert res["summary"]["tree_candidates"] is None and res["final_detection_count"] == 1
