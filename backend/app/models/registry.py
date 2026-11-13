@@ -76,36 +76,34 @@ CATALOG: dict[str, ModelMetadata] = {
         model_id="car_detection",
         name="Car Detection",
         model_type="detection",
-        version="0.1.0-generic-coco",
-        supported_gsd=GsdRange(0.25, 0.50),
+        version="0.2.0-dota-obb",
+        supported_gsd=GsdRange(0.1, 0.6),
         supported_image_sources=["satellite", "drone"],
         supported_formats=["GeoTIFF", "COG"],
         status=ModelStatus.VALIDATION,
         hardware_compatibility=["cpu", "cuda"],
-        default_confidence_threshold=0.40,
-        class_names={0: "car"},
+        default_confidence_threshold=0.35,
+        class_names={0: 'car', 1: 'large_vehicle'},
         notes=(
-            "Running on generic YOLOv8 COCO-pretrained weights ('car' class) as a working "
-            "placeholder — NOT fine-tuned on aerial/nadir imagery and NOT benchmarked. Treat "
-            "counts as indicative only until fine-tuned on a labeled aerial car dataset."
+            "Detects small vehicles (cars, vans) and large vehicles (trucks, buses) as separate classes."
+            " Pretrained on DOTA v1 aerial imagery (YOLO11-OBB, rotated boxes), not yet fine-tuned or benchmarked on your own imagery: check results before relying on counts."
         ),
     ),
     "ship_detection": ModelMetadata(
         model_id="ship_detection",
         name="Ship Detection",
         model_type="detection",
-        version="0.1.0-generic-coco",
-        supported_gsd=GsdRange(0.30, 1.00),
-        supported_image_sources=["satellite"],
+        version="0.2.0-dota-obb",
+        supported_gsd=GsdRange(0.15, 1.5),
+        supported_image_sources=["satellite", "drone"],
         supported_formats=["GeoTIFF", "COG"],
         status=ModelStatus.VALIDATION,
         hardware_compatibility=["cpu", "cuda"],
-        default_confidence_threshold=0.40,
-        class_names={0: "ship"},
+        default_confidence_threshold=0.35,
+        class_names={0: 'ship'},
         notes=(
-            "Running on generic YOLOv8 COCO-pretrained weights ('boat' class as proxy) as a "
-            "working placeholder — NOT fine-tuned for maritime satellite imagery (scale/angle "
-            "mismatch vs. COCO's photos is significant). Needs a labeled ship dataset."
+            "Detects vessels at sea and moored in ports, with their heading as a rotated box."
+            " Pretrained on DOTA v1 aerial imagery (YOLO11-OBB, rotated boxes), not yet fine-tuned or benchmarked on your own imagery: check results before relying on counts."
         ),
     ),
     "field_boundary_segmentation": ModelMetadata(
@@ -208,18 +206,17 @@ CATALOG: dict[str, ModelMetadata] = {
         model_id="aircraft_detection",
         name="Aircraft",
         model_type="detection",
-        version="0.1.0-generic-coco",
-        supported_gsd=GsdRange(0.25, 0.75),
+        version="0.2.0-dota-obb",
+        supported_gsd=GsdRange(0.1, 1.0),
         supported_image_sources=["satellite", "drone"],
         supported_formats=["GeoTIFF", "COG"],
         status=ModelStatus.VALIDATION,
         hardware_compatibility=["cpu", "cuda"],
-        default_confidence_threshold=0.40,
-        class_names={0: "airplane"},
+        default_confidence_threshold=0.35,
+        class_names={0: 'airplane', 1: 'helicopter'},
         notes=(
-            "Running on generic YOLOv8 COCO-pretrained weights ('airplane' class) as a working "
-            "placeholder — NOT fine-tuned on aerial/nadir imagery and NOT benchmarked. Treat "
-            "counts as indicative only until fine-tuned on a labeled aerial-aircraft dataset."
+            "Detects fixed-wing aircraft and helicopters on aprons, runways and helipads."
+            " Pretrained on DOTA v1 aerial imagery (YOLO11-OBB, rotated boxes), not yet fine-tuned or benchmarked on your own imagery: check results before relying on counts."
         ),
     ),
     "unpaved_road_detection": ModelMetadata(
@@ -257,17 +254,17 @@ CATALOG: dict[str, ModelMetadata] = {
         model_id="oil_tank_detection",
         name="Oil Tanks",
         model_type="detection",
-        version="0.0.0-unweighted",
-        supported_gsd=GsdRange(0.25, 0.75),
+        version="0.2.0-dota-obb",
+        supported_gsd=GsdRange(0.15, 1.5),
         supported_image_sources=["satellite", "drone"],
         supported_formats=["GeoTIFF", "COG"],
-        status=ModelStatus.NOT_PRODUCTION_READY,
+        status=ModelStatus.VALIDATION,
         hardware_compatibility=["cpu", "cuda"],
-        default_confidence_threshold=0.45,
-        class_names={0: "oil_tank"},
+        default_confidence_threshold=0.35,
+        class_names={0: 'oil_tank'},
         notes=(
-            "Circular storage tanks have no usable COCO proxy class. Needs a labeled oil-tank "
-            "dataset (e.g. a Kaggle 'Airbus Oil Storage' style corpus) before this can run."
+            "Detects DOTA's 'storage tank' class, which covers oil and other cylindrical storage tanks, so it can include water or chemical tanks."
+            " Pretrained on DOTA v1 aerial imagery (YOLO11-OBB, rotated boxes), not yet fine-tuned or benchmarked on your own imagery: check results before relying on counts."
         ),
     ),
     "oil_tank_shadow_analysis": ModelMetadata(
@@ -309,15 +306,18 @@ CATALOG: dict[str, ModelMetadata] = {
         model_id="bridge_detection",
         name="Bridge",
         model_type="detection",
-        version="0.0.0-unweighted",
-        supported_gsd=GsdRange(0.25, 1.00),
+        version="0.2.0-dota-obb",
+        supported_gsd=GsdRange(0.15, 2.0),
         supported_image_sources=["satellite", "drone"],
         supported_formats=["GeoTIFF", "COG"],
-        status=ModelStatus.NOT_PRODUCTION_READY,
+        status=ModelStatus.VALIDATION,
         hardware_compatibility=["cpu", "cuda"],
-        default_confidence_threshold=0.40,
-        class_names={0: "bridge"},
-        notes="No fine-tuned weights or labeled dataset exist. No usable COCO proxy class.",
+        default_confidence_threshold=0.3,
+        class_names={0: 'bridge'},
+        notes=(
+            "Detects bridges over water and roads. Long, thin bridges can be split across tiles; overlap helps."
+            " Pretrained on DOTA v1 aerial imagery (YOLO11-OBB, rotated boxes), not yet fine-tuned or benchmarked on your own imagery: check results before relying on counts."
+        ),
     ),
     "change_detection": ModelMetadata(
         model_id="change_detection",

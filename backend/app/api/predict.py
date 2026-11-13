@@ -47,7 +47,7 @@ def _run_job(job_id: str, req: PredictRequest):
     jobs.update(job_id, status="processing")
     try:
         from app.engine.pipeline import DetectionEngine
-        from app.engine.raster_io import iter_tiles
+        from app.engine.raster_io import count_tiles, iter_tiles, raster_crs_and_size
         from app.models.factory import build_model
 
         model = build_model(req.model_id)
@@ -56,12 +56,16 @@ def _run_job(job_id: str, req: PredictRequest):
         def progress(done, total):
             jobs.update(job_id, tiles_processed=done, tiles_total=total)
 
+        source_crs, width, height = raster_crs_and_size(req.image_path)
+        tiles_total = count_tiles(width, height, req.tile_size, req.overlap)
+        jobs.update(job_id, tiles_total=tiles_total)
         tiles = iter_tiles(req.image_path, tile_size=req.tile_size, overlap=req.overlap)
         out_dir = settings.RESULTS_DIR / job_id
         result = engine.run(
             tiles, out_dir, device_option=req.device,
             confidence_threshold=req.confidence_threshold, progress_cb=progress,
             allowed_gpu_indices=req.gpu_indices,
+            source_crs=source_crs, tiles_total=tiles_total,
         )
         jobs.update(job_id, status="completed", result=result.__dict__)
         record_run(

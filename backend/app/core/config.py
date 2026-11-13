@@ -43,6 +43,12 @@ class Settings:
     DEFAULT_NMS_IOU: float = float(os.getenv("SYNTRA_NMS_IOU", 0.45))
     USE_FP16_IF_AVAILABLE: bool = os.getenv("SYNTRA_FP16", "1") == "1"
 
+    # Oriented-box detector pretrained on DOTA (aerial imagery). A bare file
+    # name is downloaded once by ultralytics into the working directory; put
+    # a full path here to use a local copy (offline machines) or a larger
+    # variant (yolo11s-obb.pt, yolo11m-obb.pt) for better accuracy.
+    AERIAL_OBB_WEIGHTS: str = os.getenv("SYNTRA_AERIAL_OBB_WEIGHTS", "yolo11n-obb.pt")
+
     # --- Compute profiles ----------------------------------------------------
     # CPU0 / CPU1 are user-configurable CPU execution profiles (e.g. thread
     # counts / core affinity); GPU uses CUDA when available; AUTO picks the

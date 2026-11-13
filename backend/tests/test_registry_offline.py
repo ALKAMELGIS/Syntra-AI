@@ -63,16 +63,22 @@ def test_not_production_ready_models_refuse_to_build():
             pass
 
 
-def test_aircraft_detection_builds_as_a_generic_coco_proxy_like_car_and_ship():
-    # aircraft_detection is VALIDATION status (generic COCO 'airplane' proxy),
-    # same honesty tier as car_detection/ship_detection -- it must actually
-    # build, unlike the NOT_PRODUCTION_READY models above.
-    from app.models.generic_detector import GenericYoloDetector
+def test_dota_backed_models_build_as_aerial_obb_detectors():
+    # These five are VALIDATION: real aerial-pretrained weights (DOTA v1),
+    # not yet benchmarked on the user's imagery. They must build, unlike the
+    # NOT_PRODUCTION_READY models above.
+    from app.models.aerial_obb_detector import DOTA_CLASS_MAP, AerialObbDetector
 
-    meta = get_metadata("aircraft_detection")
-    assert meta.status == ModelStatus.VALIDATION
-    model = build_model("aircraft_detection")
-    assert isinstance(model, GenericYoloDetector)
+    assert set(DOTA_CLASS_MAP) == {
+        "car_detection", "ship_detection", "aircraft_detection", "oil_tank_detection", "bridge_detection",
+    }
+    for model_id in DOTA_CLASS_MAP:
+        meta = get_metadata(model_id)
+        assert meta.status == ModelStatus.VALIDATION, model_id
+        assert "DOTA" in meta.notes, model_id
+        # every DOTA class a model asks for maps to one of its own class ids
+        assert set(DOTA_CLASS_MAP[model_id].values()) == set(meta.class_names), model_id
+        assert isinstance(build_model(model_id), AerialObbDetector), model_id
 
 
 def test_change_detection_and_measurement_types_are_present_and_honest():

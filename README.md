@@ -20,7 +20,7 @@ never verified:
 | Standardized model interface (`load_model/validate_model/predict/postprocess/georeference/export_results`) | ✅ implemented & tested | Exercised end-to-end via an offline stub detector (`app/models/stub_predictor.py` — numpy-only, deterministic, **not** a real detector). |
 | Compute device manager (CPU0/CPU1/GPU/AUTO) | ✅ implemented & tested | `resolve_device()` correctly falls back to CPU when no CUDA device is present (verified here, since this sandbox has no GPU). Dedicated `test_compute_offline.py` (7 cases) locks down every option (CPU0/CPU1/GPU/AUTO), the GPU→CPU1 fallback reason string, and `list_devices()` reporting zero GPUs honestly rather than guessing. |
 | GeoJSON + manifest export | ✅ implemented & tested | Written files were parsed back and checked in the pipeline test. |
-| **Car / Ship detection** (`generic_detector.py`) | ⚠️ real ultralytics code, **not run** | Wraps a stock YOLOv8-COCO model as a working placeholder (`car`/`boat` classes). Needs `pip install -r requirements.txt` + a GPU/CPU box with network access to actually run. Marked `VALIDATION` status, not `READY` — it is unfine-tuned and unbenchmarked for aerial imagery. |
+| **Car / Ship / Aircraft / Oil Tanks / Bridge** (`aerial_obb_detector.py`) | ⚠️ `VALIDATION`: aerial-pretrained, not benchmarked on your imagery | Backed by YOLO11-OBB pretrained on DOTA v1 (aerial and satellite scenes, rotated boxes), replacing the earlier COCO street-photo proxies. Exports rotated polygons. Cars split into `car` / `large_vehicle`, aircraft into `airplane` / `helicopter`; Oil Tanks uses DOTA's generic `storage tank` class, so it can include water or chemical tanks. Weights: `SYNTRA_AERIAL_OBB_WEIGHTS` (default `yolo11n-obb.pt`, auto-downloaded once). Verified offline by `test_aerial_obb_offline.py` (class mapping, rotated-polygon georeferencing) and **run for real**: YOLO11n-OBB on CPU over a 1920×1080 aerial marina scene georeferenced in UTM 40N found 178 ships (246 raw → 178 after cross-tile merge, 6 tiles, ~3 s), each as a tight rotated box on the boat, placed correctly on the map. |
 | **Palm / Date / Tree / Field-boundary** models | ❌ not production-ready | No trained weights or labeled datasets exist. The factory and model classes raise a clear `NotProductionReadyError` instead of fabricating detections — per the spec's final requirement. |
 | React + Leaflet dashboard | 📝 written, **not built/run** | No `npm install` was possible here (no registry access). Standard Vite/React/Leaflet code — run `npm install && npm run dev` in a normal dev environment. |
 | Dataset module (YOLO/COCO/GeoJSON parsing, validation, class balance, geo-separated splitting, versioning) | ✅ implemented & tested | `backend/tests/test_datasets_offline.py`: GeoJSON round-trip, class-balance math, and a split test that asserts two spatial clusters are never divided across train/val/test. |
@@ -43,6 +43,16 @@ part (tiling, georeferencing, duplicate removal, the model contract) — is
 real and has passing tests. The ML models themselves need your GPU box,
 your datasets, and a normal internet connection to install dependencies and
 train/fine-tune.
+
+## Results are always WGS84
+
+Detections are merged across tiles in the GeoTIFF's own projection (metres,
+so overlap math is meaningful) and then reprojected to WGS84 lon/lat before
+export, because GeoJSON, KML and Leaflet all expect it. Before this, results
+from a projected GeoTIFF (UTM, which most orthomosaics use) did not land on
+the map. Shapefile downloads now include a `.prj`. A raster with no CRS is
+left in its own coordinates and the manifest says `"crs": null` rather than
+guessing. Verified by `test_reprojection_offline.py` and the run above.
 
 ## Background jobs survive restarts
 

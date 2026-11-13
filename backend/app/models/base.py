@@ -60,6 +60,10 @@ class RawDetection:
     score: float
     class_id: int
     mask: np.ndarray | None = None            # optional, for instance segmentation
+    # Optional rotated outline in tile-local pixels, e.g. the 4 corners of an
+    # oriented bounding box. When set, it becomes the exported geometry and
+    # `box` is its axis-aligned envelope (still used for cross-tile NMS).
+    polygon: list[tuple[float, float]] | None = None
 
 
 class DetectionModel(ABC):
@@ -87,7 +91,10 @@ class DetectionModel(ABC):
         """Default georeferencing delegates to the shared helper in engine.postprocess."""
         from app.engine.postprocess import tile_detections_to_global
 
-        raw = [{"box": d.box, "score": d.score, "class_id": d.class_id} for d in detections]
+        raw = [
+            {"box": d.box, "score": d.score, "class_id": d.class_id, "polygon": d.polygon}
+            for d in detections
+        ]
         return tile_detections_to_global(raw, transform, class_names)
 
     @abstractmethod
