@@ -1,6 +1,14 @@
 import React from "react";
 import { IconClose } from "./Icons.jsx";
 
+const TERMINAL = new Set(["completed", "error", "interrupted"]);
+
+function progressPct(job) {
+  if (job.status === "queued") return 4;
+  if (!job.tiles_total) return null; // unknown total: show an indeterminate bar
+  return Math.min(100, Math.round((100 * (job.tiles_processed || 0)) / job.tiles_total));
+}
+
 function JobCard({ entry, color }) {
   const { job, modelMeta, imageName } = entry;
   return (
@@ -16,17 +24,33 @@ function JobCard({ entry, color }) {
         )}
       </div>
 
-      {job.status !== "completed" && job.status !== "error" && (
-        <div>
-          <div className="note">{job.status === "queued" ? "Queued…" : `Processing — tile ${job.tiles_processed ?? 0}`}</div>
-          <div className="progress-bar">
-            <div className="progress-fill" style={{ width: job.status === "queued" ? "5%" : "60%" }} />
+      {!TERMINAL.has(job.status) && (() => {
+        const pct = progressPct(job);
+        return (
+          <div>
+            <div className="note mono">
+              {job.status === "queued"
+                ? "Queued"
+                : job.tiles_total
+                  ? `Tile ${job.tiles_processed ?? 0} of ${job.tiles_total} · ${pct}%`
+                  : `Tile ${job.tiles_processed ?? 0}`}
+            </div>
+            <div className="progress-bar">
+              <div
+                className={`progress-fill${pct === null ? " progress-fill-indeterminate" : ""}`}
+                style={pct === null ? undefined : { width: `${pct}%` }}
+              />
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {job.status === "error" && (
         <p className="note" style={{ color: "var(--error)" }}>{job.error}</p>
+      )}
+
+      {job.status === "interrupted" && (
+        <p className="note" style={{ color: "var(--warn)" }}>{job.error || "Interrupted by a server restart. Run it again."}</p>
       )}
 
       {job.status === "completed" && job.result && (
@@ -36,7 +60,7 @@ function JobCard({ entry, color }) {
             {job.result.duration_seconds}s · device: {job.result.device_used}
           </p>
           {modelMeta?.status !== "ready" && (
-            <p className="note" style={{ color: "var(--warn)" }}>⚠ {modelMeta?.notes}</p>
+            <p className="note" style={{ color: "var(--warn)" }}>{modelMeta?.notes}</p>
           )}
         </>
       )}

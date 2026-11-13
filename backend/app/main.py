@@ -13,14 +13,18 @@ from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import annotations, benchmark, compute, datasets, environment, images, models, predict, results, training, usage
+from app.api import annotations, benchmark, compute, datasets, environment, images, jobs, models, predict, results, training, usage
 from app.core.config import settings
+from app.core.jobs import get_store
 from app.core.security import require_api_key
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     settings.ensure_dirs()
+    # Jobs a previous process left running can't still be running: their
+    # worker threads died with it. Say so instead of showing them as live.
+    get_store().mark_interrupted()
     yield
 
 
@@ -47,6 +51,7 @@ app.include_router(environment.router, dependencies=_protected)
 app.include_router(usage.router, dependencies=_protected)
 app.include_router(training.router, dependencies=_protected)
 app.include_router(annotations.router, dependencies=_protected)
+app.include_router(jobs.router, dependencies=_protected)
 
 
 @app.get("/api/health")

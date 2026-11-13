@@ -2,20 +2,21 @@
 Run-prediction endpoint.
 
 Kicks off a detection run for one model against one uploaded image, tracks
-progress in an in-memory job store (swap for Redis/DB in a multi-worker
-deployment), and reports NOT_PRODUCTION_READY models honestly instead of
+progress in the persistent job store (app.core.jobs), and reports NOT_PRODUCTION_READY models honestly instead of
 pretending to run them.
 """
 from __future__ import annotations
 
-import threading
-import uuid
+
+import re
+from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel
 
 from app.core.compute import DeviceOption
 from app.core.config import settings
+from app.core.jobs import get_store
 from app.core.image_library import find_entry_by_image_id
 from app.core.security import confine_path
 from app.models.base import ModelStatus
@@ -24,8 +25,7 @@ from app.models.stats import record_run
 
 router = APIRouter(prefix="/api/predict", tags=["predict"])
 
-_JOBS: dict[str, dict] = {}
-_LOCK = threading.Lock()
+KIND = "predict"
 
 
 class PredictRequest(BaseModel):
@@ -43,8 +43,8 @@ class PredictRequest(BaseModel):
 
 
 def _run_job(job_id: str, req: PredictRequest):
-    with _LOCK:
-        _JOBS[job_id]["status"] = "processing"
+    jobs = get_store()
+    jobs.update(job_id, status="processing")
     try:
         from app.engine.pipeline import DetectionEngine
         from app.engine.raster_io import iter_tiles
@@ -54,8 +54,7 @@ def _run_job(job_id: str, req: PredictRequest):
         engine = DetectionEngine(model)
 
         def progress(done, total):
-            with _LOCK:
-                _JOBS[job_id]["tiles_processed"] = done
+            jobs.update(job_id, tiles_processed=done, tiles_total=total)
 
         tiles = iter_tiles(req.image_path, tile_size=req.tile_size, overlap=req.overlap)
         out_dir = settings.RESULTS_DIR / job_id
@@ -64,17 +63,20 @@ def _run_job(job_id: str, req: PredictRequest):
             confidence_threshold=req.confidence_threshold, progress_cb=progress,
             allowed_gpu_indices=req.gpu_indices,
         )
-        with _LOCK:
-            _JOBS[job_id].update(status="completed", result=result.__dict__)
+        jobs.update(job_id, status="completed", result=result.__dict__)
         record_run(
             settings.DATA_DIR, req.model_id, status="completed",
             tiles_processed=result.tiles_processed, detection_count=result.final_detection_count,
             duration_seconds=result.duration_seconds, device=result.device_used,
         )
     except Exception as exc:
-        with _LOCK:
-            _JOBS[job_id].update(status="error", error=str(exc))
+        jobs.update(job_id, status="error", error=str(exc))
         record_run(settings.DATA_DIR, req.model_id, status="error")
+
+
+def _display_name(path: str) -> str:
+    # Uploads are stored as "<uuid>_<original name>"; show the original.
+    return re.sub(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}_", "", Path(path).name)
 
 
 def _resolve_image_path(req: PredictRequest) -> str:
@@ -101,17 +103,17 @@ def start_prediction(req: PredictRequest, background_tasks: BackgroundTasks):
         )
     req = req.model_copy(update={"image_path": _resolve_image_path(req)})
 
-    job_id = str(uuid.uuid4())
-    with _LOCK:
-        _JOBS[job_id] = {"status": "queued", "model_id": req.model_id, "tiles_processed": 0}
+    job_id = get_store().create(
+        KIND, model_id=req.model_id, image_id=req.image_id,
+        image_name=_display_name(req.image_path), tiles_processed=0,
+    )
     background_tasks.add_task(_run_job, job_id, req)
     return {"job_id": job_id, "status": "queued"}
 
 
 @router.get("/{job_id}")
 def job_status(job_id: str):
-    with _LOCK:
-        job = _JOBS.get(job_id)
+    job = get_store().get(job_id, KIND)
     if job is None:
         raise HTTPException(status_code=404, detail="Unknown job_id")
     return job

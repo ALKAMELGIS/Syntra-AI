@@ -44,6 +44,21 @@ real and has passing tests. The ML models themselves need your GPU box,
 your datasets, and a normal internet connection to install dependencies and
 train/fine-tune.
 
+## Background jobs survive restarts
+
+Prediction, dataset-export, training and pip jobs are kept in a SQLite file
+(`SYNTRA_DATA_DIR/syntra.db`) instead of in memory. After a restart, finished
+jobs and their results are still there, and jobs that were mid-run show as
+**interrupted** with a message instead of looking live forever. The dashboard
+reloads recent prediction jobs and their map layers on page load, and the
+progress bar shows real tiles done out of the total. `GET /api/jobs` lists
+history across all kinds. Verified by `backend/tests/test_jobs_offline.py`
+(14 tests) and a live uvicorn restart.
+
+Not yet: running jobs are not resumed (they restart from scratch), and jobs
+still run in the API process. A separate worker queue (Celery/RQ + Redis) is
+the next step for multi-user or multi-GPU servers.
+
 ## Security defaults
 
 The API is safe to run on a single machine out of the box, and has switches

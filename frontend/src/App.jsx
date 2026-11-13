@@ -8,6 +8,8 @@ import { api } from "./api/client.js";
 
 const PALETTE = ["#5b8cff", "#3ddc97", "#f5a623", "#ff5d6c", "#c678dd", "#56c7d6", "#e8a87c", "#a8e6cf"];
 
+const TERMINAL = new Set(["completed", "error", "interrupted"]);
+
 function jobKey(imageId, modelId) {
   return `${imageId}::${modelId}`;
 }
@@ -26,6 +28,41 @@ export default function App() {
   const [detectionsVisible, setDetectionsVisible] = useState(true);
   const [analysisOpen, setAnalysisOpen] = useState(false);
   const pollRef = useRef(null);
+
+  // Restore recent prediction jobs after a page reload or server restart.
+  // The server keeps them in its job store; the newest job per
+  // (image, model) pair wins, and finished ones get their layer back.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      let recent = [];
+      try {
+        recent = await api.listJobs("predict", 20);
+      } catch {
+        return; // older backend without /api/jobs: start empty, as before
+      }
+      const restored = {};
+      for (const j of recent) {
+        if (!j.image_id) continue;
+        const key = jobKey(j.image_id, j.model_id);
+        if (!restored[key]) restored[key] = j; // list is newest first
+      }
+      if (cancelled || Object.keys(restored).length === 0) return;
+      setJobs((prev) => ({ ...restored, ...prev }));
+      setAnalysisOpen(true);
+
+      const newest = recent.find((j) => j.image_id);
+      api.getImage(newest.image_id).then((img) => !cancelled && setImage((cur) => cur || img)).catch(() => {});
+
+      for (const [key, j] of Object.entries(restored)) {
+        if (j.status !== "completed") continue;
+        api.getGeojson(j.job_id, j.model_id)
+          .then((gj) => !cancelled && setGeojsonByKey((prev) => ({ ...prev, [key]: gj })))
+          .catch(() => {});
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     api.listModels().then(setModels).catch(() => setModels([]));
@@ -60,14 +97,14 @@ export default function App() {
 
   // Poll every in-flight job until it settles.
   useEffect(() => {
-    const hasInFlight = Object.values(jobs).some((j) => j.status !== "completed" && j.status !== "error");
+    const hasInFlight = Object.values(jobs).some((j) => !TERMINAL.has(j.status));
     if (!hasInFlight) {
       clearInterval(pollRef.current);
       return;
     }
     pollRef.current = setInterval(async () => {
       const entries = Object.entries(jobs).filter(
-        ([, j]) => j.job_id && j.status !== "completed" && j.status !== "error"
+        ([, j]) => j.job_id && !TERMINAL.has(j.status)
       );
       for (const [key, j] of entries) {
         try {
@@ -133,7 +170,7 @@ export default function App() {
     }
   }
 
-  const running = Object.values(jobs).some((j) => j.status !== "completed" && j.status !== "error");
+  const running = Object.values(jobs).some((j) => !TERMINAL.has(j.status));
   const hasCompletedJob = Object.values(jobs).some((j) => j.status === "completed");
 
   const analysisEntries = Object.entries(jobs)
