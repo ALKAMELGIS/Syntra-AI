@@ -186,7 +186,8 @@ export default function App() {
     .filter(([key]) => geojsonByKey[key])
     .map(([key, job]) => ({
       key,
-      name: `${models.find((m) => m.model_id === job.model_id)?.name || job.model_id}${job.image_name ? " · " + job.image_name : ""}`,
+      // Legend shows the model only; the source file is listed once under the legend.
+      name: models.find((m) => m.model_id === job.model_id)?.name || job.model_id,
       color: colorFor(job.model_id),
       geojson: geojsonByKey[key],
     }));
@@ -206,7 +207,7 @@ export default function App() {
       {view === "models" ? (
         <ModelSetupWizard onViewChange={setView} />
       ) : (
-        <div className={`layout ${analysisOpen ? "layout-with-analysis" : ""}`}>
+        <div className="layout">
           <Sidebar
             models={models}
             selectedModels={selectedModels}
@@ -231,10 +232,10 @@ export default function App() {
             analysisOpen={analysisOpen}
             onToggleAnalysis={() => setAnalysisOpen((v) => !v)}
             analysisCount={analysisEntries.length}
+            analysisPanel={
+              <AnalysisPanel entries={analysisEntries} colorFor={colorFor} onClose={() => setAnalysisOpen(false)} />
+            }
           />
-          {analysisOpen && (
-            <AnalysisPanel entries={analysisEntries} colorFor={colorFor} onClose={() => setAnalysisOpen(false)} />
-          )}
         </div>
       )}
     </div>
