@@ -413,7 +413,7 @@ function TrainStep() {
               {registerState?.model_id && (
                 <p className="note" style={{ color: "var(--ready)", marginTop: 6 }}>
                   ✓ Registered as <code>{registerState.model_id}</code> — classes: {Object.values(registerState.class_names || {}).join(", ")}.
-                  It's now selectable on the Detect step/Full Map, marked "validation" (real weights, not yet benchmarked) until you check its results.
+                  It's now selectable on the Detect step or the full map, marked "validation" (real weights, not yet benchmarked) until you check its results.
                 </p>
               )}
               {registerState?.error && (
@@ -447,7 +447,7 @@ function AnnotateStep({ onViewChange }) {
       </p>
       <button className="run-button" style={{ width: "auto", marginTop: 12, padding: "8px 18px" }}
         onClick={() => onViewChange?.("detect")}>
-        Open Full Map to annotate
+        Open full map to annotate
       </button>
     </div>
   );
@@ -458,14 +458,14 @@ function DetectStep({ onViewChange }) {
     <div className="panel wizard-coming-soon">
       <p className="section-title">Detect</p>
       <p className="note" style={{ maxWidth: 640 }}>
-        Detection runs on the Full Map: pick an uploaded image and a model, then Run Prediction from
+        Detection runs on the full map: pick an uploaded image and a model, then Run prediction from
         the sidebar. A model you trained in the Train step and added with "Add to Detect models"
         shows up in that same model list, marked "validation" (real weights, no benchmark run yet)
         until you've checked its results — it is not silently promoted to "ready" on its own.
       </p>
       <button className="run-button" style={{ width: "auto", marginTop: 12, padding: "8px 18px" }}
         onClick={() => onViewChange?.("detect")}>
-        Open Full Map to detect
+        Open full map to detect
       </button>
     </div>
   );

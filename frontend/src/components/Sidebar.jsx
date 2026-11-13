@@ -118,7 +118,7 @@ export default function Sidebar({ models, selectedModels, onToggleModel, image, 
 
   return (
     <div className="panel">
-      <p className="section-title section-title-icon"><IconUpload /> Source Image</p>
+      <p className="section-title section-title-icon"><IconUpload /> Source image</p>
 
       <div className="source-mode-tabs">
         <button className={`source-mode-tab ${mode === "single" ? "active" : ""}`} onClick={() => setMode("single")}>
@@ -222,7 +222,7 @@ export default function Sidebar({ models, selectedModels, onToggleModel, image, 
       )}
 
       <p className="section-title section-title-icon" style={{ marginTop: 20 }}>
-        <IconDashboard /> Detection Models
+        <IconDashboard /> Detection models
       </p>
       <div className="detection-model-list">
         {models.map((m) => (
@@ -242,7 +242,7 @@ export default function Sidebar({ models, selectedModels, onToggleModel, image, 
       </div>
 
       <button className="run-button" disabled={!canRun} onClick={handleRunClick}>
-        {running ? "Running…" : <><IconPlay /> Run Prediction</>}
+        {running ? "Running…" : <><IconPlay /> Run prediction</>}
       </button>
     </div>
   );
