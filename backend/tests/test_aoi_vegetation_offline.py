@@ -134,10 +134,11 @@ def test_calibration_applied_from_sidecar(tmp_path):
         "<p><AbsCalibrationGain>0.0684,0.0558,0.0398,0.0463,0.0932,0.0366,0.0336,0.0293</AbsCalibrationGain></p>")
     run_vegetation(str(path), tmp_path / "out", "veg")
     m = json.loads((tmp_path / "out" / "veg.manifest.json").read_text())
-    assert m["calibration_applied"] is True
+    assert m["calibration_applied"] is True and m["radiometry"] == "toa_reflectance_ratio"
     f = json.loads((tmp_path / "out" / "veg.geojson").read_text())["features"][0]["properties"]
-    # radiance NDVI (0.0463*1800 - 0.0398*1000) / (... + ...) = 0.353, raw-DN NDVI would be 0.286
-    assert f["mean_ndvi"] == pytest.approx(0.353, abs=0.01)
+    # reflectance ratio: nir 1800*0.0463/1069 = 0.0780, red 1000*0.0398/1555 = 0.0256 -> NDVI 0.506
+    # (raw DN would give 0.286, radiance 0.353)
+    assert f["mean_ndvi"] == pytest.approx(0.506, abs=0.01)
 
 
 # --- AOI -------------------------------------------------------------------------

@@ -40,6 +40,21 @@ SENSOR_RED_NIR: dict[tuple[str, int], tuple[int, int]] = {
 }
 DEFAULT_RED_NIR: dict[int, tuple[int, int]] = {4: (3, 4), 5: (3, 4), 8: (5, 7)}
 
+# Band-averaged solar irradiance (W m-2 um-1) for the red and NIR bands.
+# Radiance NDVI is biased low because the sun delivers less energy in the NIR
+# than in the red; dividing each band's radiance by its ESUN gives a ratio of
+# top-of-atmosphere reflectances, and sun elevation and Earth-Sun distance
+# cancel out of the NDVI. SVN3 has no published ESUN table we could find, so
+# the WorldView-3 values for the same spectral bands (red 630-690 nm, NIR1
+# 770-895 nm) are used as an approximation. On the SVN3 scene this moves bare
+# sand from NDVI -0.16 (radiance) to about 0.01 (physically expected) and
+# vegetation peaks from ~0.35 to ~0.54.
+SENSOR_ESUN: dict[str, dict[str, float]] = {
+    "SVN3": {"red": 1555.0, "nir": 1069.0},
+    "WV02": {"red": 1559.0, "nir": 1069.0},
+    "WV03": {"red": 1555.0, "nir": 1069.0},
+}
+
 DEFAULT_THRESHOLD = {"NDVI": 0.20, "VARI": 0.10}
 TREE_MIN_SPACING_M = 3.0
 TREE_MAX_PIXEL_M = 2.5
@@ -167,12 +182,17 @@ def run_vegetation(
         nodata = ds.nodata
 
     gains = read_calibration_gains(path)
+    sensor = detect_sensor(path)
+    esun = SENSOR_ESUN.get((sensor or "")[:4]) if gains and index_name == "NDVI" else None
     bands = {}
     for role, b in roles.items():
         arr = raw[order.index(b)]
         if gains and b <= len(gains[0]):
             arr = arr * gains[0][b - 1] + gains[1][b - 1]
+            if esun:
+                arr = arr / esun[role]
         bands[role] = arr
+    radiometry = "toa_reflectance_ratio" if esun else ("radiance" if gains else "dn")
     nd = 0 if nodata is None else nodata
     valid = ~np.all(raw == nd, axis=0)
     if aoi is not None:
@@ -249,6 +269,7 @@ def run_vegetation(
         "source_crs": crs.to_string(),
         "bands": roles,
         "calibration_applied": bool(gains),
+        "radiometry": radiometry,
         "decimation_factor": f,
         "min_area_m2": min_area_m2,
         "tree_count_note": (
