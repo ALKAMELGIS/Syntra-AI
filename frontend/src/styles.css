@@ -667,6 +667,45 @@ button, input, select, textarea { font-family: inherit; }
   display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 8px;
 }
 
+/* --- Raster check (sidebar) --- */
+.raster-health {
+  margin-top: 12px; border: 1px solid var(--panel-border); border-radius: var(--radius-control);
+  background: var(--bg); overflow: hidden;
+}
+.raster-health-head {
+  display: flex; align-items: center; gap: 8px; width: 100%; height: 36px; padding: 0 12px;
+  background: transparent; border: none; color: var(--text); font-size: 13px; cursor: pointer; text-align: left;
+}
+.raster-health-head:hover { background: var(--hover-bg); }
+.raster-health-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.raster-health-title { font-weight: 500; }
+.raster-health-summary { flex: 1 1 auto; text-align: right; font-size: 12px; color: var(--text-dim); }
+.raster-health-warning .raster-health-summary { color: var(--warn); }
+.raster-health-error .raster-health-summary { color: var(--error); }
+.raster-health-facts {
+  display: grid; grid-template-columns: 56px 1fr; gap: 4px 8px; margin: 0; padding: 4px 12px 12px;
+  font-size: 12px;
+}
+.raster-health-facts dt { color: var(--text-muted); font-family: var(--font-sans); }
+.raster-health-facts dd { margin: 0; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.raster-health-list { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--panel-border); }
+.raster-finding { padding: 8px 12px 8px 24px; border-bottom: 1px solid var(--panel-border); position: relative; }
+.raster-finding:last-child { border-bottom: none; }
+.raster-finding::before {
+  content: ""; position: absolute; left: 12px; top: 14px; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--text-muted);
+}
+.raster-finding-ok::before { background: var(--ready); }
+.raster-finding-warning::before { background: var(--warn); }
+.raster-finding-error::before { background: var(--error); }
+.raster-finding-title { font-size: 12px; font-weight: 500; color: var(--text); }
+.raster-finding-detail { font-size: 12px; color: var(--text-dim); line-height: 1.5; margin-top: 2px; }
+.raster-finding-fix {
+  display: block; margin-top: 6px; padding: 6px 8px; border-radius: 4px;
+  background: var(--panel); border: 1px solid var(--panel-border);
+  font-family: var(--font-mono); font-size: 11px; color: var(--text); white-space: pre-wrap; word-break: break-all;
+}
+
 /* --- Leaflet chrome in the app's tokens --- */
 .leaflet-container:focus, .leaflet-container:focus-visible { outline: none; }
 .map-area .leaflet-bar {

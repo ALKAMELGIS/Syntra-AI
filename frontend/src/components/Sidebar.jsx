@@ -1,3 +1,4 @@
+import RasterHealth from "./RasterHealth.jsx";
 import React, { useRef, useState } from "react";
 import { api } from "../api/client.js";
 import { IconUpload, IconFolder, IconPlay, IconClose, IconDashboard } from "./Icons.jsx";
@@ -156,7 +157,7 @@ export default function Sidebar({ models, selectedModels, onToggleModel, image, 
               <div className="upload-progress-fill" style={{ width: `${Math.round(uploadProgress * 100)}%` }} />
             </div>
           )}
-          {uploadError && <p className="note" style={{ color: "var(--error)" }}>⚠ {uploadError}</p>}
+          {uploadError && <p className="note" style={{ color: "var(--error)" }}>{uploadError}</p>}
           {image && (
             <p className="note">
               {image.size_bytes ? `${formatBytes(image.size_bytes)} · ` : ""}
@@ -164,6 +165,7 @@ export default function Sidebar({ models, selectedModels, onToggleModel, image, 
               {image.gsd_x_m ? ` · ${(image.gsd_x_m * 100).toFixed(0)} cm GSD` : ""}
             </p>
           )}
+          {image?.health && <RasterHealth health={image.health} />}
         </>
       ) : (
         <>

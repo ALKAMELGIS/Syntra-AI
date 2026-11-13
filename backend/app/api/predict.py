@@ -40,6 +40,7 @@ class PredictRequest(BaseModel):
     tile_size: int = settings.DEFAULT_TILE_SIZE
     overlap: float = settings.DEFAULT_TILE_OVERLAP
     gpu_indices: list[int] | None = None  # restricts AUTO/GPU to these physical CUDA device indices
+    rgb_bands: list[int] | None = None    # 1-based R,G,B band numbers; default chosen per file (see raster_prep)
 
 
 def _run_job(job_id: str, req: PredictRequest):
@@ -48,18 +49,32 @@ def _run_job(job_id: str, req: PredictRequest):
     try:
         from app.engine.pipeline import DetectionEngine
         from app.engine.raster_io import count_tiles, iter_tiles, raster_crs_and_size
+        from app.engine.raster_prep import plan_rgb
         from app.models.factory import build_model
 
         model = build_model(req.model_id)
         engine = DetectionEngine(model)
 
+        processed, skipped = {"n": 0}, {"n": 0}
+
         def progress(done, total):
-            jobs.update(job_id, tiles_processed=done, tiles_total=total)
+            # done is None for an empty tile skipped before inference
+            if done is not None:
+                processed["n"] = done
+            jobs.update(job_id, tiles_processed=processed["n"] + skipped["n"], tiles_empty=skipped["n"])
 
         source_crs, width, height = raster_crs_and_size(req.image_path)
         tiles_total = count_tiles(width, height, req.tile_size, req.overlap)
         jobs.update(job_id, tiles_total=tiles_total)
-        tiles = iter_tiles(req.image_path, tile_size=req.tile_size, overlap=req.overlap)
+        plan = plan_rgb(req.image_path, override=req.rgb_bands)
+        jobs.update(job_id, rgb_plan=plan.to_dict())
+
+        def on_skip():
+            skipped["n"] += 1
+            progress(None, None)
+
+        tiles = iter_tiles(req.image_path, tile_size=req.tile_size, overlap=req.overlap,
+                           rgb_plan=plan, on_skip=on_skip)
         out_dir = settings.RESULTS_DIR / job_id
         result = engine.run(
             tiles, out_dir, device_option=req.device,

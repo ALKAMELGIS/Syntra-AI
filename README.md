@@ -44,6 +44,34 @@ real and has passing tests. The ML models themselves need your GPU box,
 your datasets, and a normal internet connection to install dependencies and
 train/fine-tune.
 
+## Satellite products: raster check, 16-bit, band order, ONNX
+
+Built after inspecting a real SuperView Neo-3 L2A scene (0.5 m PAN 3.6 GB,
+2 m 8-band MUX, UTM 39N, 72% empty footprint):
+
+- **Raster check on upload** (`GET /api/images/{id}/health`, shown in the
+  sidebar): CRS and units, ground resolution in metres (converted for
+  geographic CRSs), bit depth, band count and the RGB bands chosen, tiled vs
+  stripped layout, overviews, RPC model present (not terrain-orthorectified),
+  share of the frame with data. Each warning comes with the GDAL command that
+  fixes it.
+- **16-bit data** is stretched to 8-bit with one scene-wide 2–98% stretch
+  (ignoring no-data), so every tile is treated the same. Previews use the
+  same stretch and show the empty footprint as transparent.
+- **Band order** follows GDAL colour interpretation, then band names, then
+  the sensor (SuperView Neo-3 8-band: R,G,B = 3,2,1; WorldView 8-band: 5,3,2),
+  then the band count. Override per run with `rgb_bands`.
+- **Empty tiles are skipped** before inference.
+- **ONNX backend**: set `SYNTRA_AERIAL_OBB_WEIGHTS` to a `.onnx` file and
+  detection runs on onnxruntime with no PyTorch install. Export once with
+  `yolo export model=yolo11n-obb.pt format=onnx imgsz=1024 opset=17`.
+  Verified identical to ultralytics on the same tile (102/102 boxes, IoU 1.000).
+
+Verified: `test_raster_prep_offline.py` (13 tests) and an end-to-end run on
+an 8-band uint16 UTM GeoTIFF with RGB in bands 3/2/1 and an empty strip:
+health ok, bands 3·2·1 picked from the sensor name, 2 empty tiles skipped,
+181 ships, ONNX only.
+
 ## Results are always WGS84
 
 Detections are merged across tiles in the GeoTIFF's own projection (metres,

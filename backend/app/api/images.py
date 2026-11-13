@@ -54,6 +54,7 @@ async def upload_image(file: UploadFile):
     raster_meta = None
     raster_meta_note = None
     bounds_wgs84 = None
+    health = None
     try:
         from app.engine.raster_io import compute_wgs84_bounds, read_raster_info
         info = await run_in_threadpool(read_raster_info, dest)
@@ -62,6 +63,11 @@ async def upload_image(file: UploadFile):
             "dtype": info.dtype, "crs": info.crs, "gsd_x_m": info.gsd_x, "gsd_y_m": info.gsd_y,
         }
         bounds_wgs84 = await run_in_threadpool(compute_wgs84_bounds, dest)
+        from app.engine.raster_health import check_raster
+        health = (await run_in_threadpool(check_raster, dest)).to_dict()
+        if health.get("gsd_m") and not health.get("projected"):
+            # geographic CRS: pixel size is in degrees; store the ground size in metres
+            raster_meta["gsd_x_m"] = raster_meta["gsd_y_m"] = health["gsd_m"]
     except ImportError:
         raster_meta_note = "rasterio not installed in this environment — metadata unavailable until deployed with full requirements.txt"
     except Exception as exc:
@@ -77,6 +83,7 @@ async def upload_image(file: UploadFile):
         raster_meta=raster_meta,
         raster_meta_note=raster_meta_note,
         bounds_wgs84=bounds_wgs84,
+        health=health,
     )
     write_entry(dest, entry)
 
@@ -96,6 +103,22 @@ def get_image(image_id: str):
     if entry is None:
         raise HTTPException(status_code=404, detail=f"No library image with id '{image_id}'.")
     return entry
+
+
+@router.get("/{image_id}/health")
+def get_image_health(image_id: str):
+    """Re-run the raster health check (CRS, resolution, bit depth, layout...)."""
+    settings.ensure_dirs()
+    entry = find_entry_by_image_id(settings.UPLOAD_DIR, image_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail=f"No library image with id '{image_id}'.")
+    try:
+        from app.engine.raster_health import check_raster
+        return check_raster(entry["path"]).to_dict()
+    except ImportError:
+        raise HTTPException(status_code=503, detail="rasterio not installed — health check unavailable in this environment.")
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Could not read raster: {exc}")
 
 
 @router.get("/{image_id}/preview.png")

@@ -25,6 +25,12 @@ real, what is written but unrun, and how it was verified.
   models for cars, ships, aircraft, oil tanks, bridges) is `VALIDATION`,
   shown as "Unvalidated" in the UI. Map new categories by DOTA class *name*
   in `DOTA_CLASS_MAP`, never by index.
+- Never feed raw raster values to a model. Tiles go through
+  `plan_rgb()` + `iter_tiles(rgb_plan=...)`: chosen RGB bands, scene-wide
+  8-bit stretch, empty tiles skipped. New sensors with a known band layout
+  go in `SENSOR_RGB` with a note on how the order was established.
+- Anything new a GeoTIFF can get wrong belongs in `raster_health.py` as a
+  finding with a level, a plain explanation and the fix.
 - Exported geometry is WGS84 lon/lat. Do cross-tile merging in the raster
   CRS, then reproject (`reproject_detections_to_wgs84`). Never write
   projected coordinates into GeoJSON or KML.
