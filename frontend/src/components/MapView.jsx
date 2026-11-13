@@ -1,11 +1,12 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
+import L from "leaflet";
 import { api } from "../api/client";
 import { MapContainer, TileLayer, GeoJSON, ImageOverlay, useMap } from "react-leaflet";
 import MapDrawTools from "./MapDrawTools.jsx";
 import AnnotationTool from "./AnnotationTool.jsx";
 import ImageLibrary from "./ImageLibrary.jsx";
 import SettingsPanel from "./SettingsPanel.jsx";
-import { IconExpand, IconBasemap, IconLegend, IconGallery, IconGear, IconAnalysis, IconPencil } from "./Icons.jsx";
+import { IconExpand, IconBasemap, IconLegend, IconGallery, IconGear, IconAnalysis, IconDatabase, IconEye, IconEyeOff } from "./Icons.jsx";
 
 const BASEMAPS = {
   satellite: {
@@ -48,9 +49,18 @@ const MAX_ZOOM = 24;
 function MapToolbar({
   layers, sourceImage, basemap, onBasemapChange, legendOpen, onLegendToggle,
   onOpenLibrary, onOpenSettings, analysisOpen, onToggleAnalysis, analysisCount,
-  annotateOpen, onToggleAnnotate,
+  detectionsVisible, onToggleDetections, onOpenDatasetManager, editMenu,
 }) {
   const map = useMap();
+  const toolbarRef = useRef(null);
+
+  // Clicks on the toolbar must not fall through to the map (they would pan,
+  // or drop a point for an active drawing tool).
+  useEffect(() => {
+    if (!toolbarRef.current) return;
+    L.DomEvent.disableClickPropagation(toolbarRef.current);
+    L.DomEvent.disableScrollPropagation(toolbarRef.current);
+  }, []);
 
   function zoomToFit() {
     const combined = { type: "FeatureCollection", features: layers.flatMap((l) => l.geojson?.features || []) };
@@ -74,43 +84,47 @@ function MapToolbar({
   }
 
   return (
-    <div className="map-toolbar">
-      <button className="map-tool-btn" title="Zoom to detections / reset view" onClick={zoomToFit}>
+    <div className="map-toolbar" ref={toolbarRef}>
+      <button className="map-tool-btn" data-tool="fit" title="Zoom to detections / reset view" onClick={zoomToFit}>
         <IconExpand />
       </button>
-      <button className="map-tool-btn" title="Toggle basemap" onClick={toggleBasemap}>
+      <button className="map-tool-btn" data-tool="basemap" title="Toggle basemap" onClick={toggleBasemap}>
         <IconBasemap />
       </button>
       <button
         className={`map-tool-btn ${legendOpen ? "active" : ""}`}
-        title="Toggle legend"
+        data-tool="legend" title="Toggle legend"
         onClick={onLegendToggle}
       >
         <IconLegend />
       </button>
+      <button
+        className={`map-tool-btn ${!detectionsVisible ? "active" : ""}`}
+        data-tool="visibility" title={detectionsVisible ? "Hide detections" : "Show detections"}
+        onClick={onToggleDetections}
+      >
+        {detectionsVisible ? <IconEye /> : <IconEyeOff />}
+      </button>
       <div className="map-toolbar-sep" />
-      <button className="map-tool-btn" title="Image library" onClick={onOpenLibrary}>
+      {editMenu}
+      <div className="map-toolbar-sep" />
+      <button className="map-tool-btn" data-tool="library" title="Image library" onClick={onOpenLibrary}>
         <IconGallery />
       </button>
-      <button className="map-tool-btn" title="Settings" onClick={onOpenSettings}>
+      <button className="map-tool-btn" data-tool="dataset" title="Dataset and model manager" onClick={onOpenDatasetManager}>
+        <IconDatabase />
+      </button>
+      <button className="map-tool-btn" data-tool="settings" title="Settings" onClick={onOpenSettings}>
         <IconGear />
       </button>
       <div className="map-toolbar-sep" />
       <button
         className={`map-tool-btn ${analysisOpen ? "active" : ""}`}
-        title="Analysis results"
+        data-tool="analysis" title="Analysis results"
         onClick={onToggleAnalysis}
       >
         <IconAnalysis />
         {analysisCount > 0 && <span className="map-tool-badge">{analysisCount}</span>}
-      </button>
-      <button
-        className={`map-tool-btn ${annotateOpen ? "active" : ""}`}
-        title="Annotate: draw class-labeled shapes for training"
-        onClick={onToggleAnnotate}
-        disabled={!sourceImage?.image_id}
-      >
-        <IconPencil />
       </button>
     </div>
   );
@@ -223,18 +237,20 @@ export default function MapView({
           analysisOpen={analysisOpen}
           onToggleAnalysis={onToggleAnalysis}
           analysisCount={analysisCount}
-          annotateOpen={annotateOpen}
-          onToggleAnnotate={() => setAnnotateOpen((o) => !o)}
-        />
-        <MapDrawTools
           detectionsVisible={detectionsVisible}
           onToggleDetections={onToggleDetections}
-          aoi={aoi}
-          onAoiChange={onAoiChange}
-          measurement={measurement}
-          onMeasurementChange={onMeasurementChange}
           onOpenDatasetManager={onOpenDatasetManager}
-          suspended={annotateOpen}
+          editMenu={
+            <MapDrawTools
+              aoi={aoi}
+              onAoiChange={onAoiChange}
+              measurement={measurement}
+              onMeasurementChange={onMeasurementChange}
+              annotateOpen={annotateOpen}
+              onToggleAnnotate={() => setAnnotateOpen((o) => !o)}
+              canAnnotate={Boolean(sourceImage?.image_id)}
+            />
+          }
         />
         <AnnotationTool active={annotateOpen} sourceImage={sourceImage} />
       </MapContainer>

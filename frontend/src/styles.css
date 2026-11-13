@@ -235,7 +235,6 @@ button, input, select, textarea { font-family: inherit; }
 }
 /* Keep the bottom-anchored toolbar/legend clear of the image-library dock
    (below) instead of letting them overlap it when the dock is open. */
-.map-area.library-open .map-toolbar-draw,
 .map-area.library-open .map-legend {
   bottom: 300px;
 }
@@ -668,23 +667,88 @@ button, input, select, textarea { font-family: inherit; }
   display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 8px;
 }
 
-/* --- Map draw-tools toolbar (second icon cluster) --- */
-.map-toolbar-draw { top: auto; bottom: 16px; right: 16px; }
-.map-toolbar-sep { height: 1px; background: var(--panel-border); margin: 2px 4px; }
+/* --- Leaflet chrome in the app's tokens --- */
+.leaflet-container:focus, .leaflet-container:focus-visible { outline: none; }
+.map-area .leaflet-bar {
+  border: 1px solid var(--panel-border); border-radius: var(--radius); box-shadow: none; overflow: hidden;
+}
+.map-area .leaflet-bar a {
+  width: 32px; height: 32px; line-height: 32px; font-size: 16px;
+  background: var(--panel); color: var(--text-dim); border-bottom: 1px solid var(--panel-border);
+  transition: background-color 0.12s var(--ease), color 0.12s var(--ease);
+}
+.map-area .leaflet-bar a:last-child { border-bottom: none; }
+.map-area .leaflet-bar a:hover { background: var(--hover-bg); color: var(--text); }
+.map-area .leaflet-bar a.leaflet-disabled { background: var(--panel); color: var(--text-muted); opacity: 0.5; }
+.map-area .leaflet-top.leaflet-left { top: 4px; left: 4px; }
+.map-area .leaflet-control-attribution {
+  background: rgba(13, 15, 18, 0.72); color: var(--text-muted); font-size: 11px; padding: 0 8px;
+}
+.map-area .leaflet-control-attribution a { color: var(--text-dim); }
+.theme-light .map-area .leaflet-control-attribution { background: rgba(255, 255, 255, 0.8); }
+
+/* --- Map toolbar separators --- */
+.map-toolbar-sep { height: 1px; background: var(--panel-border); margin: 4px; }
+
+/* --- Edit menu: one toolbar entry that opens the drawing tools --- */
+.edit-menu-wrap { position: relative; }
+.edit-menu {
+  position: absolute; top: 0; right: calc(100% + 12px); z-index: 1000;
+  width: 248px; padding: 4px;
+  background: var(--panel); border: 1px solid var(--panel-border); border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.32);
+  animation: menu-in 0.14s var(--ease);
+  transform-origin: top right;
+}
+@keyframes menu-in { from { opacity: 0; transform: translateX(4px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .edit-menu { animation: none; } }
+.edit-menu-title {
+  padding: 8px 8px 4px; font-size: 12px; font-weight: 500; color: var(--text-muted);
+}
+.edit-menu-item {
+  display: flex; align-items: center; gap: 12px; width: 100%; height: 36px; padding: 0 8px;
+  background: transparent; border: none; border-radius: var(--radius-control);
+  color: var(--text); font-size: 13px; text-align: left; cursor: pointer;
+  transition: background-color 0.12s var(--ease), color 0.12s var(--ease);
+}
+.edit-menu-item:hover:not(:disabled) { background: var(--hover-bg); }
+.edit-menu-item.selected { background: var(--accent-soft); }
+.edit-menu-item.selected .edit-menu-icon { color: var(--accent); }
+.edit-menu-item:disabled { color: var(--text-muted); cursor: not-allowed; }
+.edit-menu-icon { flex: none; font-size: 16px; color: var(--text-dim); }
+.edit-menu-label { flex: 1 1 auto; }
+.edit-menu-danger:hover:not(:disabled), .edit-menu-danger:hover:not(:disabled) .edit-menu-icon { color: var(--error); }
+.edit-menu-sep { height: 1px; background: var(--panel-border); margin: 4px 8px; }
+
+.keycap {
+  flex: none; min-width: 20px; height: 20px; padding: 0 4px;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-family: var(--font-mono); font-size: 11px; color: var(--text-dim);
+  background: var(--bg); border: 1px solid var(--panel-border); border-bottom-width: 2px;
+  border-radius: 4px;
+}
+
+/* Instruction strip while a drawing tool is active (portalled into the map) */
+.map-draw-hint {
+  position: absolute; top: 16px; left: 50%; transform: translateX(-50%); z-index: 800;
+  display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 8px 0 12px;
+  background: var(--panel); border: 1px solid var(--panel-border); border-radius: var(--radius-control);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.24);
+  font-family: var(--font-sans); font-size: 13px; color: var(--text); white-space: nowrap;
+  pointer-events: none;
+}
+.map-draw-hint svg { font-size: 16px; color: var(--accent); }
 
 /* --- Icon style: Monochrome (default) vs Colour, set in Settings --- */
-.icon-style-colour .map-toolbar .map-tool-btn:nth-child(1) { color: #5b8cff; }  /* zoom/basemap group start */
-.icon-style-colour .map-toolbar .map-tool-btn:nth-child(2) { color: #3ddc97; }
-.icon-style-colour .map-toolbar .map-tool-btn:nth-child(3) { color: #f5a623; }
-.icon-style-colour .map-toolbar .map-tool-btn:nth-child(5) { color: #c678dd; } /* library (after separator) */
-.icon-style-colour .map-toolbar .map-tool-btn:nth-child(6) { color: #56c7d6; } /* settings */
-.icon-style-colour .map-toolbar-draw .map-tool-btn:nth-child(1) { color: #c678dd; } /* dataset manager */
-.icon-style-colour .map-toolbar-draw .map-tool-btn:nth-child(2) { color: #56c7d6; } /* visibility */
-.icon-style-colour .map-toolbar-draw .map-tool-btn:nth-child(3) { color: #ffcf5c; } /* rect */
-.icon-style-colour .map-toolbar-draw .map-tool-btn:nth-child(4) { color: #ffcf5c; } /* circle */
-.icon-style-colour .map-toolbar-draw .map-tool-btn:nth-child(5) { color: #ffcf5c; } /* pencil */
-.icon-style-colour .map-toolbar-draw .map-tool-btn:nth-child(6) { color: #5b8cff; } /* ruler */
-.icon-style-colour .map-toolbar-draw .map-tool-btn:nth-child(7) { color: #ff5d6c; } /* trash */
+.icon-style-colour .map-tool-btn[data-tool="fit"] { color: #6b9bff; }
+.icon-style-colour .map-tool-btn[data-tool="basemap"] { color: #4cc38a; }
+.icon-style-colour .map-tool-btn[data-tool="legend"] { color: #e0a43b; }
+.icon-style-colour .map-tool-btn[data-tool="visibility"] { color: #56c7d6; }
+.icon-style-colour .map-tool-btn[data-tool="edit"] { color: #ffcf5c; }
+.icon-style-colour .map-tool-btn[data-tool="library"] { color: #c678dd; }
+.icon-style-colour .map-tool-btn[data-tool="dataset"] { color: #c678dd; }
+.icon-style-colour .map-tool-btn[data-tool="settings"] { color: #56c7d6; }
+.icon-style-colour .map-tool-btn[data-tool="analysis"] { color: #6b9bff; }
 .icon-style-colour .map-tool-btn.active { background: var(--accent-soft); }
 
 /* --- Settings modal --- */

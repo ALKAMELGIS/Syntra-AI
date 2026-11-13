@@ -1,13 +1,28 @@
 import React, { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useMap } from "react-leaflet";
 import L from "leaflet";
-import { IconDatabase, IconEye, IconEyeOff, IconRectangle, IconCircle, IconPencil, IconRuler, IconTrash } from "./Icons.jsx";
+import {
+  IconEdit, IconRectangle, IconCircle, IconPolygon, IconRuler, IconTag, IconTrash,
+} from "./Icons.jsx";
 
-// A real, working annotation/AOI toolbar living inside <MapContainer> (via
-// useMap()) — every tool here actually drives the Leaflet map instance, none
-// of it is decorative. Rectangle/circle draws double as an Area of Interest
-// (AOI): the resulting polygon is hex-stored as GeoJSON and handed to the
-// parent via onAoiChange so a prediction run can restrict tiling to it.
+// The map's drawing tools, gathered behind one "Edit" button in the main
+// map toolbar. Every tool here drives the Leaflet map for real: rectangle /
+// circle / freehand draw an Area of Interest (handed to the parent as
+// GeoJSON via onAoiChange), the ruler measures a real Haversine distance,
+// and "Annotate for training" toggles the class-labelled AnnotationTool.
+//
+// Keyboard: R rectangle, C circle, F freehand, M measure, A annotate,
+// Esc cancels the active tool or closes the menu.
+
+const TOOLS = [
+  { id: "rect", label: "Rectangle area", key: "R", Icon: IconRectangle, hint: "Drag on the map to draw a rectangle" },
+  { id: "circle", label: "Circle area", key: "C", Icon: IconCircle, hint: "Drag from the centre outwards to draw a circle" },
+  { id: "pencil", label: "Freehand area", key: "F", Icon: IconPolygon, hint: "Click to add points, double-click to close the shape" },
+  { id: "ruler", label: "Measure distance", key: "M", Icon: IconRuler, hint: "Click two points to measure the distance between them" },
+];
+
+const AOI_STYLE = { color: "#ffcf5c", weight: 2, dashArray: "4 3" };
 
 function circleToPolygon(center, radiusMeters, points = 48) {
   const coords = [];
@@ -37,19 +52,24 @@ function polylineToPolygon(latlngs) {
   return { type: "Feature", properties: { shape: "freehand" }, geometry: { type: "Polygon", coordinates: [coords] } };
 }
 
-export default function MapDrawTools({ detectionsVisible, onToggleDetections, onAoiChange, onMeasurementChange, onOpenDatasetManager, suspended = false }) {
-  const map = useMap();
-  const [mode, setMode] = useState(null); // null | "rect" | "circle" | "ruler" | "pencil"
-  const drawState = useRef({ overlay: null, start: null, points: [] });
+function isTypingTarget(el) {
+  return el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable);
+}
 
-  // When the Annotate tool is active it binds its own mousedown/mouseup
-  // handlers to the same map to draw class-labeled shapes; running both
-  // drawing modes at once would fire both on the same drag. `suspended`
-  // just drops our own mode back to idle, it changes none of the AOI/
-  // measurement logic itself.
+export default function MapDrawTools({
+  aoi, onAoiChange, measurement, onMeasurementChange,
+  annotateOpen = false, onToggleAnnotate, canAnnotate = false,
+}) {
+  const map = useMap();
+  const [mode, setMode] = useState(null); // null | "rect" | "circle" | "pencil" | "ruler"
+  const [menuOpen, setMenuOpen] = useState(false);
+  const drawState = useRef({ overlay: null, start: null, points: [] });
+  const wrapRef = useRef(null);
+
+  // Annotate binds its own mouse handlers to the same map; never run both.
   useEffect(() => {
-    if (suspended) setMode(null);
-  }, [suspended]);
+    if (annotateOpen) setMode(null);
+  }, [annotateOpen]);
 
   function clearOverlay() {
     if (drawState.current.overlay) {
@@ -60,25 +80,89 @@ export default function MapDrawTools({ detectionsVisible, onToggleDetections, on
 
   function clearAll() {
     clearOverlay();
+    drawState.current.points = [];
     onAoiChange?.(null);
     onMeasurementChange?.(null);
     setMode(null);
+    setMenuOpen(false);
   }
 
+  function pick(next) {
+    drawState.current.points = [];
+    if (annotateOpen) onToggleAnnotate?.();
+    setMode((m) => (m === next ? null : next));
+    setMenuOpen(false);
+  }
+
+  function pickAnnotate() {
+    if (!canAnnotate) return;
+    setMode(null);
+    onToggleAnnotate?.();
+    setMenuOpen(false);
+  }
+
+  // Clicks and scrolls on the menu must not reach the map underneath, or a
+  // click on a menu item would also drop a point for the active tool.
   useEffect(() => {
-    if (!mode || suspended) return;
+    if (!wrapRef.current) return;
+    L.DomEvent.disableClickPropagation(wrapRef.current);
+    L.DomEvent.disableScrollPropagation(wrapRef.current);
+  }, []);
+
+  // Close the menu on an outside click.
+  useEffect(() => {
+    if (!menuOpen) return;
+    function onDoc(e) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) setMenuOpen(false);
+    }
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [menuOpen]);
+
+  // Keyboard shortcuts.
+  useEffect(() => {
+    function onKey(e) {
+      if (e.metaKey || e.ctrlKey || e.altKey || isTypingTarget(e.target)) return;
+      if (e.key === "Escape") {
+        if (menuOpen) setMenuOpen(false);
+        else if (mode) {
+          clearOverlay();
+          drawState.current = { overlay: null, start: null, points: [] };
+          setMode(null);
+        }
+        return;
+      }
+      const k = e.key.toUpperCase();
+      const tool = TOOLS.find((t) => t.key === k);
+      if (tool) {
+        e.preventDefault();
+        pick(tool.id);
+      } else if (k === "A" && canAnnotate) {
+        e.preventDefault();
+        pickAnnotate();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+
+  // Drawing behaviour for the active tool.
+  useEffect(() => {
+    if (!mode || annotateOpen) return;
     map.dragging.disable();
+    map.doubleClickZoom.disable();
     map.getContainer().style.cursor = "crosshair";
+    L.DomUtil.disableTextSelection(); // a drag must draw, not select toolbar text
 
     function onMouseDown(e) {
       if (mode === "rect") {
         drawState.current.start = e.latlng;
         clearOverlay();
-        drawState.current.overlay = L.rectangle([e.latlng, e.latlng], { color: "#ffcf5c", weight: 2, dashArray: "4 3" }).addTo(map);
+        drawState.current.overlay = L.rectangle([e.latlng, e.latlng], AOI_STYLE).addTo(map);
       } else if (mode === "circle") {
         drawState.current.start = e.latlng;
         clearOverlay();
-        drawState.current.overlay = L.circle(e.latlng, { radius: 1, color: "#ffcf5c", weight: 2, dashArray: "4 3" }).addTo(map);
+        drawState.current.overlay = L.circle(e.latlng, { ...AOI_STYLE, radius: 1 }).addTo(map);
       } else if (mode === "ruler") {
         drawState.current.points.push(e.latlng);
         if (drawState.current.points.length === 2) {
@@ -86,7 +170,7 @@ export default function MapDrawTools({ detectionsVisible, onToggleDetections, on
           const meters = a.distanceTo(b);
           const label = meters >= 1000 ? `${(meters / 1000).toFixed(2)} km` : `${meters.toFixed(0)} m`;
           clearOverlay();
-          drawState.current.overlay = L.polyline([a, b], { color: "#5b8cff", weight: 2 }).addTo(map);
+          drawState.current.overlay = L.polyline([a, b], { color: "#6b9bff", weight: 2 }).addTo(map);
           onMeasurementChange?.(label);
           drawState.current.points = [];
           setMode(null);
@@ -95,7 +179,7 @@ export default function MapDrawTools({ detectionsVisible, onToggleDetections, on
         drawState.current.points.push(e.latlng);
         clearOverlay();
         if (drawState.current.points.length > 1) {
-          drawState.current.overlay = L.polygon(drawState.current.points, { color: "#ffcf5c", weight: 2, fillOpacity: 0.08 }).addTo(map);
+          drawState.current.overlay = L.polygon(drawState.current.points, { ...AOI_STYLE, fillOpacity: 0.08 }).addTo(map);
         }
       }
     }
@@ -104,15 +188,13 @@ export default function MapDrawTools({ detectionsVisible, onToggleDetections, on
       if (mode === "rect" && drawState.current.start && drawState.current.overlay) {
         drawState.current.overlay.setBounds([drawState.current.start, e.latlng]);
       } else if (mode === "circle" && drawState.current.start && drawState.current.overlay) {
-        const r = drawState.current.start.distanceTo(e.latlng);
-        drawState.current.overlay.setRadius(r);
+        drawState.current.overlay.setRadius(drawState.current.start.distanceTo(e.latlng));
       }
     }
 
     function onMouseUp(e) {
       if (mode === "rect" && drawState.current.start) {
-        const bounds = L.latLngBounds(drawState.current.start, e.latlng);
-        onAoiChange?.(rectToPolygon(bounds));
+        onAoiChange?.(rectToPolygon(L.latLngBounds(drawState.current.start, e.latlng)));
         drawState.current.start = null;
         setMode(null);
       } else if (mode === "circle" && drawState.current.start) {
@@ -142,31 +224,78 @@ export default function MapDrawTools({ detectionsVisible, onToggleDetections, on
       map.off("mouseup", onMouseUp);
       map.off("dblclick", onDblClick);
       map.dragging.enable();
+      map.doubleClickZoom.enable();
       map.getContainer().style.cursor = "";
+      L.DomUtil.enableTextSelection();
     };
-  }, [mode, map, onAoiChange, onMeasurementChange, suspended]);
+  }, [mode, map, onAoiChange, onMeasurementChange, annotateOpen]);
 
-  function toggle(next) {
-    drawState.current.points = [];
-    setMode((m) => (m === next ? null : next));
-  }
+  const activeTool = TOOLS.find((t) => t.id === mode);
+  const ButtonIcon = activeTool ? activeTool.Icon : annotateOpen ? IconTag : IconEdit;
+  const hasDrawing = Boolean(aoi) || measurement != null;
 
   return (
-    <div className="map-toolbar map-toolbar-draw">
-      <button className="map-tool-btn" title="Jump to Dataset &amp; Model Manager" onClick={onOpenDatasetManager}><IconDatabase /></button>
+    <div className="edit-menu-wrap" ref={wrapRef}>
       <button
-        className={`map-tool-btn ${!detectionsVisible ? "active" : ""}`}
-        title="Toggle detections visibility"
-        onClick={onToggleDetections}
+        className={`map-tool-btn ${mode || annotateOpen || menuOpen ? "active" : ""}`}
+        data-tool="edit"
+        title="Edit: draw and measure"
+        aria-haspopup="menu"
+        aria-expanded={menuOpen}
+        onClick={() => setMenuOpen((o) => !o)}
       >
-        {detectionsVisible ? <IconEye /> : <IconEyeOff />}
+        <ButtonIcon />
       </button>
-      <div className="map-toolbar-sep" />
-      <button disabled={suspended} className={`map-tool-btn ${mode === "rect" ? "active" : ""}`} title="Draw rectangle AOI" onClick={() => toggle("rect")}><IconRectangle /></button>
-      <button disabled={suspended} className={`map-tool-btn ${mode === "circle" ? "active" : ""}`} title="Draw circle AOI" onClick={() => toggle("circle")}><IconCircle /></button>
-      <button disabled={suspended} className={`map-tool-btn ${mode === "pencil" ? "active" : ""}`} title="Freehand AOI (click to add points, double-click to finish)" onClick={() => toggle("pencil")}><IconPencil /></button>
-      <button disabled={suspended} className={`map-tool-btn ${mode === "ruler" ? "active" : ""}`} title="Measure distance (click two points)" onClick={() => toggle("ruler")}><IconRuler /></button>
-      <button className="map-tool-btn" title="Clear AOI / measurement" onClick={clearAll}><IconTrash /></button>
+
+      {menuOpen && (
+        <div className="edit-menu" role="menu">
+          <div className="edit-menu-title">Draw and measure</div>
+          {TOOLS.map(({ id, label, key, Icon }) => (
+            <button
+              key={id}
+              role="menuitemradio"
+              aria-checked={mode === id}
+              className={`edit-menu-item ${mode === id ? "selected" : ""}`}
+              onClick={() => pick(id)}
+            >
+              <Icon className="edit-menu-icon" />
+              <span className="edit-menu-label">{label}</span>
+              <kbd className="keycap">{key}</kbd>
+            </button>
+          ))}
+
+          <div className="edit-menu-sep" />
+          <button
+            role="menuitemcheckbox"
+            aria-checked={annotateOpen}
+            className={`edit-menu-item ${annotateOpen ? "selected" : ""}`}
+            onClick={pickAnnotate}
+            disabled={!canAnnotate}
+            title={canAnnotate ? undefined : "Load an image from the library first"}
+          >
+            <IconTag className="edit-menu-icon" />
+            <span className="edit-menu-label">Annotate for training</span>
+            <kbd className="keycap">A</kbd>
+          </button>
+
+          <div className="edit-menu-sep" />
+          <button className="edit-menu-item edit-menu-danger" onClick={clearAll} disabled={!hasDrawing && !mode}>
+            <IconTrash className="edit-menu-icon" />
+            <span className="edit-menu-label">Clear drawings</span>
+          </button>
+        </div>
+      )}
+
+      {activeTool && !menuOpen && createPortal(
+        // Rendered into the map container so it can sit top-centre over the
+        // map instead of inside the narrow toolbar column.
+        <div className="map-draw-hint" role="status">
+          <activeTool.Icon />
+          <span>{activeTool.hint}</span>
+          <kbd className="keycap">Esc</kbd>
+        </div>,
+        map.getContainer(),
+      )}
     </div>
   );
 }
