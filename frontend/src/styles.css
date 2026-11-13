@@ -265,6 +265,11 @@ button, input, select, textarea { font-family: inherit; }
 }
 .progress-bar { height: 4px; background: var(--bg); border-radius: 2px; overflow: hidden; margin-top: 8px; }
 .progress-fill { height: 100%; background: var(--accent); transition: width 0.3s var(--ease); }
+/* Unknown total: a short segment sliding along the track. This is the one
+   looping animation outside the spinner, and it only runs while a job is live. */
+.progress-fill-indeterminate { width: 30%; animation: progress-slide 1.2s var(--ease) infinite; }
+@keyframes progress-slide { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
+@media (prefers-reduced-motion: reduce) { .progress-fill-indeterminate { animation: none; width: 100%; opacity: 0.4; } }
 
 .note {
   font-size: 12px; color: var(--text-dim); line-height: 1.5; margin-top: 8px;

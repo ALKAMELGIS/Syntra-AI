@@ -72,6 +72,7 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     }).then(handle),
+  listJobs: (kind, limit = 20) => request(`${BASE}/jobs?kind=${kind}&limit=${limit}`).then(handle),
   jobStatus: (jobId) => request(`${BASE}/predict/${jobId}`).then(handle),
   getGeojson: (jobId, modelId) => request(`${BASE}/results/${jobId}/${modelId}`).then(handle),
   listDatasetVersions: (modelId) => request(`${BASE}/datasets/${modelId}/versions`).then(handle),

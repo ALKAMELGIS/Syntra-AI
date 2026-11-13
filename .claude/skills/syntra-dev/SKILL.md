@@ -50,8 +50,12 @@ reimplement them.
 - **Anything that runs a subprocess on the server** (pip, training) must be
   gated like `environment_actions_allowed()`: loopback by default, explicit
   env flag otherwise.
-- Long work runs as a background job with a pollable status endpoint, and
-  blocking I/O inside `async def` goes through `run_in_threadpool`.
+- Long work runs as a background job stored with `get_store()` from
+  `app/core/jobs.py` (create, update, append, get by kind), with a pollable
+  status endpoint. Never keep job state in a module-level dict: it vanishes
+  on restart. Give each job kind its own name, add it to `_KINDS` in
+  `api/jobs.py`, and treat `interrupted` as a terminal state in the UI.
+- Blocking I/O inside `async def` goes through `run_in_threadpool`.
 
 ## 3. Tests
 

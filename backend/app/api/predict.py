@@ -8,6 +8,7 @@ pretending to run them.
 from __future__ import annotations
 
 
+import re
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
@@ -73,6 +74,11 @@ def _run_job(job_id: str, req: PredictRequest):
         record_run(settings.DATA_DIR, req.model_id, status="error")
 
 
+def _display_name(path: str) -> str:
+    # Uploads are stored as "<uuid>_<original name>"; show the original.
+    return re.sub(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}_", "", Path(path).name)
+
+
 def _resolve_image_path(req: PredictRequest) -> str:
     if req.image_id:
         entry = find_entry_by_image_id(settings.UPLOAD_DIR, req.image_id)
@@ -99,7 +105,7 @@ def start_prediction(req: PredictRequest, background_tasks: BackgroundTasks):
 
     job_id = get_store().create(
         KIND, model_id=req.model_id, image_id=req.image_id,
-        image_name=Path(req.image_path).name, tiles_processed=0,
+        image_name=_display_name(req.image_path), tiles_processed=0,
     )
     background_tasks.add_task(_run_job, job_id, req)
     return {"job_id": job_id, "status": "queued"}
