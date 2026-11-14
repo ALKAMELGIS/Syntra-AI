@@ -42,3 +42,30 @@ def test_tile_pixel_matches_raster_marker(tmp_path):
     m_per_px = 2 * math.pi * 6378137 * math.cos(math.radians(lat[0])) / 256 / 2 ** z
     assert err_px * m_per_px < 0.5, f"marker {err_px * m_per_px:.2f} m off"
     assert render_tile(str(p), z, int(fx) + 50, int(fy)) is None     # far away: nothing
+
+
+def test_stretch_plan_computed_once_under_parallel_tile_requests(monkeypatch, tmp_path):
+    """A map view requests many tiles at once; the scene stretch must be computed once."""
+    import threading
+    import time
+    from concurrent.futures import ThreadPoolExecutor
+
+    import app.engine.raster_prep as prep
+    import app.engine.tiles as tiles
+
+    calls = []
+    lock = threading.Lock()
+
+    def slow_plan(path):
+        with lock:
+            calls.append(path)
+        time.sleep(0.05)
+        return object()
+
+    monkeypatch.setattr(prep, "plan_rgb", slow_plan)
+    tiles._plan.cache_clear()
+    f = tmp_path / "x.tif"
+    f.write_bytes(b"x")
+    with ThreadPoolExecutor(16) as ex:
+        list(ex.map(lambda _: tiles.plan_for(str(f)), range(16)))
+    assert len(calls) == 1

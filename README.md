@@ -304,6 +304,15 @@ for when it is exposed to a network (all in `backend/.env.example`):
 - Upload filenames are sanitised and capped by `SYNTRA_MAX_UPLOAD_MB`.
 - Library Status install/repair/update (which runs `pip`) only works from
   the server itself unless `SYNTRA_ALLOW_ENV_ACTIONS=1`.
+- **Large scenes on the map.** Measured on a real SuperView Neo-3 MUX scene
+  (10,806 x 10,395 px, 8 bands, uint16, 1.8 GB, stripped, no overviews) on a
+  2-core VM: raster check 1.5 s; preview 7.6 s (was 118 s: it is now read
+  decimated in the file's CRS and warped in memory, not warped from full
+  resolution); background optimise 114 s; after it, tiles 0.2-0.7 s at
+  z13-z16. The map stays on the preview while the optimise runs, then
+  switches to full-resolution tiles. The scene stretch is computed once per
+  file even when a view asks for 30 tiles at once (was 30 x 0.35 s).
+  The Legend has the image as a layer: show/hide, opacity, ground resolution.
 - **Masks uploaded instead of imagery.** A scene's cloud or quality mask
   (for example SuperView Neo `*_Cloud.tiff`) is named in the raster check
   as "No image data: this is a mask", with the file to upload instead;

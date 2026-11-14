@@ -267,6 +267,21 @@ html, body, #root { height: 100%; overflow: hidden; }
 .legend-swatch-line { height: 2px; border-radius: 1px; background: var(--accent); }
 .legend-name { flex: 1 1 auto; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .legend-value { flex: none; font-size: 12px; color: var(--text-dim); }
+/* image layer: eye toggle + name + resolution, then opacity */
+.legend-image { padding: 4px; border-bottom: 1px solid var(--panel-border); flex: none; }
+.legend-image .legend-row { padding: 0 8px 0 4px; }
+.legend-eye {
+  width: 24px; height: 24px; flex: none; display: grid; place-items: center; border-radius: 6px;
+  background: transparent; border: none; cursor: pointer; color: var(--text-dim); font-size: 14px;
+  transition: background-color 0.12s var(--ease), color 0.12s var(--ease);
+}
+.legend-eye:hover { background: var(--hover-bg); color: var(--text); }
+.legend-eye[aria-pressed="false"] { color: var(--text-muted); }
+.legend-name.dim { color: var(--text-muted); }
+.legend-opacity { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 8px 0 36px; }
+.legend-opacity-label { font-size: 12px; color: var(--text-muted); flex: none; }
+.legend-opacity input[type=range] { flex: 1 1 auto; min-width: 0; accent-color: var(--accent); height: 16px; margin: 0; }
+.legend-opacity .legend-value { width: 36px; text-align: right; }
 .legend-foot {
   padding: 8px 12px; border-top: 1px solid var(--panel-border); flex: none;
   font-size: 11px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;

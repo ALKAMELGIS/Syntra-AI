@@ -142,7 +142,7 @@ function MapToolbar({
 const PREVIEW_MAX_PX = 2048;
 const EARTH = 2 * Math.PI * 6378137;
 
-function SourceImage({ image, bounds }) {
+function SourceImage({ image, bounds, opacity = 1 }) {
   const map = useMap();
   const [zoom, setZoom] = useState(map.getZoom());
   useMapEvents({ zoomend: () => setZoom(map.getZoom()) });
@@ -155,7 +155,9 @@ function SourceImage({ image, bounds }) {
   const tileZoom = previewRes && sidePx > PREVIEW_MAX_PX
     ? Math.ceil(Math.log2((EARTH * cosLat) / 256 / previewRes)) : null;
   const nativeZoom = gsd ? Math.ceil(Math.log2((EARTH * cosLat) / 256 / gsd)) : null;
-  const useTiles = tileZoom != null && zoom >= tileZoom;
+  // While the background optimise job runs, the file has no overviews yet and a
+  // zoomed-in tile can take seconds: stay on the preview until it finishes.
+  const useTiles = tileZoom != null && zoom >= tileZoom && !image.optimize_job_id;
   const ll = [[bounds.south, bounds.west], [bounds.north, bounds.east]];
   return useTiles ? (
     <TileLayer
@@ -166,9 +168,36 @@ function SourceImage({ image, bounds }) {
       maxZoom={MAX_ZOOM}
       maxNativeZoom={Math.min(MAX_ZOOM, nativeZoom ?? MAX_ZOOM)}
       keepBuffer={1}
+      opacity={opacity}
     />
   ) : (
-    <ImageOverlay key={image.image_id} url={api.imagePreviewUrl(image.image_id)} bounds={ll} />
+    <ImageOverlay key={image.image_id} url={api.imagePreviewUrl(image.image_id)} bounds={ll} opacity={opacity} />
+  );
+}
+
+// The source image as a layer: show or hide, opacity, and its ground resolution.
+function ImageLayerRow({ image, layer, onChange }) {
+  const gsd = image.health?.gsd_m || image.gsd_x_m;
+  const res = gsd ? (gsd < 1 ? `${Math.round(gsd * 100)} cm` : `${+gsd.toFixed(2)} m`) : null;
+  const pct = Math.round(layer.opacity * 100);
+  return (
+    <div className="legend-image">
+      <div className="legend-row">
+        <button type="button" className="legend-eye" aria-pressed={layer.visible}
+                aria-label={layer.visible ? "Hide image" : "Show image"} title={layer.visible ? "Hide image" : "Show image"}
+                onClick={() => onChange({ ...layer, visible: !layer.visible })}>
+          {layer.visible ? <IconEye /> : <IconEyeOff />}
+        </button>
+        <span className={`legend-name ${layer.visible ? "" : "dim"}`} title={image.filename}>{image.filename}</span>
+        {res && <span className="legend-value mono" title="Ground size of one pixel">{res}</span>}
+      </div>
+      <label className="legend-opacity">
+        <span className="legend-opacity-label">Opacity</span>
+        <input type="range" min="0" max="100" step="5" value={pct} disabled={!layer.visible}
+               onChange={(e) => onChange({ ...layer, opacity: Number(e.target.value) / 100 })} aria-label="Image opacity" />
+        <span className="mono legend-value">{pct}%</span>
+      </label>
+    </div>
   );
 }
 
@@ -245,6 +274,7 @@ export default function MapView({
 }) {
   const [basemap, setBasemap] = useState("satellite");
   const [legendOpen, setLegendOpen] = useState(false);
+  const [imageLayer, setImageLayer] = useState({ visible: true, opacity: 1 });
 
   // Legend and Analysis both open beside the toolbar: show one at a time.
   useEffect(() => {
@@ -301,7 +331,7 @@ export default function MapView({
             tileerror: () => setTiles((t) => ({ ...t, failed: t.failed + 1 })),
           }}
         />
-        {overlayBounds && sourceImage?.image_id && <SourceImage image={sourceImage} bounds={overlayBounds} />}
+        {overlayBounds && sourceImage?.image_id && imageLayer.visible && <SourceImage image={sourceImage} bounds={overlayBounds} opacity={imageLayer.opacity} />}
         <ImageFootprint image={sourceImage} />
         <AutoFitSourceImage sourceImage={sourceImage} />
         {detectionsVisible &&
@@ -399,9 +429,13 @@ export default function MapView({
         <section className="legend-popover" aria-label="Legend">
           <header className="legend-head">
             <span className="legend-title">Legend</span>
-            <span className="legend-total mono">{layers.length + (aoi ? 1 : 0) || ""}</span>
+            <span className="legend-total mono">{layers.length + (aoi ? 1 : 0) + (sourceImage?.image_id ? 1 : 0) || ""}</span>
           </header>
+          {sourceImage?.image_id && (
+            <ImageLayerRow image={sourceImage} layer={imageLayer} onChange={setImageLayer} />
+          )}
           {layers.length === 0 && !aoi ? (
+            sourceImage?.image_id ? null :
             <p className="legend-empty">No layers yet</p>
           ) : (
             <ul className="legend-list">
@@ -427,11 +461,6 @@ export default function MapView({
                 </li>
               )}
             </ul>
-          )}
-          {sourceImage?.filename && (
-            <footer className="legend-foot mono" title={sourceImage.filename}>
-              {sourceImage.filename}{!sourceImage.bounds_wgs84 ? " · no CRS" : ""}
-            </footer>
           )}
         </section>
       )}

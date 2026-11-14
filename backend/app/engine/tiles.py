@@ -39,8 +39,20 @@ def _plan(path: str, mtime: float):
     return plan_rgb(path)
 
 
+_PLAN_LOCK = threading.Lock()
+
+
 def plan_for(path: str):
-    return _plan(path, os.path.getmtime(path))
+    """The scene-wide stretch, computed once per file version.
+
+    A map view asks for ~30 tiles at once; lru_cache alone lets every one of them
+    miss together and compute the same plan (30 x 0.35 s on a 5400 px scene, which
+    held the first tiles after an optimise back by 4-6 s). The lock makes the
+    first request compute it and the rest wait for that one result.
+    """
+    mtime = os.path.getmtime(path)
+    with _PLAN_LOCK:
+        return _plan(path, mtime)
 
 
 def render_tile(path: str, z: int, x: int, y: int) -> bytes | None:
