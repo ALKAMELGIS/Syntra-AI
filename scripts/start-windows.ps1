@@ -7,7 +7,7 @@
   First run creates the conda environment "syntra" if it does not exist
   (rasterio comes from conda-forge, which is the reliable route on Windows).
 #>
-param([int]$ApiPort = 8765, [int]$WebPort = 5180, [string]$CondaEnv = "syntra")
+param([int]$ApiPort = 8765, [int]$WebPort = 5291, [string]$CondaEnv = "syntra")
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 
@@ -24,7 +24,20 @@ function Find-EnvPython {
 }
 
 function Test-PortFree([int]$port) {
-    -not (Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue)
+    # Something answering on IPv4 or IPv6 localhost means taken (catches Docker/WSL too).
+    if (Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue) { return $false }
+    foreach ($h in @("127.0.0.1", "::1")) {
+        $c = New-Object System.Net.Sockets.TcpClient
+        try {
+            if ($c.ConnectAsync($h, $port).Wait(300) -and $c.Connected) { return $false }
+        } catch {} finally { $c.Close() }
+    }
+    return $true
+}
+
+function Get-FreePort([int]$start) {
+    for ($p = $start; $p -lt $start + 50; $p++) { if (Test-PortFree $p) { return $p } }
+    throw "No free port between $start and $($start + 49)."
 }
 
 $py = Find-EnvPython
@@ -43,9 +56,8 @@ if ($LASTEXITCODE -ne 0) {
     if ($LASTEXITCODE -ne 0) { throw "pip install failed; see the messages above." }
 }
 
-foreach ($port in @($ApiPort, $WebPort)) {
-    if (-not (Test-PortFree $port)) { throw "Port $port is already in use. Run again with another port, e.g. -ApiPort 8766 -WebPort 5181" }
-}
+$ApiPort = Get-FreePort $ApiPort
+$WebPort = Get-FreePort $WebPort
 
 $weights = "$env:USERPROFILE\Downloads\IMG-VHR\models\yolo11n-obb.onnx"
 $setW = if (Test-Path $weights) { "`$env:SYNTRA_AERIAL_OBB_WEIGHTS='$weights'; " } else { "" }
@@ -61,6 +73,16 @@ if (-not (Test-Path node_modules)) {
 Start-Process powershell -ArgumentList "-NoExit", "-Command",
     "Set-Location '$root\frontend'; `$env:VITE_API_PORT='$ApiPort'; npx vite --port $WebPort --strictPort"
 
-Start-Sleep -Seconds 6
-Start-Process "http://localhost:$WebPort"
-Write-Host "Syntra AI: http://localhost:$WebPort  (API on port $ApiPort)"
+# Open the browser only once this port really serves Syntra AI (not another app).
+$url = "http://localhost:$WebPort"
+$ok = $false
+for ($i = 0; $i -lt 60 -and -not $ok; $i++) {
+    Start-Sleep -Seconds 1
+    try { $ok = (Invoke-WebRequest $url -UseBasicParsing -TimeoutSec 2).Content -match "Syntra AI" } catch {}
+}
+if ($ok) {
+    Start-Process $url
+    Write-Host "Syntra AI: $url  (API on port $ApiPort)"
+} else {
+    Write-Host "The interface did not start on $url. Check the interface window for the error." -ForegroundColor Red
+}

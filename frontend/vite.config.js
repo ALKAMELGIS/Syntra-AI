@@ -14,7 +14,7 @@ export default defineConfig(({ mode }) => {
     server: {
       // 5173 is Vite's default and often taken by another project; strictPort
       // fails loudly instead of silently moving to a different port.
-      port: Number(env.VITE_PORT || 5180),
+      port: Number(env.VITE_PORT || 5291),
       strictPort: true,
       proxy: {
         "/api": `http://localhost:${apiPort}`,

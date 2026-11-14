@@ -246,7 +246,7 @@ docker-compose.yml
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\start-windows.ps1
-# interface http://localhost:5180, API port 8765; change with -WebPort / -ApiPort
+# interface http://localhost:5291, API 8765; the next free port is used if one is taken
 ```
 
 ```bash
@@ -265,7 +265,7 @@ uvicorn app.main:app --reload --port 8000
 # Frontend
 cd frontend
 npm install
-npm run dev   # http://localhost:5180 (VITE_PORT), proxies /api -> :8000 (VITE_API_PORT)
+npm run dev   # http://localhost:5291 (VITE_PORT), proxies /api -> :8000 (VITE_API_PORT)
 
 # Offline tests (no GPU/rasterio/torch needed)
 cd backend
