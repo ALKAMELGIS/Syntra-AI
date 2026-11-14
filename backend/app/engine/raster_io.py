@@ -99,6 +99,40 @@ def preview_bounds_wgs84(path: str | Path) -> dict[str, float] | None:
     return {"south": south, "west": west, "north": north, "east": east}
 
 
+def _warped_preview(ds, plan, max_dim: int):
+    """Decimate first, then warp the small picture to Web Mercator.
+
+    Reading a WarpedVRT straight from a file without overviews makes GDAL warp
+    from full resolution: 118 s for a 1.8 GB SuperView Neo MUX scene. Reading a
+    reduced copy in the file's own CRS (one strip per output row) and warping
+    that in memory takes seconds, on the same grid and bounds as the VRT, so
+    placement is unchanged.
+    """
+    from rasterio.enums import Resampling
+    from rasterio.transform import Affine
+    from rasterio.warp import reproject
+
+    from app.engine.raster_prep import read_rgb
+
+    with _preview_vrt(ds) as vrt:                      # opening it only computes the target grid
+        scale = min(1.0, max_dim / max(vrt.width, vrt.height))
+        out_w, out_h = max(1, round(vrt.width * scale)), max(1, round(vrt.height * scale))
+        dst_transform = vrt.transform * Affine.scale(vrt.width / out_w, vrt.height / out_h)
+    # read the source a little finer than the output so the warp has pixels to blend
+    s_scale = min(1.0, 1.5 * max_dim / max(ds.width, ds.height))
+    sw, sh = max(1, round(ds.width * s_scale)), max(1, round(ds.height * s_scale))
+    small, small_valid = read_rgb(ds, plan, out_shape=(sh, sw))
+    src_transform = ds.transform * Affine.scale(ds.width / sw, ds.height / sh)
+    out = np.zeros((3, out_h, out_w), np.uint8)
+    for b in range(3):
+        reproject(np.ascontiguousarray(small[..., b]), out[b], src_transform=src_transform, src_crs=ds.crs,
+                  dst_transform=dst_transform, dst_crs="EPSG:3857", resampling=Resampling.bilinear)
+    vmask = np.zeros((out_h, out_w), np.uint8)
+    reproject(small_valid.astype(np.uint8) * 255, vmask, src_transform=src_transform, src_crs=ds.crs,
+              dst_transform=dst_transform, dst_crs="EPSG:3857", resampling=Resampling.nearest, dst_nodata=0)
+    return np.moveaxis(out, 0, -1), vmask > 127
+
+
 def read_preview_png(path: str | Path, max_dim: int = 2048) -> bytes:
     """
     A true-colour PNG of the raster for the map, in Web Mercator so it sits on
@@ -116,20 +150,10 @@ def read_preview_png(path: str | Path, max_dim: int = 2048) -> bytes:
     plan = plan_rgb(path)
     with rasterio.open(path) as ds:
         if ds.crs is None:
-            src = ds
-            ctx = None
+            scale = min(1.0, max_dim / max(ds.width, ds.height))
+            data, valid = read_rgb(ds, plan, out_shape=(max(1, round(ds.height * scale)), max(1, round(ds.width * scale))))
         else:
-            ctx = _preview_vrt(ds)
-            src = ctx
-        try:
-            scale = min(1.0, max_dim / max(src.width, src.height))
-            out_w = max(1, round(src.width * scale))
-            out_h = max(1, round(src.height * scale))
-            data, valid = read_rgb(src, plan, out_shape=(out_h, out_w))
-        finally:
-            if ctx is not None:
-                ctx.close()
-
+            data, valid = _warped_preview(ds, plan, max_dim)
     buf = io.BytesIO()
     alpha = np.where(valid, 255, 0).astype(np.uint8)          # outside the footprint -> transparent
     Image.fromarray(np.dstack([data, alpha]), mode="RGBA").save(buf, format="PNG")
