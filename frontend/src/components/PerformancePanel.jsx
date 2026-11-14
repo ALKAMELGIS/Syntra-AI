@@ -56,25 +56,85 @@ function LineChart({ epochs, series, yMax, yFmt = (v) => v.toFixed(1), label }) 
   );
 }
 
-export default function PerformancePanel({ open, onClose, preferModelId }) {
+function CheckResult({ check }) {
+  const rows = Object.entries(check.per_class || {});
+  return (
+    <div className="perf-check">
+      <div className="perf-hero">
+        <span className="perf-figure mono">{check.overall.f1 != null ? check.overall.f1.toFixed(2) : "–"}</span>
+        <span className="perf-hero-text">
+          F1 on your accuracy areas
+          <span className="perf-dim">{check.image_name} · {check.areas} area{check.areas === 1 ? "" : "s"} · IoU {check.iou} · {check.checked_at.slice(0, 10)}</span>
+        </span>
+      </div>
+      <table className="perf-table mono">
+        <thead><tr><th>Class</th><th>Found</th><th>Wrong</th><th>Missed</th><th>P</th><th>R</th><th>F1</th></tr></thead>
+        <tbody>
+          {rows.map(([name, r]) => (
+            <tr key={name}>
+              <td className="perf-table-name">{name}</td><td>{r.tp}</td><td>{r.fp}</td><td>{r.fn}</td>
+              <td>{r.precision ?? "–"}</td><td>{r.recall ?? "–"}</td><td className="strong">{r.f1 ?? "–"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {check.unmatched_label_classes?.length > 0 && (
+        <p className="perf-dim">Not scored: the model has no class named {check.unmatched_label_classes.join(", ")}</p>
+      )}
+    </div>
+  );
+}
+
+export default function PerformancePanel({ open, onClose, preferModelId, image, models = [], checkAreas = 0, onChecked }) {
   const [list, setList] = useState(null);
   const [sel, setSel] = useState(null);
   const [perf, setPerf] = useState(null);
   const [err, setErr] = useState(null);
+  const [checkModel, setCheckModel] = useState("");
+  const [checking, setChecking] = useState(null);   // null | {status, pct}
+  const [reload, setReload] = useState(0);
+  const runnable = models.filter((m) => m.status === "ready" || m.status === "validation");
 
   useEffect(() => {
     if (!open) return;
     api.listPerformance().then((l) => {
       setList(l);
-      setSel((cur) => cur || (l.find((m) => m.model_id === preferModelId) || l[0])?.model_id || null);
+      setSel((cur) => (preferModelId && l.some((m) => m.model_id === preferModelId) ? preferModelId
+        : cur || l[0]?.model_id || null));
     }).catch(() => setList([]));
-  }, [open, preferModelId]);
+  }, [open, preferModelId, reload]);
 
   useEffect(() => {
     if (!sel) return;
-    setPerf(null); setErr(null);
+    setErr(null);
     api.modelPerformance(sel).then(setPerf).catch((e) => setErr(e.message));
-  }, [sel]);
+  }, [sel, reload]);
+
+  useEffect(() => { if (preferModelId) setCheckModel(preferModelId); }, [preferModelId]);
+
+  async function runCheck() {
+    const id = checkModel || sel;
+    if (!id || !image) return;
+    setErr(null);
+    setChecking({ status: "queued" });
+    try {
+      const r = await api.startAccuracy({ image_id: image.image_id, model_id: id });
+      for (;;) {
+        await new Promise((res) => setTimeout(res, 1200));
+        const j = await api.accuracyStatus(r.job_id);
+        if (j.status === "completed") break;
+        if (j.status === "error" || j.status === "interrupted") throw new Error(j.error || "The check did not finish");
+        setChecking({ status: j.status });
+      }
+      setChecking(null);
+      setSel(id);
+      setReload((n) => n + 1);
+      onChecked?.();
+    } catch (e) {
+      setChecking(null);
+      setErr(e.message);
+    }
+  }
 
   if (!open) return null;
   const last = perf?.epochs?.at(-1);
@@ -87,8 +147,19 @@ export default function PerformancePanel({ open, onClose, preferModelId }) {
         <button type="button" className="panel-close-btn" onClick={onClose} aria-label="Close"><IconClose /></button>
       </header>
 
-      {list && list.length === 0 && (
-        <p className="perf-empty">No model with a training history yet. Train one from the Train panel and its curves appear here.</p>
+      {list && list.length === 0 && !checkAreas && (
+        <p className="perf-empty">Nothing measured yet. Train a model, or draw an accuracy area in the Train panel's Label step and check any model here.</p>
+      )}
+
+      {image && checkAreas > 0 && runnable.length > 0 && (
+        <div className="perf-checkbar">
+          <select className="train-select" value={checkModel || sel || ""} onChange={(e) => setCheckModel(e.target.value)}>
+            {runnable.map((m) => <option key={m.model_id} value={m.model_id}>{m.name}</option>)}
+          </select>
+          <button type="button" className="quiet-button" onClick={runCheck} disabled={!!checking}>
+            {checking ? "Checking…" : "Check on this image"}
+          </button>
+        </div>
       )}
 
       {list && list.length > 1 && (
@@ -96,7 +167,7 @@ export default function PerformancePanel({ open, onClose, preferModelId }) {
           {list.map((m) => (
             <button type="button" key={m.model_id} className={m.model_id === sel ? "selected" : ""} onClick={() => setSel(m.model_id)}>
               <span className="perf-model-name">{m.name}</span>
-              <span className="mono perf-dim">{m.best ? m.best.map50.toFixed(2) : "–"}</span>
+              <span className="mono perf-dim">{m.f1 != null ? `F1 ${m.f1.toFixed(2)}` : m.best ? m.best.map50.toFixed(2) : "–"}</span>
             </button>
           ))}
         </div>
@@ -106,6 +177,14 @@ export default function PerformancePanel({ open, onClose, preferModelId }) {
 
       {perf && (
         <div className="perf-body">
+          {perf.checks?.length > 0 && (
+            <>
+              <p className="perf-label">On your images</p>
+              <CheckResult check={perf.checks[0]} />
+            </>
+          )}
+          {perf.epochs.length > 0 && (<>
+          {perf.checks?.length > 0 && <p className="perf-label">On held-out training images</p>}
           <div className="perf-hero">
             <span className="perf-figure mono">{perf.best ? perf.best.map50.toFixed(2) : "–"}</span>
             <span className="perf-hero-text">
@@ -129,6 +208,7 @@ export default function PerformancePanel({ open, onClose, preferModelId }) {
           <LineChart epochs={perf.epochs} yMax={1} yFmt={(v) => v.toFixed(2)} label="Validation precision, recall and mAP50 per epoch"
                      series={[{ key: "precision", label: "P", opacity: 0.45 }, { key: "recall", label: "R", opacity: 0.7 }, { key: "map50", label: "mAP50", strong: true }]} />
 
+          </>)}
           {classes.length > 0 && (
             <>
               <p className="perf-label">mAP50 by class</p>
@@ -152,7 +232,7 @@ export default function PerformancePanel({ open, onClose, preferModelId }) {
             {perf.training?.train_images != null && (<><dt>Images</dt><dd className="mono">{perf.training.train_images} train · {perf.training.val_images} held out</dd></>)}
             {perf.training?.gsd_cm != null && (<><dt>Scale</dt><dd className="mono">about {perf.training.gsd_cm} cm per pixel</dd></>)}
             {perf.licence && (<><dt>Licence</dt><dd>{perf.licence}</dd></>)}
-            <dt>Source</dt><dd>{perf.source}</dd>
+            {perf.source && (<><dt>Source</dt><dd>{perf.source}</dd></>)}
           </dl>
           {perf.training?.note && <p className="perf-dim">{perf.training.note}</p>}
         </div>

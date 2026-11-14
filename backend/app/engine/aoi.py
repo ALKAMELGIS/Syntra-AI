@@ -71,7 +71,12 @@ def _geometry_of(aoi: dict) -> dict:
     raise AoiError(f"AOI must be a Polygon or MultiPolygon, got {t!r}.")
 
 
-def prepare_aoi(raster_path: str, aoi_geojson: dict) -> AoiInRaster:
+def prepare_aoi(raster_path: str, aoi_geojson: dict, grid: tuple[int, float] | None = None) -> AoiInRaster:
+    """grid = (tile_size, overlap) aligns the read window to the full image's tile
+    grid: the run then reads exactly the tiles a whole-image run would read where
+    they touch the area, so an object at the area's edge is seen whole and the
+    results inside the area match a whole-image run. Results are kept only when
+    their centre is inside the area."""
     import rasterio
     from pyproj import Transformer
     from shapely.geometry import box, shape
@@ -99,6 +104,12 @@ def prepare_aoi(raster_path: str, aoi_geojson: dict) -> AoiInRaster:
         r0 = max(0, int(math.floor(min(rows))))
         c1 = min(ds.width, int(math.ceil(max(cols))))
         r1 = min(ds.height, int(math.ceil(max(rows))))
+        if grid and c1 > c0 and r1 > r0:
+            tile, overlap = grid
+            stride = max(1, int(tile * (1 - overlap)))
+            c0, r0 = (c0 // stride) * stride, (r0 // stride) * stride
+            c1 = min(ds.width, ((c1 - 1) // stride) * stride + tile)
+            r1 = min(ds.height, ((r1 - 1) // stride) * stride + tile)
         if c1 <= c0 or r1 <= r0:
             raise AoiError("The drawn area is smaller than one pixel.")
 

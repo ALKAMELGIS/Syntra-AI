@@ -83,7 +83,7 @@ def test_weak_classes_in_the_file_are_not_returned(monkeypatch):
         imgsz = 640
         names = {0: "tree", 1: "building", 2: "vehicle", 3: "person", 4: "fence", 5: "bicycle"}
 
-        def predict(self, img, conf=0.25):
+        def predict(self, img, conf=0.25, nominal_tile=None):
             sq = [(0, 0), (10, 0), (10, 10)]
             return [SegDetection((0, 0, 10, 10), sq, c, 0.9) for c in range(6)]
 
@@ -92,3 +92,35 @@ def test_weak_classes_in_the_file_are_not_returned(monkeypatch):
     d.load_model("cpu")
     got = sorted(r.class_id for r in d.predict(np.zeros((64, 64, 3), np.uint8)))
     assert got == [0, 1, 2, 3]
+
+
+def test_partial_tiles_are_scaled_like_full_tiles():
+    """A 320x200 edge tile of a 640 px tiling must keep scale 1, not be enlarged 2x to fill the input."""
+    from app.models.onnx_seg import _letterbox
+
+    img = np.zeros((200, 320, 3), np.uint8)
+    _, r, _ = _letterbox(img, 640, nominal_tile=640)
+    assert r == 1.0
+    _, r, _ = _letterbox(img, 640, nominal_tile=1280)      # 2 cm image read at 1280 px: shrink by 2
+    assert r == 0.5
+    _, r_old, _ = _letterbox(img, 640)                     # no tiling known: fit (old behaviour)
+    assert r_old == 2.0
+
+
+def test_obb_partial_tile_not_enlarged():
+    pytest.importorskip("onnxruntime")
+    from app.models.onnx_obb import OnnxObbModel
+
+    m = OnnxObbModel.__new__(OnnxObbModel)
+    m.imgsz = 1024
+    _, r, _ = m._letterbox(np.zeros((432, 576, 3), np.uint8), nominal_tile=1024)
+    assert r == 1.0
+    _, r, _ = m._letterbox(np.zeros((432, 576, 3), np.uint8))
+    assert r == 1.0
+
+
+def test_geodeep_partial_tile_padded_to_full_tile():
+    from app.models.geodeep_onnx import _to_input
+
+    _, s, _ = _to_input(np.zeros((100, 300, 3), np.uint8), 512, nominal_tile=1024)
+    assert s == 2.0                       # same factor as a full 1024 tile

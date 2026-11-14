@@ -136,7 +136,8 @@ class AerialObbDetector(DetectionModel):
         tile_bgr = np.ascontiguousarray(tile_rgb[..., ::-1])
         from app.models.onnx_obb import OnnxObbModel
         if isinstance(self._model, OnnxObbModel):
-            dets = self._model.predict(tile_bgr, conf=conf, classes=sorted(self._dota_to_ours))
+            dets = self._model.predict(tile_bgr, conf=conf, classes=sorted(self._dota_to_ours),
+                                       nominal_tile=getattr(self, "nominal_tile", None))
             return [
                 RawDetection(
                     box=(float(d.corners[:, 0].min()), float(d.corners[:, 1].min()),

@@ -40,6 +40,8 @@ export const api = {
   },
   listModels: () => request(`${BASE}/models`).then(handle),
   listPerformance: () => request(`${BASE}/models/performance`).then(handle),
+  startAccuracy: (payload) => request(`${BASE}/predict/accuracy`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }).then(handle),
+  accuracyStatus: (jobId) => request(`${BASE}/predict/accuracy/${jobId}`).then(handle),
   modelPerformance: (modelId) => request(`${BASE}/models/${modelId}/performance`).then(handle),
   getModel: (modelId) => request(`${BASE}/models/${modelId}`).then(handle),
   gsdCheck: (modelId, gsd) => request(`${BASE}/models/${modelId}/gsd-check?gsd=${gsd}`).then(handle),

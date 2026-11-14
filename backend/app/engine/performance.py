@@ -64,6 +64,22 @@ def _summary(model_id: str, name: str, epochs: list[dict], **extra) -> dict:
 
 
 def model_performance(model_id: str) -> dict | None:
+    """Training history (if any) plus the accuracy checks run on the user's own images."""
+    from app.core.config import settings
+    from app.engine.accuracy import checks
+
+    perf = _training_performance(model_id)
+    done = checks(settings.DATA_DIR, model_id)
+    if perf is None and not done:
+        return None
+    if perf is None:
+        from app.models.registry import get_metadata
+        perf = _summary(model_id, get_metadata(model_id).name, [], source=None, per_class=None, hidden_classes=[])
+    perf["checks"] = done
+    return perf
+
+
+def _training_performance(model_id: str) -> dict | None:
     from app.core.config import settings
     from app.models.custom_registry import get_custom_model
     from app.models.packs import pack_for_model
@@ -98,5 +114,6 @@ def models_with_performance() -> list[dict]:
     for m in list_catalog():
         perf = model_performance(m.model_id)
         if perf is not None:
-            out.append({"model_id": m.model_id, "name": m.name, "best": perf["best"]})
+            f1 = perf["checks"][0]["overall"]["f1"] if perf.get("checks") else None
+            out.append({"model_id": m.model_id, "name": m.name, "best": perf["best"], "f1": f1})
     return out

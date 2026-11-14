@@ -238,7 +238,7 @@ export default function MapView({
           layers.map((l) =>
             l.geojson ? (
               <GeoJSON
-                key={l.key}
+                key={`${l.key}-${l.version ?? 0}`}
                 data={l.geojson}
                 style={() => ({
                   color: l.color, weight: 1, fillColor: l.color,

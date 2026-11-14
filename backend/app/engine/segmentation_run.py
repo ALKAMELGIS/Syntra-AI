@@ -91,7 +91,7 @@ def run_segmentation(
     for t in iter_tiles(path, tile_size=tile, overlap=0.1, rgb_plan=plan, on_skip=skip,
                         window=aoi.window if aoi else None,
                         tile_filter=aoi.tile_intersects if aoi else None):
-        m = segment_tile(t.data, sess, cfg)
+        m = segment_tile(t.data, sess, cfg, nominal_tile=tile)
         r, c = t.row_off - r0, t.col_off - c0
         region = mask[r:r + t.height, c:c + t.width]
         np.maximum(region, m[: region.shape[0], : region.shape[1]], out=region)

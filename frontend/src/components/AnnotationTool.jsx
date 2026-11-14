@@ -9,7 +9,14 @@ import L from "leaflet";
 
 const PALETTE = ["#ffcf5c", "#5b8cff", "#5fd98a", "#ff7a7a", "#c792ea", "#4fd1c5", "#f5a623", "#ec6ea0"];
 
+export const TRAIN_AREA = "__train_area__";
+export const CHECK_AREA = "__check_area__";
+export const isArea = (name) => name === TRAIN_AREA || name === CHECK_AREA;
+export const AREA_LABEL = { [TRAIN_AREA]: "Training area", [CHECK_AREA]: "Accuracy area" };
+
 export function classColor(className) {
+  if (className === TRAIN_AREA) return "#c8ccd4";
+  if (className === CHECK_AREA) return "#f0b54a";
   let h = 0;
   for (let i = 0; i < className.length; i++) h = (h * 31 + className.charCodeAt(i)) >>> 0;
   return PALETTE[h % PALETTE.length];
@@ -31,9 +38,10 @@ export default function AnnotationLayer({ visible, mode, className, annotations 
     const g = L.layerGroup();
     for (const a of annotations) {
       const color = classColor(a.class_name);
+      const area = isArea(a.class_name);
       const poly = L.polygon(a.points_lonlat.map(([lon, lat]) => L.latLng(lat, lon)),
-        { color, weight: 2, fillOpacity: 0.15 });
-      poly.bindTooltip(a.class_name, { direction: "center" });
+        area ? { color, weight: 2, dashArray: "8 6", fill: false } : { color, weight: 2, fillOpacity: 0.15 });
+      poly.bindTooltip(AREA_LABEL[a.class_name] || a.class_name, { direction: "center" });
       poly.on("click", (e) => { L.DomEvent.stopPropagation(e); if (!mode) onShapeClick?.(a.id); });
       g.addLayer(poly);
     }

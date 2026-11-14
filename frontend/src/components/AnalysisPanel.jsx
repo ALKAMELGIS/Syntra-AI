@@ -18,7 +18,7 @@ function stripUuid(name) {
   return (name || "").replace(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}_/, "");
 }
 
-function JobRow({ entry, color }) {
+function JobRow({ entry, color, shown }) {
   const { job, modelMeta, imageName } = entry;
   const running = !TERMINAL.has(job.status);
   const pct = running ? progressPct(job) : null;
@@ -38,7 +38,9 @@ function JobRow({ entry, color }) {
         <span className="analysis-name">{modelMeta?.name || job.model_id}</span>
         {job.status === "completed" && job.result && (
           <span className="analysis-count mono">
-            {job.result.summary ? `${job.result.summary.vegetation_area_ha} ha` : job.result.final_detection_count}
+            {job.result.summary ? `${job.result.summary.vegetation_area_ha} ha`
+              : shown != null && shown !== job.result.final_detection_count ? `${shown} of ${job.result.final_detection_count}`
+              : job.result.final_detection_count}
           </span>
         )}
       </div>
@@ -63,7 +65,8 @@ function JobRow({ entry, color }) {
   );
 }
 
-export default function AnalysisPanel({ entries, colorFor, onClose }) {
+export default function AnalysisPanel({ entries, colorFor, onClose, minScore = 0, onMinScore, shownCount }) {
+  const hasScores = entries?.some((e) => e.job.status === "completed" && !e.job.result?.summary);
   return (
     <section className="analysis-flyout" aria-label="Analysis results">
       <header className="analysis-head">
@@ -73,12 +76,20 @@ export default function AnalysisPanel({ entries, colorFor, onClose }) {
           <IconClose />
         </button>
       </header>
+      {hasScores && onMinScore && (
+        <label className="analysis-score">
+          <span>Min score</span>
+          <input type="range" min="0" max="0.95" step="0.05" value={minScore}
+                 onChange={(e) => onMinScore(parseFloat(e.target.value))} aria-label="Minimum detection score" />
+          <span className="mono">{minScore.toFixed(2)}</span>
+        </label>
+      )}
       {!entries || entries.length === 0 ? (
         <p className="analysis-empty">No runs yet</p>
       ) : (
         <ul className="analysis-list">
           {entries.map((entry) => (
-            <JobRow key={entry.key} entry={entry} color={colorFor(entry.job.model_id)} />
+            <JobRow key={entry.key} entry={entry} shown={shownCount?.(entry.key)} color={colorFor(entry.job.model_id)} />
           ))}
         </ul>
       )}

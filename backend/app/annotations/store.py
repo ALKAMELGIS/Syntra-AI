@@ -91,9 +91,54 @@ def clear_annotations(image_path: str | Path) -> None:
     save_annotations(image_path, [])
 
 
+# Two reserved "classes" mark areas rather than objects:
+#   training area  everything inside is labelled; tiles are cut only from here,
+#                  so an unlabelled object is never taught as background
+#   accuracy area  labelled, but never trained on; models are scored against it
+TRAIN_AREA = "__train_area__"
+CHECK_AREA = "__check_area__"
+AREA_CLASSES = {TRAIN_AREA, CHECK_AREA}
+
+
+def is_area(a: dict) -> bool:
+    return a.get("class_name") in AREA_CLASSES
+
+
+def areas(annotations: list[dict], kind: str) -> list[dict]:
+    return [a for a in annotations if a.get("class_name") == kind]
+
+
+def _inside_any(points_px: list, polys: list[list]) -> bool:
+    """Centroid of the shape inside any of the polygons (pixel coordinates)."""
+    import numpy as np
+
+    pts = np.asarray(points_px, dtype=float)
+    cx, cy = pts[:, 0].mean(), pts[:, 1].mean()
+    for poly in polys:
+        p = np.asarray(poly, dtype=float)
+        x, y = p[:, 0], p[:, 1]
+        inside = False
+        j = len(p) - 1
+        for i in range(len(p)):
+            if (y[i] > cy) != (y[j] > cy) and cx < (x[j] - x[i]) * (cy - y[i]) / (y[j] - y[i] + 1e-12) + x[i]:
+                inside = not inside
+            j = i
+        if inside:
+            return True
+    return False
+
+
+def objects_for_training(annotations: list[dict]) -> list[dict]:
+    """Object labels that may be trained on: not areas, not inside an accuracy area."""
+    checks = [a["points_px"] for a in areas(annotations, CHECK_AREA)]
+    return [a for a in annotations if not is_area(a) and not (checks and _inside_any(a["points_px"], checks))]
+
+
 def class_names_used(annotations: list[dict]) -> list[str]:
     seen: list[str] = []
     for a in annotations:
+        if is_area(a):
+            continue
         if a["class_name"] not in seen:
             seen.append(a["class_name"])
     return seen
@@ -102,7 +147,8 @@ def class_names_used(annotations: list[dict]) -> list[str]:
 def to_export_payload(annotations: list[dict]) -> tuple[list[str], list[dict[str, Any]]]:
     """Shape expected by POST /api/training/export-dataset: a stable
     class_id per class name (first-seen order) + {class_id, points_px}."""
-    names = class_names_used(annotations)
+    objs = objects_for_training(annotations)
+    names = class_names_used(objs)
     index = {n: i for i, n in enumerate(names)}
-    out = [{"class_id": index[a["class_name"]], "points_px": a["points_px"]} for a in annotations]
+    out = [{"class_id": index[a["class_name"]], "points_px": a["points_px"]} for a in objs]
     return names, out

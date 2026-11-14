@@ -41,19 +41,22 @@ class OnnxSegModel:
         self.meta = meta
 
     def predict(self, image_rgb: np.ndarray, conf: float = 0.25, iou: float = 0.5,
-                max_det: int = 300) -> list[SegDetection]:
-        blob, r, (left, top) = _letterbox(image_rgb, self.imgsz)
+                max_det: int = 300, nominal_tile: int | None = None) -> list[SegDetection]:
+        blob, r, (left, top) = _letterbox(image_rgb, self.imgsz, nominal_tile)
         out0, protos = self.session.run(None, {self.input_name: blob})
         h, w = image_rgb.shape[:2]
         return decode_seg(out0[0], protos[0], len(self.names) or out0.shape[1] - 36, r, left, top, (h, w),
                           self.imgsz, conf=conf, iou=iou, max_det=max_det)
 
 
-def _letterbox(img: np.ndarray, s: int):
+def _letterbox(img: np.ndarray, s: int, nominal_tile: int | None = None):
+    """Scale = what a full tile gets (s / nominal tile), so a partial edge tile is
+    padded at the same scale instead of being stretched to fill the input."""
     import cv2
 
     h, w = img.shape[:2]
-    r = min(s / h, s / w)
+    r = s / nominal_tile if nominal_tile else min(s / h, s / w)
+    r = min(r, s / h, s / w)
     nh, nw = int(round(h * r)), int(round(w * r))
     if (nh, nw) != (h, w):
         img = cv2.resize(img, (nw, nh), interpolation=cv2.INTER_LINEAR)

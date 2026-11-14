@@ -233,6 +233,7 @@ export default function Sidebar({ models, selectedModels, onToggleModel, onModel
         onToggleModel={onToggleModel}
         onModelsChanged={onModelsChanged}
         onTrain={onTrain}
+        imageGsd={image?.health?.gsd_m ?? null}
       />
 
       {hasAoi && (

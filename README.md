@@ -148,6 +148,36 @@ Settings):
 Verified end to end in the browser (Playwright): 3 labels → 20 tiles → 2 epochs → registered → run →
 the result appears under Analysis. Training needs `ultralytics` + `torch` on the machine.
 
+## Accuracy on your own images
+
+Two area tools in the Train panel's Label step:
+
+- **Training area**: label every object inside it; dataset tiles are cut only from inside training
+  areas, so an object you did not label is never taught as background.
+- **Accuracy area**: label every object inside it; it is kept out of training (labels inside it are
+  dropped from the dataset and its pixels masked) and used to score models.
+
+Model performance → *Check on this image* runs a model inside the accuracy areas and matches each
+result to a label of the same class at IoU ≥ 0.5: found / wrong / missed, precision, recall, F1 per
+class (`engine/accuracy.py`, `POST /api/predict/accuracy`). The latest F1 shows next to the model in
+the sidebar. A one-class model is matched to one-class labels whatever the names (ship → boat).
+
+Verified in the browser on the Dubai harbour scene: an accuracy area with 17 boats, labels for 15 of
+them plus one object that is not there → exactly 15 found, 2 wrong, 1 missed (F1 0.91).
+
+Two bugs found and fixed on the way (both changed results everywhere, not only in checks):
+
+- Partial edge tiles were enlarged to fill the model input (a 576×432 tile went in 1.78× larger), so
+  edge objects were seen at the wrong scale. Every runtime now scales a partial tile like a full one
+  (`nominal_tile`); tests in `test_drone_seg_offline.py`.
+- Area-limited runs used their own tile grid, so results inside an area differed from a whole-image
+  run (F1 0.79 between the two). The area window is now aligned to the whole image's grid: identical
+  results inside the area (17 of 17), and fewer tiles read. Test in `test_accuracy_offline.py`.
+
+The Analysis panel has a *Min score* slider that filters results on the map and in the counts
+without rerunning. The model list puts models suited to the image's resolution first; the others
+are muted with the reason in their tooltip.
+
 ## Model performance
 
 The chart icon in the map toolbar opens the Model performance panel: mAP50 on held-out images (the

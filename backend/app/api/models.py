@@ -14,6 +14,11 @@ from app.models.stats import get_stats
 router = APIRouter(prefix="/api/models", tags=["models"])
 
 
+def _latest_f1(model_id: str):
+    from app.engine.accuracy import latest_f1
+    return latest_f1(settings.DATA_DIR, model_id)
+
+
 def _serialize(meta) -> dict:
     stats = get_stats(settings.DATA_DIR, meta.model_id)
     return {
@@ -30,6 +35,7 @@ def _serialize(meta) -> dict:
         "notes": meta.notes,
         "processing_statistics": stats.to_dict(),
         "pack": _pack_summary(meta.model_id),
+        "accuracy_f1": _latest_f1(meta.model_id),
     }
 
 

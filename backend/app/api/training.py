@@ -49,6 +49,8 @@ class ExportDatasetRequest(BaseModel):
     val_split: float = 0.2
     neg_ratio: float = 0.1
     task: str = "detect"             # "detect" | "obb" | "segment"
+    train_areas_px: list[list[list[float]]] | None = None   # tiles only from inside these (pixel rings)
+    exclude_areas_px: list[list[list[float]]] | None = None # never trained on (accuracy areas)
     augment: bool = True
     img_fmt: str = "jpg"
 
@@ -78,8 +80,11 @@ def _run_job(job_id: str, req: ExportDatasetRequest):
         def canceled():
             return bool((jobs.get(job_id) or {}).get("cancel_requested"))
 
+        tile_filter, area_bounds = area_filter(req.train_areas_px, req.exclude_areas_px, req.tile, reader.width, reader.height)
+        if req.train_areas_px or req.exclude_areas_px:
+            log(f"Training areas: {len(req.train_areas_px or [])}, accuracy areas kept out: {len(req.exclude_areas_px or [])}")
         builder = DatasetBuilder(
-            reader, anns, req.class_names, out_dir,
+            reader, anns, req.class_names, out_dir, tile_filter=tile_filter, area_bounds=area_bounds,
             tile=req.tile, overlap=req.overlap, val_split=req.val_split, neg_ratio=req.neg_ratio,
             task=req.task, augment=req.augment, img_fmt=req.img_fmt,
             progress=progress, canceled=canceled, log=log,
@@ -91,6 +96,42 @@ def _run_job(job_id: str, req: ExportDatasetRequest):
         jobs.update(job_id, status="error", error=str(exc))
 
 
+def area_filter(train_areas, exclude_areas, tile: int, width: int, height: int):
+    """(tile_filter, area_bounds) for DatasetBuilder from pixel-ring areas.
+
+    tile_filter(xoff, yoff) -> None (whole tile usable) | False | bool mask:
+    inside a training area (when there are any) and outside every accuracy area.
+    """
+    import cv2
+    import numpy as np
+
+    train_areas, exclude_areas = train_areas or [], exclude_areas or []
+    if not train_areas and not exclude_areas:
+        return None, None
+
+    def ring(poly, xoff, yoff):
+        return np.round(np.asarray(poly, dtype=float) - [xoff, yoff]).astype(np.int32)
+
+    def tile_filter(xoff, yoff):
+        m = np.ones((tile, tile), np.uint8) if not train_areas else np.zeros((tile, tile), np.uint8)
+        for p in train_areas:
+            cv2.fillPoly(m, [ring(p, xoff, yoff)], 1)
+        for p in exclude_areas:
+            cv2.fillPoly(m, [ring(p, xoff, yoff)], 0)
+        if m.all():
+            return None
+        if not m.any():
+            return False
+        return m.astype(bool)
+
+    bounds = None
+    if train_areas:
+        pts = np.concatenate([np.asarray(p, dtype=float) for p in train_areas])
+        bounds = (max(0, int(pts[:, 0].min())), max(0, int(pts[:, 1].min())),
+                  min(width, int(np.ceil(pts[:, 0].max()))), min(height, int(np.ceil(pts[:, 1].max()))))
+    return tile_filter, bounds
+
+
 def _resolve_from_image_id(req: ExportDatasetRequest) -> ExportDatasetRequest:
     from app.annotations import store
     from app.core.image_library import find_entry_by_image_id
@@ -99,13 +140,15 @@ def _resolve_from_image_id(req: ExportDatasetRequest) -> ExportDatasetRequest:
     if entry is None:
         raise HTTPException(status_code=404, detail=f"No library image with id '{req.image_id}'.")
     anns = store.load_annotations(entry["path"])
-    if not anns:
-        raise HTTPException(status_code=409, detail="No annotations saved for this image yet — use the Annotate step first.")
     class_names, annotations = store.to_export_payload(anns)
+    if not annotations:
+        raise HTTPException(status_code=409, detail="No labelled objects to train on yet (labels inside accuracy areas are kept out). Draw some in the Label step.")
     return req.model_copy(update={
         "image_path": entry["path"],
         "class_names": class_names,
         "annotations": [AnnotationIn(**a) for a in annotations],
+        "train_areas_px": [a["points_px"] for a in store.areas(anns, store.TRAIN_AREA)] or None,
+        "exclude_areas_px": [a["points_px"] for a in store.areas(anns, store.CHECK_AREA)] or None,
     })
 
 

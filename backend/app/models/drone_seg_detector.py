@@ -71,7 +71,8 @@ class DroneSegDetector(DetectionModel):
             raise RuntimeError("Model not loaded.")
         conf = confidence_threshold if confidence_threshold is not None else self.metadata.default_confidence_threshold
         out = []
-        for d in self._model.predict(np.ascontiguousarray(tile_rgb), conf=conf):
+        for d in self._model.predict(np.ascontiguousarray(tile_rgb), conf=conf,
+                                     nominal_tile=getattr(self, "nominal_tile", None)):
             if d.cls in self._map:
                 out.append(RawDetection(box=d.box, score=d.score, class_id=self._map[d.cls], polygon=d.polygon))
         return out

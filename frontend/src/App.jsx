@@ -214,7 +214,7 @@ export default function App() {
     if (!image?.image_id) { setAnnotations([]); return; }
     api.listAnnotations(image.image_id).then((r) => setAnnotations(r.annotations || [])).catch(() => setAnnotations([]));
   }, [image?.image_id]);
-  const trainClasses = [...new Set([...annotations.map((a) => a.class_name), ...extraClasses])];
+  const trainClasses = [...new Set([...annotations.map((a) => a.class_name), ...extraClasses])].filter((c) => !c.startsWith("__"));
   useEffect(() => {
     if (!activeClass && trainClasses.length) setActiveClass(trainClasses[0]);
   }, [trainClasses.join("|")]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -255,18 +255,33 @@ export default function App() {
       imageName: job.image_name,
     }));
 
+  // Results filtered by the Analysis panel's score slider (no rerun needed).
+  const [minScore, setMinScore] = useState(0);
+  const filtered = useMemo(() => {
+    const out = {};
+    for (const [key, gj] of Object.entries(geojsonByKey)) {
+      if (!gj?.features) { out[key] = gj; continue; }
+      out[key] = minScore <= 0 ? gj : {
+        ...gj, features: gj.features.filter((f) => f.properties?.score == null || f.properties.score >= minScore),
+      };
+    }
+    return out;
+  }, [geojsonByKey, minScore]);
+  const shownCount = (key) => filtered[key]?.features?.length;
+
   const mapLayers = Object.entries(jobs)
     .filter(([key]) => geojsonByKey[key])
     .map(([key, job]) => ({
       key,
+      version: minScore,
       // Legend shows the model only; the source file is listed once under the legend.
       name: models.find((m) => m.model_id === job.model_id)?.name || job.model_id,
       color: colorFor(job.model_id),
-      geojson: geojsonByKey[key],
+      geojson: filtered[key],
       // what the legend shows beside the name: hectares for area layers, else the feature count
       value: job.result?.summary?.vegetation_area_ha != null
         ? `${job.result.summary.vegetation_area_ha} ha`
-        : String(geojsonByKey[key]?.features?.length ?? 0),
+        : String(filtered[key]?.features?.length ?? 0),
     }));
 
   return (
@@ -313,7 +328,9 @@ export default function App() {
             }}
             perfOpen={perfOpen}
             onTogglePerf={() => setPerfOpen((v) => !v)}
-            perfPanel={<PerformancePanel open={perfOpen} onClose={() => setPerfOpen(false)} preferModelId={perfModel} />}
+            perfPanel={<PerformancePanel open={perfOpen} onClose={() => setPerfOpen(false)} preferModelId={perfModel}
+              image={image} models={models} checkAreas={annotations.filter((a) => a.class_name === "__check_area__").length}
+              onChecked={refreshModels} />}
             trainPanel={
               <TrainPanel
                 open={trainOpen} onClose={() => setTrainOpen(false)}
@@ -326,6 +343,7 @@ export default function App() {
                 onClearAnnotations={clearLabels} labelError={labelError}
                 device={devices?.gpu_count > 0 ? "cuda:0" : "cpu"}
                 onModelsChanged={refreshModels}
+                onCheckModel={(id) => { refreshModels(); setPerfModel(id); setPerfOpen(true); }}
                 onRunModel={(id) => { refreshModels(); setSelectedModels((s) => (s.includes(id) ? s : [...s, id])); handleRun([image], [id]); }}
               />
             }
@@ -336,7 +354,8 @@ export default function App() {
             onToggleAnalysis={() => setAnalysisOpen((v) => !v)}
             analysisCount={analysisEntries.length}
             analysisPanel={
-              <AnalysisPanel entries={analysisEntries} colorFor={colorFor} onClose={() => setAnalysisOpen(false)} />
+              <AnalysisPanel entries={analysisEntries} colorFor={colorFor} onClose={() => setAnalysisOpen(false)}
+                minScore={minScore} onMinScore={setMinScore} shownCount={shownCount} />
             }
           />
         </div>
