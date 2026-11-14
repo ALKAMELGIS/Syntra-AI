@@ -6,7 +6,7 @@ import AnalysisPanel from "./components/AnalysisPanel.jsx";
 import ModelSetupWizard from "./components/ModelSetupWizard.jsx";
 import { api } from "./api/client.js";
 
-const PALETTE = ["#5b8cff", "#3ddc97", "#f5a623", "#ff5d6c", "#c678dd", "#56c7d6", "#e8a87c", "#a8e6cf"];
+const PALETTE = ["#5b8cff", "#b48ead", "#f5a623", "#ff5d6c", "#c678dd", "#56c7d6", "#e8a87c", "#a8e6cf"];
 
 const TERMINAL = new Set(["completed", "error", "interrupted"]);
 
@@ -87,6 +87,7 @@ export default function App() {
     const assigned = {};
     let next = 0;
     return (modelId) => {
+      if (modelId === "vegetation_index") return "#4cc38a";   // vegetation is always green
       if (!(modelId in assigned)) {
         assigned[modelId] = PALETTE[next % PALETTE.length];
         next += 1;
@@ -135,6 +136,7 @@ export default function App() {
             image_id: img.image_id,
             model_id: modelId,
             gpu_indices: gpuIndices,
+            ...(aoi ? { aoi } : {}),
           });
           setJobs((prev) => ({
             ...prev,
@@ -216,6 +218,8 @@ export default function App() {
             onImageUploaded={setImage}
             onRun={handleRun}
             running={running}
+            hasAoi={!!aoi}
+            onClearAoi={() => setAoi(null)}
           />
           <MapView
             layers={mapLayers}

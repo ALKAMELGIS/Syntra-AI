@@ -39,10 +39,11 @@ export const api = {
   // Uses XMLHttpRequest (not fetch) because only XHR exposes real upload
   // progress events — needed for honest percentage feedback on multi-GB
   // GeoTIFF uploads, instead of a static "Uploading…" that looks frozen.
-  uploadImage: (file, onProgress) =>
+  uploadImage: (file, onProgress, metadataFile = null) =>
     new Promise((resolve, reject) => {
       const form = new FormData();
       form.append("file", file);
+      if (metadataFile) form.append("metadata", metadataFile);
       const xhr = new XMLHttpRequest();
       xhr.open("POST", `${BASE}/images`);
       if (API_KEY) xhr.setRequestHeader("X-API-Key", API_KEY);

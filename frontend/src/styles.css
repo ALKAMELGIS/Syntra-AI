@@ -701,6 +701,25 @@ button, input, select, textarea { font-family: inherit; }
 .analysis-row-meta .status-pill { font-size: 10px; line-height: 14px; padding: 1px 4px; }
 .analysis-progress { margin: 8px 0 0 16px; }
 
+.analysis-tag {
+  flex: none; font-size: 10px; line-height: 14px; padding: 1px 4px; border-radius: 4px;
+  color: #ffcf5c; box-shadow: inset 0 0 0 1px rgba(255, 207, 92, 0.4);
+}
+.theme-light .analysis-tag { color: #8a6200; box-shadow: inset 0 0 0 1px rgba(138, 98, 0, 0.4); }
+
+/* --- AOI chip above the run button --- */
+.aoi-chip {
+  display: flex; align-items: center; gap: 8px; height: 32px; margin-top: 12px; padding: 0 4px 0 12px;
+  border: 1px dashed rgba(255, 207, 92, 0.5); border-radius: var(--radius-control); font-size: 12px;
+}
+.aoi-chip-swatch { width: 8px; height: 8px; border-radius: 2px; background: #ffcf5c; flex: none; }
+.aoi-chip-label { flex: 1 1 auto; color: var(--text); }
+.aoi-chip-clear {
+  display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px;
+  background: transparent; border: none; border-radius: 6px; color: var(--text-dim); cursor: pointer;
+}
+.aoi-chip-clear:hover { background: var(--hover-bg); color: var(--text); }
+
 /* --- Raster check (sidebar) --- */
 .raster-health {
   margin-top: 12px; border: 1px solid var(--panel-border); border-radius: var(--radius-control);

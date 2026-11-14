@@ -26,6 +26,9 @@ def build_model(model_id: str) -> DetectionModel:
         from app.models.aerial_obb_detector import AerialObbDetector
         return AerialObbDetector(metadata)
 
+    if model_id == "vegetation_index":
+        raise KeyError("vegetation_index is a spectral-index analysis run by app.engine.vegetation, not a tile detector.")
+
     if model_id == "field_boundary_segmentation":
         from app.models.segmentation import FieldBoundarySegmenter
         return FieldBoundarySegmenter(metadata)

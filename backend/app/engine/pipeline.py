@@ -53,6 +53,7 @@ class DetectionEngine:
         allowed_gpu_indices: list[int] | None = None,
         source_crs: str | None = None,             # raster CRS; output is reprojected to WGS84
         tiles_total: int | None = None,            # for progress reporting only
+        keep_detection: Callable[[dict], bool] | None = None,   # e.g. centre inside an AOI (raster CRS)
     ) -> RunResult:
         t0 = time.time()
 
@@ -77,6 +78,8 @@ class DetectionEngine:
 
         raw_count = len(all_global_detections)
         merged = merge_and_dedupe(all_global_detections, iou_threshold=nms_iou)
+        if keep_detection is not None:
+            merged = [d for d in merged if keep_detection(d)]
         merged, output_crs = reproject_detections_to_wgs84(merged, source_crs)
 
         export = self.model.export_results(

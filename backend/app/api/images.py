@@ -16,7 +16,10 @@ router = APIRouter(prefix="/api/images", tags=["images"])
 
 
 @router.post("")
-async def upload_image(file: UploadFile):
+async def upload_image(file: UploadFile, metadata: UploadFile | None = None):
+    """Upload a GeoTIFF, optionally with the product's metadata XML (e.g. the
+    SuperView/WorldView sidecar). The XML carries calibration gains and the
+    sensor id, which vegetation indices and band detection use."""
     settings.ensure_dirs()
     filename = safe_filename(file.filename)
     if not filename.lower().endswith((".tif", ".tiff")):
@@ -44,12 +47,25 @@ async def upload_image(file: UploadFile):
                 f.write(chunk)
         return True
 
+    if metadata is not None and metadata.filename:
+        if not safe_filename(metadata.filename).lower().endswith(".xml"):
+            dest.unlink(missing_ok=True)
+            raise HTTPException(status_code=400, detail="Product metadata must be an .xml file.")
+        xml_bytes = await metadata.read(2 * 1024 * 1024 + 1)
+        if len(xml_bytes) > 2 * 1024 * 1024:
+            raise HTTPException(status_code=413, detail="Product metadata XML is larger than 2 MB.")
+
     if not await run_in_threadpool(_copy):
         dest.unlink(missing_ok=True)
         raise HTTPException(
             status_code=413,
             detail=f"File exceeds the {settings.MAX_UPLOAD_MB} MB upload limit (SYNTRA_MAX_UPLOAD_MB).",
         )
+
+    if metadata is not None and metadata.filename:
+        # stored next to the image under the same stem, where detect_sensor()
+        # and read_calibration_gains() look for it
+        dest.with_suffix(".xml").write_bytes(xml_bytes)
 
     raster_meta = None
     raster_meta_note = None

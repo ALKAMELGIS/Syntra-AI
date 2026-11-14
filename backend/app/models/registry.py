@@ -72,6 +72,24 @@ CATALOG: dict[str, ModelMetadata] = {
             "until a labeled vegetation dataset is available."
         ),
     ),
+    "vegetation_index": ModelMetadata(
+        model_id="vegetation_index",
+        name="Vegetation & Trees",
+        model_type="index",
+        version="1.0.0-ndvi",
+        supported_gsd=GsdRange(0.05, 10.0),
+        supported_image_sources=["satellite", "drone"],
+        supported_formats=["GeoTIFF", "COG"],
+        status=ModelStatus.VALIDATION,
+        hardware_compatibility=["cpu"],
+        default_confidence_threshold=0.20,
+        class_names={0: "vegetation"},
+        notes=(
+            "Spectral index, no trained model: NDVI from the red and near-infrared bands (VARI for "
+            "RGB-only images). Outputs vegetation polygons with area and an estimated count of tree "
+            "crowns. The 0.20 threshold is a general default, not calibrated for your area."
+        ),
+    ),
     "car_detection": ModelMetadata(
         model_id="car_detection",
         name="Car Detection",

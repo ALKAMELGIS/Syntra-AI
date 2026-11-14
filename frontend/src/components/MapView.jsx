@@ -214,7 +214,11 @@ export default function MapView({
               <GeoJSON
                 key={l.key}
                 data={l.geojson}
-                style={() => ({ color: l.color, weight: 1, fillColor: l.color, fillOpacity: 0.4 })}
+                style={() => ({
+                  color: l.color, weight: 1, fillColor: l.color,
+                  // area layers cover a lot of the image; keep the imagery readable under them
+                  fillOpacity: l.key.endsWith("vegetation_index") ? 0.22 : 0.4,
+                })}
               />
             ) : null
           )}

@@ -41,12 +41,18 @@ class PredictRequest(BaseModel):
     overlap: float = settings.DEFAULT_TILE_OVERLAP
     gpu_indices: list[int] | None = None  # restricts AUTO/GPU to these physical CUDA device indices
     rgb_bands: list[int] | None = None    # 1-based R,G,B band numbers; default chosen per file (see raster_prep)
+    aoi: dict | None = None               # WGS84 GeoJSON Polygon/Feature drawn on the map; analyse only inside it
+    index_bands: list[int] | None = None  # vegetation: [red, nir] for NDVI or [red, green, blue] for VARI
+    index_threshold: float | None = None  # vegetation: index value above which a pixel counts as vegetation
 
 
 def _run_job(job_id: str, req: PredictRequest):
     jobs = get_store()
     jobs.update(job_id, status="processing")
     try:
+        if req.model_id in INDEX_MODELS:
+            _run_index_job(job_id, req)
+            return
         from app.engine.pipeline import DetectionEngine
         from app.engine.raster_io import count_tiles, iter_tiles, raster_crs_and_size
         from app.engine.raster_prep import plan_rgb
@@ -64,6 +70,12 @@ def _run_job(job_id: str, req: PredictRequest):
             jobs.update(job_id, tiles_processed=processed["n"] + skipped["n"], tiles_empty=skipped["n"])
 
         source_crs, width, height = raster_crs_and_size(req.image_path)
+        aoi = None
+        if req.aoi:
+            from app.engine.aoi import prepare_aoi
+            aoi = prepare_aoi(req.image_path, req.aoi)
+            width, height = aoi.window[2], aoi.window[3]
+            jobs.update(job_id, aoi_area_m2=aoi.area_m2)
         tiles_total = count_tiles(width, height, req.tile_size, req.overlap)
         jobs.update(job_id, tiles_total=tiles_total)
         plan = plan_rgb(req.image_path, override=req.rgb_bands)
@@ -74,13 +86,16 @@ def _run_job(job_id: str, req: PredictRequest):
             progress(None, None)
 
         tiles = iter_tiles(req.image_path, tile_size=req.tile_size, overlap=req.overlap,
-                           rgb_plan=plan, on_skip=on_skip)
+                           rgb_plan=plan, on_skip=on_skip,
+                           window=aoi.window if aoi else None,
+                           tile_filter=aoi.tile_intersects if aoi else None)
         out_dir = settings.RESULTS_DIR / job_id
         result = engine.run(
             tiles, out_dir, device_option=req.device,
             confidence_threshold=req.confidence_threshold, progress_cb=progress,
             allowed_gpu_indices=req.gpu_indices,
             source_crs=source_crs, tiles_total=tiles_total,
+            keep_detection=(lambda d: aoi.contains_point(*d["centroid_geo"])) if aoi else None,
         )
         jobs.update(job_id, status="completed", result=result.__dict__)
         record_run(
@@ -91,6 +106,34 @@ def _run_job(job_id: str, req: PredictRequest):
     except Exception as exc:
         jobs.update(job_id, status="error", error=str(exc))
         record_run(settings.DATA_DIR, req.model_id, status="error")
+
+
+INDEX_MODELS = {"vegetation_index"}
+
+
+def _run_index_job(job_id: str, req: PredictRequest) -> None:
+    """Spectral-index analyses: whole-window raster maths, not tiled detection."""
+    from app.engine.vegetation import run_vegetation
+
+    jobs = get_store()
+    aoi = None
+    if req.aoi:
+        from app.engine.aoi import prepare_aoi
+        aoi = prepare_aoi(req.image_path, req.aoi)
+        jobs.update(job_id, aoi_area_m2=aoi.area_m2)
+
+    def progress(done, total):
+        jobs.update(job_id, tiles_processed=done, tiles_total=total)
+
+    result = run_vegetation(
+        req.image_path, settings.RESULTS_DIR / job_id, req.model_id, aoi=aoi,
+        threshold=req.index_threshold, index_bands=req.index_bands, progress_cb=progress,
+    )
+    jobs.update(job_id, status="completed", result=result)
+    record_run(
+        settings.DATA_DIR, req.model_id, status="completed", tiles_processed=1,
+        detection_count=result["final_detection_count"], duration_seconds=result["duration_seconds"], device="cpu",
+    )
 
 
 def _display_name(path: str) -> str:
@@ -121,10 +164,19 @@ def start_prediction(req: PredictRequest, background_tasks: BackgroundTasks):
             ),
         )
     req = req.model_copy(update={"image_path": _resolve_image_path(req)})
+    if req.aoi is not None:
+        # Fail fast with a clear message instead of a background error.
+        try:
+            from app.engine.aoi import AoiError, prepare_aoi
+            prepare_aoi(req.image_path, req.aoi)
+        except ImportError:
+            raise HTTPException(status_code=503, detail="AOI needs rasterio, shapely and pyproj installed.")
+        except AoiError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
 
     job_id = get_store().create(
         KIND, model_id=req.model_id, image_id=req.image_id,
-        image_name=_display_name(req.image_path), tiles_processed=0,
+        image_name=_display_name(req.image_path), tiles_processed=0, has_aoi=req.aoi is not None,
     )
     background_tasks.add_task(_run_job, job_id, req)
     return {"job_id": job_id, "status": "queued"}
