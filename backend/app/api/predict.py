@@ -186,6 +186,22 @@ def _resolve_image_path(req: PredictRequest) -> str:
     raise HTTPException(status_code=400, detail="Provide image_id (preferred) or image_path.")
 
 
+def _refuse_wrong_scale(meta, image_path: str) -> None:
+    """Drone-only models are refused on imagery far coarser than they were trained on
+    (a 4 cm model on a 50 cm satellite scene would see every object as a few pixels)."""
+    if meta.supported_image_sources != ["drone"]:
+        return
+    try:
+        from app.engine.segmentation_run import ground_gsd_m
+        gsd = ground_gsd_m(image_path)
+    except Exception:
+        return
+    if gsd and gsd > 3 * meta.supported_gsd.max_m:
+        raise HTTPException(status_code=409, detail=(
+            f"'{meta.name}' is a drone model ({meta.supported_gsd.min_m * 100:g}-{meta.supported_gsd.max_m * 100:g} cm per pixel); "
+            f"this image is {gsd * 100:.0f} cm per pixel. Use the satellite models for it."))
+
+
 @router.post("")
 def start_prediction(req: PredictRequest, background_tasks: BackgroundTasks):
     meta = get_metadata(req.model_id)
@@ -209,6 +225,7 @@ def start_prediction(req: PredictRequest, background_tasks: BackgroundTasks):
         raise HTTPException(status_code=409, detail=(
             "This image has no coordinate system, so results can't be placed on the map. "
             "Assign one (QGIS: Raster > Projections > Assign Projection) and upload it again."))
+    _refuse_wrong_scale(meta, req.image_path)
     if req.aoi is not None:
         # Fail fast with a clear message instead of a background error.
         try:

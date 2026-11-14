@@ -124,6 +124,20 @@ CATALOG: dict[str, ModelMetadata] = {
             " Pretrained on DOTA v1 aerial imagery (YOLO11-OBB, rotated boxes), not yet fine-tuned or benchmarked on your own imagery: check results before relying on counts."
         ),
     ),
+    "drone_objects": ModelMetadata(
+        model_id="drone_objects",
+        name="Drone objects",
+        model_type="detection",
+        version="0.1.0-semantic-drone",
+        supported_gsd=GsdRange(0.01, 0.15),
+        supported_image_sources=["drone"],
+        supported_formats=["GeoTIFF", "COG"],
+        status=ModelStatus.VALIDATION,
+        hardware_compatibility=["cpu", "cuda"],
+        default_confidence_threshold=0.30,
+        class_names={0: "tree", 1: "building", 2: "vehicle", 3: "person", 4: "fence", 5: "bicycle"},
+        notes="Outlines of trees, roofs, vehicles, people, fences and bicycles in drone orthomosaics.",
+    ),
     "field_boundary_segmentation": ModelMetadata(
         model_id="field_boundary_segmentation",
         name="Field boundaries",

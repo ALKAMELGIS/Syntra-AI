@@ -30,6 +30,9 @@ def build_model(model_id: str) -> DetectionModel:
         if pack.runtime == "geodeep_detector":
             from app.models.geodeep_onnx import GeoDeepDetector
             return GeoDeepDetector(metadata, str(pack_path(pack)))
+        if pack.runtime == "yolo_seg":
+            from app.models.drone_seg_detector import DroneSegDetector
+            return DroneSegDetector(metadata, str(pack_path(pack)), training_gsd_m=pack.training_gsd_m or 0.04)
         raise KeyError(f"{model_id} is a segmentation pack; it runs through app.engine.segmentation_run.")
 
     from app.models.aerial_obb_detector import DOTA_CLASS_MAP
