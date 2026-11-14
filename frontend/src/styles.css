@@ -1327,3 +1327,6 @@ html, body, #root { height: 100%; overflow: hidden; }
 }
 .run-dock .run-button { margin-top: 0; }
 .run-dock .aoi-chip { margin: 0 0 8px; }
+
+.panel > .info-note + .info-note, .raster-health + .info-note { margin-top: 8px; }
+.info-note-info .info-note-dot { background: var(--accent); }

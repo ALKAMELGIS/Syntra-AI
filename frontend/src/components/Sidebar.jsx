@@ -1,6 +1,7 @@
 import RasterHealth from "./RasterHealth.jsx";
 import ModelList from "./ModelList.jsx";
 import InfoNote, { splitMessage } from "./InfoNote.jsx";
+import OptimizeNote from "./OptimizeNote.jsx";
 import React, { useRef, useState } from "react";
 import { api } from "../api/client.js";
 import { IconUpload, IconFolder, IconPlay, IconClose, IconDashboard } from "./Icons.jsx";
@@ -167,6 +168,7 @@ export default function Sidebar({ models, selectedModels, onToggleModel, onModel
             </p>
           )}
           {image?.health && <RasterHealth health={image.health} />}
+          <OptimizeNote image={image} onRefreshed={onImageUploaded} />
         </>
       ) : (
         <>

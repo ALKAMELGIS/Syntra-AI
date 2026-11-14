@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Response, UploadFile
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Response, UploadFile
 from starlette.concurrency import run_in_threadpool
 
 from app.core.config import settings
@@ -16,7 +16,7 @@ router = APIRouter(prefix="/api/images", tags=["images"])
 
 
 @router.post("")
-async def upload_image(file: UploadFile, metadata: UploadFile | None = None):
+async def upload_image(file: UploadFile, background_tasks: BackgroundTasks, metadata: UploadFile | None = None):
     """Upload a GeoTIFF, optionally with the product's metadata XML (e.g. the
     SuperView/WorldView sidecar). The XML carries calibration gains and the
     sensor id, which vegetation indices and band detection use."""
@@ -119,9 +119,50 @@ async def upload_image(file: UploadFile, metadata: UploadFile | None = None):
         health=health,
         preview_bounds_wgs84=preview_bounds,
     )
-    write_entry(dest, entry)
+    out = entry.to_dict()
+    # Large stripped files or files without overviews are made fast to read in the
+    # background (tiles + overviews); the image is usable meanwhile.
+    try:
+        from app.engine.optimize import needs_optimizing
+        plan = await run_in_threadpool(needs_optimizing, dest)
+    except Exception:
+        plan = None
+    if plan:
+        from app.core.jobs import get_store
+        job_id = get_store().create("optimize", image_id=image_id, progress=0.0, plan=plan)
+        out["optimize_job_id"] = job_id
+        background_tasks.add_task(_run_optimize, job_id, str(dest))
+    entry_dict = out
+    _save_dict(dest, entry_dict)
+    return entry_dict
 
-    return entry.to_dict()
+
+def _save_dict(dest: Path, entry: dict) -> None:
+    import json
+    from app.core.image_library import sidecar_path
+    sidecar_path(dest).write_text(json.dumps(entry, indent=2))
+
+
+def _run_optimize(job_id: str, path: str) -> None:
+    from app.core.jobs import get_store
+    from app.engine.optimize import optimize
+
+    jobs = get_store()
+    jobs.update(job_id, status="processing")
+    try:
+        res = optimize(path, progress=lambda pct: jobs.update(job_id, progress=round(pct, 1)))
+        # the raster check (layout, overviews) changed: redo it on next listing
+        import json
+        from app.core.image_library import sidecar_path
+        sc = sidecar_path(Path(path))
+        entry = json.loads(sc.read_text())
+        if entry.get("health"):
+            entry["health"]["version"] = 0
+        entry.pop("optimize_job_id", None)
+        sc.write_text(json.dumps(entry, indent=2))
+        jobs.update(job_id, status="completed", result=res, progress=100.0)
+    except Exception as exc:
+        jobs.update(job_id, status="error", error=str(exc))
 
 
 def _fresh(entry: dict) -> dict:
