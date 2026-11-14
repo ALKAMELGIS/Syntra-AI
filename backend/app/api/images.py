@@ -71,6 +71,15 @@ async def upload_image(file: UploadFile, metadata: UploadFile | None = None):
     raster_meta_note = None
     bounds_wgs84 = None
     health = None
+    georef = None
+    try:
+        from app.engine.georef import ensure_georeferenced
+        georef = await run_in_threadpool(ensure_georeferenced, dest)
+    except ImportError:
+        pass
+    except Exception as exc:
+        georef = {"method": "failed", "error": str(exc)}
+
     try:
         from app.engine.raster_io import compute_wgs84_bounds, read_raster_info
         info = await run_in_threadpool(read_raster_info, dest)
@@ -81,6 +90,11 @@ async def upload_image(file: UploadFile, metadata: UploadFile | None = None):
         bounds_wgs84 = await run_in_threadpool(compute_wgs84_bounds, dest)
         from app.engine.raster_health import check_raster
         health = (await run_in_threadpool(check_raster, dest)).to_dict()
+        from app.engine.georef import georef_finding
+        if georef and georef.get("method") != "failed" and (finding := georef_finding(georef)):
+            health["findings"].insert(0, finding)
+            if finding["level"] == "warning" and health["status"] == "ok":
+                health["status"] = "warning"
         if health.get("gsd_m") and not health.get("projected"):
             # geographic CRS: pixel size is in degrees; store the ground size in metres
             raster_meta["gsd_x_m"] = raster_meta["gsd_y_m"] = health["gsd_m"]

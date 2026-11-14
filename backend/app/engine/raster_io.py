@@ -71,27 +71,22 @@ def read_preview_png(path: str | Path, max_dim: int = 1024) -> bytes:
     run into the tens of thousands of pixels per side).
     """
     import rasterio  # lazy import
-    from rasterio.enums import Resampling
     from PIL import Image
 
-    from app.engine.raster_prep import plan_rgb, to_uint8
+    from app.engine.raster_prep import plan_rgb, read_rgb
 
     plan = plan_rgb(path)
     with rasterio.open(path) as ds:
         scale = min(1.0, max_dim / max(ds.width, ds.height))
         out_w = max(1, round(ds.width * scale))
         out_h = max(1, round(ds.height * scale))
-        uniq = sorted(set(plan.bands))
-        sample = ds.read(indexes=uniq, out_shape=(len(uniq), out_h, out_w), resampling=Resampling.nearest)
-    ordered = np.stack([sample[uniq.index(b)] for b in plan.bands])
-    # Same band choice and scene-wide stretch the detector sees, so what the
-    # analyst looks at on the map is what the model was given.
-    data = to_uint8(ordered, plan.lo, plan.hi)
+        # Same bands, stretch and masking the detector sees, so what the
+        # analyst looks at on the map is what the model was given.
+        data, valid = read_rgb(ds, plan, out_shape=(out_h, out_w))
 
     import io
     buf = io.BytesIO()
-    nd = 0 if plan.nodata is None else plan.nodata
-    alpha = np.where(np.all(ordered == nd, axis=0), 0, 255).astype(np.uint8)   # empty footprint -> transparent
+    alpha = np.where(valid, 255, 0).astype(np.uint8)          # empty footprint -> transparent
     Image.fromarray(np.dstack([data, alpha]), mode="RGBA").save(buf, format="PNG")
     return buf.getvalue()
 
@@ -172,13 +167,10 @@ def iter_tiles(
     import rasterio  # lazy import
     from rasterio.windows import Window
 
-    from app.engine.raster_prep import tile_has_data, to_uint8
+    from app.engine.raster_prep import read_rgb
 
     with rasterio.open(path) as ds:
         base_transform = GeoTransform.from_rasterio_transform(ds.transform)
-        if rgb_plan is not None:
-            uniq = sorted(set(rgb_plan.bands))
-            order = [uniq.index(b) for b in rgb_plan.bands]
         wc, wr, ww, wh = window or (0, 0, ds.width, ds.height)
         for col_off, row_off, w, h in _window_grid(ww, wh, tile_size, overlap):
             col_off, row_off = col_off + wc, row_off + wr
@@ -188,12 +180,11 @@ def iter_tiles(
                 continue
             window_ = Window(col_off, row_off, w, h)
             if rgb_plan is not None:
-                raw = ds.read(indexes=uniq, window=window_)          # (len(uniq), h, w)
-                if not tile_has_data(raw, rgb_plan.nodata):
+                data, valid = read_rgb(ds, rgb_plan, window=window_)
+                if float(valid.mean()) < 0.005:
                     if on_skip:
                         on_skip()
                     continue
-                data = to_uint8(raw[order], rgb_plan.lo, rgb_plan.hi)
             else:
                 data = ds.read(window=window_)                 # (bands, h, w)
                 data = np.moveaxis(data, 0, -1)                # -> (h, w, bands)

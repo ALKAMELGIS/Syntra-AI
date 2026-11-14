@@ -133,6 +133,34 @@ an 8-band uint16 UTM GeoTIFF with RGB in bands 3/2/1 and an empty strip:
 health ok, bands 3·2·1 picked from the sensor name, 2 empty tiles skipped,
 181 ships, ONNX only.
 
+## Works with any GeoTIFF: the 21-file matrix
+
+`backend/tests/geotiff_matrix/variants.py` writes 21 GeoTIFFs that differ the
+ways real products do. `test_geotiff_matrix_offline.py` sends each one
+through upload, raster check, preview and a vegetation run via the API, and
+checks the results are WGS84 lon/lat on the scene (it runs in CI).
+
+| Variant | Result |
+|---|---|
+| uint8 RGB UTM, uint16 RGBN no-data 0, BGRN with an empty strip, int16 no-data −9999 | ✅ placed, analysed |
+| float32 reflectance with NaN no-data | ✅ (crashed on upload before: NaN is not valid JSON) |
+| RGBA alpha, internal GDAL mask over 255-filled pixels | ✅ masked pixels skipped |
+| EPSG:4326, EPSG:3857, EPSG:2263 (US feet), south-up, rotated 15° | ✅ GSD converted to metres (0.50 m) |
+| COG deflate, JPEG/YCbCr, 40 px tile, 1 px wide strip | ✅ |
+| GCPs only, no geotransform | ✅ affine fit through the GCPs on upload (warped instead if RMS > 1 px) |
+| RPC only | ✅ orthorectified onto local UTM on upload, raster check warns: no terrain model |
+| Palette (classified) image | ✅ shown in its colours; vegetation refused, with the reason |
+| Panchromatic single band | ✅ detection runs; vegetation refused (needs NIR or RGB) |
+| No CRS at all | ✅ refused before running (409) with how to assign one, instead of exporting pixel coordinates |
+
+The pixel rules are in one place, `raster_prep.valid_pixels` and
+`read_rgb`: GDAL masks (no-data, alpha, internal mask), NaN, and an all-zero
+fill when no no-data is declared. Tiling, preview, the raster check and
+vegetation all use them. Georeferencing changes only the uploaded copy
+(`engine/georef.py`). Ship detection (DOTA-OBB, ONNX) was also run on all 21
+variants using a real marina photo as content; it found boats on every placeable
+file. That run needs the model file, so it is not part of CI.
+
 ## Results are always WGS84
 
 Detections are merged across tiles in the GeoTIFF's own projection (metres,
