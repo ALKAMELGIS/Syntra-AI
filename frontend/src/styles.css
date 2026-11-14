@@ -166,6 +166,12 @@ html, body, #root { height: 100%; overflow: hidden; }
 .dropzone:hover { border-color: var(--accent); color: var(--text); }
 .dropzone.drag-over { border-color: var(--accent); background: var(--accent-soft); color: var(--text); }
 .dropzone-icon { font-size: 20px; color: var(--text-dim); }
+.dropzone > * { max-width: 100%; }
+.dropzone-name { display: flex; min-width: 0; width: 100%; justify-content: center;
+  font-size: 12px; line-height: 16px; color: var(--text); white-space: nowrap; }
+.dropzone-name-head { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.dropzone-name-tail { flex: none; }
+.dropzone-meta { font-size: 12px; line-height: 16px; color: var(--text-muted); overflow-wrap: anywhere; }
 .upload-progress-bar {
   height: 4px; background: var(--panel-border); border-radius: 2px; overflow: hidden; margin-top: 8px;
 }

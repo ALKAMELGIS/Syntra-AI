@@ -11,6 +11,19 @@ function formatBytes(bytes) {
   return mb >= 1024 ? `${(mb / 1024).toFixed(2)} GB` : `${mb.toFixed(1)} MB`;
 }
 
+// Long scene names (SVN3-20241127_L2A0000211147_03_...Cloud.tiff) have no
+// spaces to wrap at. Keep them on one line inside the box: cut the middle,
+// keep the start and the last characters with the extension; full name on hover.
+function FileName({ name }) {
+  const tail = name.length > 24 ? name.slice(-14) : "";
+  return (
+    <span className="dropzone-name mono" title={name}>
+      <span className="dropzone-name-head">{tail ? name.slice(0, -14) : name}</span>
+      {tail && <span className="dropzone-name-tail">{tail}</span>}
+    </span>
+  );
+}
+
 export default function Sidebar({ models, selectedModels, onToggleModel, onModelsChanged, onTrain, image, onImageUploaded, onRun, running, hasAoi = false, onClearAoi }) {
   const optimizing = useOptimizeJob(image, onImageUploaded);
   const fileInput = useRef(null);
@@ -147,13 +160,23 @@ export default function Sidebar({ models, selectedModels, onToggleModel, onModel
           >
             <input ref={fileInput} type="file" accept=".tif,.tiff,.xml" multiple hidden onChange={handleFile} />
             <IconUpload className="dropzone-icon" />
-            <span>
-              {uploading
-                ? (uploadProgress >= 1 ? "Reading the image…" : `Uploading… ${Math.round(uploadProgress * 100)}%`)
-                : image
-                ? image.filename
-                : "Drop a GeoTIFF, with its .xml if you have it"}
-            </span>
+            {image && !uploading ? (
+              <>
+                <FileName name={image.filename} />
+                <span className="dropzone-meta mono">
+                  {[image.size_bytes ? formatBytes(image.size_bytes) : null,
+                    image.width ? `${image.width} × ${image.height} px` : null,
+                    image.gsd_x_m && !image.health ? `${(image.gsd_x_m * 100).toFixed(0)} cm GSD` : null]
+                    .filter(Boolean).join(" · ")}
+                </span>
+              </>
+            ) : (
+              <span>
+                {uploading
+                  ? (uploadProgress >= 1 ? "Reading the image…" : `Uploading… ${Math.round(uploadProgress * 100)}%`)
+                  : "Drop a GeoTIFF, with its .xml if you have it"}
+              </span>
+            )}
           </div>
           {uploading && (
             <div className="upload-progress-bar">
@@ -161,13 +184,6 @@ export default function Sidebar({ models, selectedModels, onToggleModel, onModel
             </div>
           )}
           {uploadError && <InfoNote level="error" title={splitMessage(uploadError)[0]} detail={splitMessage(uploadError)[1]} />}
-          {image && (
-            <p className="note">
-              {image.size_bytes ? `${formatBytes(image.size_bytes)} · ` : ""}
-              {image.width ? `${image.width} × ${image.height} px` : ""}
-              {image.gsd_x_m && !image.health ? ` · ${(image.gsd_x_m * 100).toFixed(0)} cm GSD` : ""}
-            </p>
-          )}
           {image?.health && <RasterHealth health={image.health} optimizing={optimizing} />}
         </>
       ) : (
