@@ -44,6 +44,37 @@ real and has passing tests. The ML models themselves need your GPU box,
 your datasets, and a normal internet connection to install dependencies and
 train/fine-tune.
 
+## Analyse a drawn area only
+
+Draw a rectangle, circle or freehand area with the Edit tools; the sidebar
+then shows **Drawn area only** and the button becomes **Run in area**. The
+AOI (WGS84 GeoJSON) is transformed into the raster's CRS and clipped to it;
+tiling reads only the AOI's bounding box, skips tiles outside the polygon,
+and drops detections whose centre falls outside. An AOI that misses the
+image is refused before the job starts. This is how a multi-GB scene is
+analysed in seconds. Verified by `test_aoi_vegetation_offline.py`.
+
+## Vegetation & Trees (spectral index, no trained model)
+
+`vegetation_index` computes **NDVI** from red and near-infrared (VARI for
+RGB-only images), outputs vegetation polygons with area (ha), mean index
+and a dense/sparse class, and the total vegetation cover of the analysed
+area. With the product XML uploaded beside the image, DN are calibrated to
+radiance and divided by solar irradiance (ESUN) so NDVI is a ratio of
+top-of-atmosphere reflectances. On the SuperView scene this moved bare sand
+from −0.16 (radiance) to ~0.01, as expected physically.
+
+Tree crowns are counted only at ≤ 1 m pixels and only as compact,
+prominent peaks of the smoothed index; otherwise the count is withheld and
+the manifest says why. This was tightened after the user's 2 m scene
+produced ~10,000 false "trees" on one flat intertidal patch.
+
+**Real run on the user's SuperView Neo-3 scene (2 m MUX, UTM 39N):** whole
+scene 12,544 ha analysed, 201 ha vegetation (1.6%), 42 s on the user's
+machine; lagoon area 1,315 ha, 160 ha vegetation (12%). Caveat recorded in
+every manifest: on coasts, positive NDVI also comes from intertidal algal
+mats and seagrass, which is what most of the lagoon cover is.
+
 ## Satellite products: raster check, 16-bit, band order, ONNX
 
 Built after inspecting a real SuperView Neo-3 L2A scene (0.5 m PAN 3.6 GB,

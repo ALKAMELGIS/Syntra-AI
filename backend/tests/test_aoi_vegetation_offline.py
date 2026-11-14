@@ -250,3 +250,30 @@ def test_no_tree_count_at_coarse_resolution(tmp_path):
         f.write(d)
     res = run_vegetation(str(path), tmp_path / "out", "veg")
     assert res["summary"]["tree_candidates"] is None and res["final_detection_count"] == 1
+
+
+def test_upload_keeps_product_xml_for_calibration(scene, tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from app.core.config import settings
+    from app.main import app
+
+    monkeypatch.setattr(settings, "DATA_DIR", tmp_path / "data")
+    monkeypatch.setattr(settings, "UPLOAD_DIR", tmp_path / "data" / "uploads")
+    monkeypatch.setattr(settings, "RESULTS_DIR", tmp_path / "data" / "results")
+    monkeypatch.delenv("SYNTRA_API_KEY", raising=False)
+    settings.ensure_dirs()
+    xml = b"<p><SatelliteID>SVN3-01</SatelliteID><AbsCalibrationGain>1,1,1,1</AbsCalibrationGain></p>"
+    with TestClient(app) as client:
+        r = client.post("/api/images", files={"file": ("farm.tif", scene.read_bytes(), "image/tiff"),
+                                             "metadata": ("farm.xml", xml, "application/xml")})
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert any(f["code"] == "calibration" for f in body["health"]["findings"])
+        stored = list(settings.UPLOAD_DIR.glob("*.xml"))
+        assert len(stored) == 1 and stored[0].read_bytes() == xml
+        r = client.post("/api/images", files={"file": ("farm.tif", scene.read_bytes(), "image/tiff"),
+                                             "metadata": ("evil.sh", b"rm -rf /", "text/plain")})
+        assert r.status_code == 400
+        r = client.post("/api/images", files={"file": ("farm.tif", scene.read_bytes(), "image/tiff")})
+        assert any(f["code"] == "no_calibration" for f in r.json()["health"]["findings"])

@@ -62,6 +62,7 @@ class RasterHealth:
     compression: str | None
     has_rpc: bool
     file_size_bytes: int
+    has_calibration: bool = False
     rgb_bands: list[int] | None = None
     rgb_source: str | None = None
     sensor: str | None = None
@@ -144,6 +145,8 @@ def check_raster(path: str | Path, sample_dim: int = 1024) -> RasterHealth:
             file_size_bytes=path.stat().st_size,
             rgb_bands=list(rgb), rgb_source=rgb_source, sensor=detect_sensor(path),
         )
+        from app.engine.vegetation import read_calibration_gains
+        h.has_calibration = read_calibration_gains(path) is not None
 
     h.findings = _findings(h)
     return h
@@ -203,6 +206,14 @@ def _findings(h: RasterHealth) -> list[Finding]:
                          "This is typically a system-corrected product (for example L2A), not orthorectified with a terrain "
                          "model. Positions can be off by a few metres where there is relief; on flat coastal terrain the effect is small.",
                          "For survey-grade positions, orthorectify with a DEM (gdalwarp -rpc -to RPC_DEM=dem.tif)."))
+
+    if h.bands >= 4 and h.dtype != "uint8" and not h.has_calibration:
+        f.append(Finding("info", "no_calibration", "No calibration metadata",
+                         "Vegetation (NDVI) will be computed from raw values, which reads low on most sensors.",
+                         "Upload the product's .xml together with the image."))
+    elif h.has_calibration:
+        f.append(Finding("ok", "calibration", "Calibration metadata found",
+                         "NDVI uses calibrated reflectance."))
 
     if h.valid_fraction is not None and h.valid_fraction < 0.5:
         f.append(Finding("info", "sparse", f"{h.valid_fraction:.0%} of the frame has data",

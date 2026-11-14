@@ -30,17 +30,27 @@ export default function Sidebar({ models, selectedModels, onToggleModel, image, 
   const [batchQueue, setBatchQueue] = useState([]); // [{filename, status: "uploading"|"done"|"error", image?, error?, progress?}]
   const [pendingFiles, setPendingFiles] = useState([]); // picked but not yet uploaded
 
-  async function doUpload(file) {
-    if (!file) return;
-    if (!/\.tiff?$/i.test(file.name)) {
-      setUploadError(`"${file.name}" is not a .tif/.tiff file.`);
+  // Pick the image and, if present, its product .xml (same name or any one xml).
+  function splitPick(fileList) {
+    const files = Array.from(fileList || []);
+    const tif = files.find((f) => /\.tiff?$/i.test(f.name));
+    const stem = tif ? tif.name.replace(/\.tiff?$/i, "") : "";
+    const xmls = files.filter((f) => /\.xml$/i.test(f.name));
+    const xml = xmls.find((f) => f.name.replace(/\.xml$/i, "") === stem) || (xmls.length === 1 ? xmls[0] : null);
+    return { tif, xml };
+  }
+
+  async function doUpload(fileList) {
+    const { tif: file, xml } = splitPick(fileList);
+    if (!file) {
+      setUploadError("Choose a .tif or .tiff file.");
       return;
     }
     setUploadError(null);
     setUploading(true);
     setUploadProgress(0);
     try {
-      const result = await api.uploadImage(file, setUploadProgress);
+      const result = await api.uploadImage(file, setUploadProgress, xml);
       onImageUploaded(result);
     } catch (err) {
       setUploadError(err.message);
@@ -50,14 +60,14 @@ export default function Sidebar({ models, selectedModels, onToggleModel, image, 
   }
 
   function handleFile(e) {
-    doUpload(e.target.files?.[0]);
+    doUpload(e.target.files);
     e.target.value = "";
   }
 
   function handleDrop(e) {
     e.preventDefault();
     setDragOver(false);
-    doUpload(e.dataTransfer.files?.[0]);
+    doUpload(e.dataTransfer.files);
   }
 
   async function handleBatchFiles(fileList) {
@@ -142,14 +152,14 @@ export default function Sidebar({ models, selectedModels, onToggleModel, image, 
             onDragLeave={() => setDragOver(false)}
             onDrop={handleDrop}
           >
-            <input ref={fileInput} type="file" accept=".tif,.tiff" hidden onChange={handleFile} />
+            <input ref={fileInput} type="file" accept=".tif,.tiff,.xml" multiple hidden onChange={handleFile} />
             <IconUpload className="dropzone-icon" />
             <span>
               {uploading
                 ? `Uploading… ${Math.round(uploadProgress * 100)}%`
                 : image
                 ? image.filename
-                : "Drop GeoTIFF to begin, or click to browse · .tif · 0.25–0.70 m"}
+                : "Drop a GeoTIFF, with its .xml if you have it"}
             </span>
           </div>
           {uploading && (
