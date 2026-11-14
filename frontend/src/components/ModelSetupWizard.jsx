@@ -471,9 +471,10 @@ function DetectStep({ onViewChange }) {
   );
 }
 
-export default function ModelSetupWizard({ onViewChange }) {
-  const [current, setCurrent] = useState(0);
-  const [reached, setReached] = useState(0);
+export default function ModelSetupWizard({ onViewChange, initialStep = null }) {
+  const start = Math.max(0, STEPS.findIndex((s) => s.key === initialStep));
+  const [current, setCurrent] = useState(start);
+  const [reached, setReached] = useState(start);
 
   function go(i) {
     setCurrent(i);

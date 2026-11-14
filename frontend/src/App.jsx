@@ -16,6 +16,7 @@ function jobKey(imageId, modelId) {
 
 export default function App() {
   const [view, setView] = useState("detect"); // "detect" | "models"
+  const [wizardStep, setWizardStep] = useState(null); // open the wizard on a given step
   const [models, setModels] = useState([]);
   const [selectedModels, setSelectedModels] = useState([]);
   const [image, setImage] = useState(null);
@@ -202,7 +203,7 @@ export default function App() {
     <div className="app-shell">
       <TopBar
         view={view}
-        onViewChange={setView}
+        onViewChange={(v) => { setWizardStep(null); setView(v); }}
         devices={devices}
         enabledGpus={enabledGpus}
         onToggleGpu={toggleGpu}
@@ -211,7 +212,7 @@ export default function App() {
         onExport={handleExport}
       />
       {view === "models" ? (
-        <ModelSetupWizard onViewChange={setView} />
+        <ModelSetupWizard onViewChange={(v) => { setWizardStep(null); setView(v); }} initialStep={wizardStep} />
       ) : (
         <div className="layout">
           <Sidebar
@@ -219,6 +220,7 @@ export default function App() {
             selectedModels={selectedModels}
             onToggleModel={toggleModel}
             onModelsChanged={() => api.listModels().then(setModels).catch(() => {})}
+            onTrain={() => { setWizardStep("annotate"); setView("models"); }}
             image={image}
             onImageUploaded={setImage}
             onRun={handleRun}

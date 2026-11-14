@@ -9,7 +9,7 @@ function formatBytes(bytes) {
   return mb >= 1024 ? `${(mb / 1024).toFixed(2)} GB` : `${mb.toFixed(1)} MB`;
 }
 
-export default function Sidebar({ models, selectedModels, onToggleModel, onModelsChanged, image, onImageUploaded, onRun, running, hasAoi = false, onClearAoi }) {
+export default function Sidebar({ models, selectedModels, onToggleModel, onModelsChanged, onTrain, image, onImageUploaded, onRun, running, hasAoi = false, onClearAoi }) {
   const fileInput = useRef(null);
   const batchInput = useRef(null);
   const [mode, setMode] = useState("single"); // "single" | "batch"
@@ -231,6 +231,7 @@ export default function Sidebar({ models, selectedModels, onToggleModel, onModel
         selectedModels={selectedModels}
         onToggleModel={onToggleModel}
         onModelsChanged={onModelsChanged}
+        onTrain={onTrain}
       />
 
       {hasAoi && (

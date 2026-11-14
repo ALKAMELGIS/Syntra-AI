@@ -22,7 +22,7 @@ from app.models.custom_registry import list_custom_models
 CATALOG: dict[str, ModelMetadata] = {
     "palm_tree_detection": ModelMetadata(
         model_id="palm_tree_detection",
-        name="Palm Tree Detection",
+        name="Palms",
         model_type="detection",
         version="0.0.0-unweighted",
         supported_gsd=GsdRange(0.25, 0.75),
@@ -39,7 +39,7 @@ CATALOG: dict[str, ModelMetadata] = {
     ),
     "date_tree_detection": ModelMetadata(
         model_id="date_tree_detection",
-        name="Date Tree Detection",
+        name="Date palms",
         model_type="detection",
         version="0.0.0-unweighted",
         supported_gsd=GsdRange(0.25, 0.75),
@@ -56,7 +56,7 @@ CATALOG: dict[str, ModelMetadata] = {
     ),
     "tree_detection": ModelMetadata(
         model_id="tree_detection",
-        name="Tree Detection",
+        name="Trees",
         model_type="detection",
         version="0.0.0-unweighted",
         supported_gsd=GsdRange(0.25, 1.00),
@@ -74,7 +74,7 @@ CATALOG: dict[str, ModelMetadata] = {
     ),
     "vegetation_index": ModelMetadata(
         model_id="vegetation_index",
-        name="Vegetation & Trees",
+        name="Vegetation",
         model_type="index",
         version="1.0.0-ndvi",
         supported_gsd=GsdRange(0.05, 10.0),
@@ -92,7 +92,7 @@ CATALOG: dict[str, ModelMetadata] = {
     ),
     "car_detection": ModelMetadata(
         model_id="car_detection",
-        name="Car Detection",
+        name="Cars",
         model_type="detection",
         version="0.2.0-dota-obb",
         supported_gsd=GsdRange(0.1, 0.6),
@@ -109,7 +109,7 @@ CATALOG: dict[str, ModelMetadata] = {
     ),
     "ship_detection": ModelMetadata(
         model_id="ship_detection",
-        name="Ship Detection",
+        name="Ships",
         model_type="detection",
         version="0.2.0-dota-obb",
         supported_gsd=GsdRange(0.15, 1.5),
@@ -126,7 +126,7 @@ CATALOG: dict[str, ModelMetadata] = {
     ),
     "field_boundary_segmentation": ModelMetadata(
         model_id="field_boundary_segmentation",
-        name="Field Agriculture Boundary Detection",
+        name="Field boundaries",
         model_type="segmentation",
         version="0.0.0-unweighted",
         supported_gsd=GsdRange(0.25, 1.00),
@@ -170,7 +170,7 @@ CATALOG: dict[str, ModelMetadata] = {
     ),
     "vacant_land_detection": ModelMetadata(
         model_id="vacant_land_detection",
-        name="Vacant Land",
+        name="Vacant land",
         model_type="segmentation",
         version="0.0.0-unweighted",
         supported_gsd=GsdRange(0.25, 1.00),
@@ -187,7 +187,7 @@ CATALOG: dict[str, ModelMetadata] = {
     ),
     "street_centerline_extraction": ModelMetadata(
         model_id="street_centerline_extraction",
-        name="Street (centerline)",
+        name="Street centerlines",
         model_type="segmentation",
         version="0.0.0-unweighted",
         supported_gsd=GsdRange(0.10, 0.50),
@@ -205,7 +205,7 @@ CATALOG: dict[str, ModelMetadata] = {
     ),
     "construction_waste_detection": ModelMetadata(
         model_id="construction_waste_detection",
-        name="Construction Waste",
+        name="Construction waste",
         model_type="detection",
         version="0.0.0-unweighted",
         supported_gsd=GsdRange(0.10, 0.30),
@@ -239,7 +239,7 @@ CATALOG: dict[str, ModelMetadata] = {
     ),
     "unpaved_road_detection": ModelMetadata(
         model_id="unpaved_road_detection",
-        name="Unpaved Road",
+        name="Unpaved roads",
         model_type="segmentation",
         version="0.0.0-unweighted",
         supported_gsd=GsdRange(0.25, 1.00),
@@ -270,7 +270,7 @@ CATALOG: dict[str, ModelMetadata] = {
     ),
     "oil_tank_detection": ModelMetadata(
         model_id="oil_tank_detection",
-        name="Oil Tanks",
+        name="Oil tanks",
         model_type="detection",
         version="0.2.0-dota-obb",
         supported_gsd=GsdRange(0.15, 1.5),
@@ -287,7 +287,7 @@ CATALOG: dict[str, ModelMetadata] = {
     ),
     "oil_tank_shadow_analysis": ModelMetadata(
         model_id="oil_tank_shadow_analysis",
-        name="Oil Shadows",
+        name="Tank shadows",
         model_type="measurement",
         version="0.0.0-unweighted",
         supported_gsd=GsdRange(0.25, 0.75),
@@ -305,7 +305,7 @@ CATALOG: dict[str, ModelMetadata] = {
     ),
     "tank_volume_estimation": ModelMetadata(
         model_id="tank_volume_estimation",
-        name="Tank Volume",
+        name="Tank volume",
         model_type="measurement",
         version="0.0.0-unweighted",
         supported_gsd=GsdRange(0.25, 0.75),
@@ -322,7 +322,7 @@ CATALOG: dict[str, ModelMetadata] = {
     ),
     "bridge_detection": ModelMetadata(
         model_id="bridge_detection",
-        name="Bridge",
+        name="Bridges",
         model_type="detection",
         version="0.2.0-dota-obb",
         supported_gsd=GsdRange(0.15, 2.0),
@@ -339,7 +339,7 @@ CATALOG: dict[str, ModelMetadata] = {
     ),
     "change_detection": ModelMetadata(
         model_id="change_detection",
-        name="Change Detection",
+        name="Change",
         model_type="change_detection",
         version="0.0.0-unweighted",
         supported_gsd=GsdRange(0.25, 1.00),

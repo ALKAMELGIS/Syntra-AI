@@ -729,46 +729,69 @@ button, input, select, textarea { font-family: inherit; }
 }
 .aoi-chip-clear:hover { background: var(--hover-bg); color: var(--text); }
 
-/* --- Model list: ready / available to add / needs training --- */
+/* --- Model list: ready / available to add / needs labelled data --- */
 .model-list { display: flex; flex-direction: column; }
 .model-group { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
-.model-list label.model-row { display: flex; align-items: center; gap: 8px; }
-.model-unchecked {
-  display: inline-block; width: 6px; height: 6px; border-radius: 50%; flex: none;
-  background: var(--warn); margin-left: auto;
-}
+.model-list label.model-row { display: flex; align-items: center; gap: 8px; height: 32px; min-height: 0; padding: 0 8px; }
+.model-unchecked { display: inline-block; width: 6px; height: 6px; border-radius: 50%; flex: none; background: var(--warn); margin-left: auto; }
 .model-key { display: flex; align-items: center; gap: 8px; margin: 4px 0 0; padding: 0 8px; font-size: 11px; color: var(--text-muted); }
 .model-key .model-unchecked { margin-left: 0; }
-.model-group-title { margin: 16px 0 4px; padding: 0 8px; font-size: 12px; font-weight: 500; color: var(--text-dim); }
-.pack-row { padding: 8px; border-radius: var(--radius-control); }
-.pack-row:hover { background: var(--hover-bg); }
-.pack-row-main { display: flex; align-items: center; gap: 8px; }
-.pack-name { flex: 1 1 auto; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pack-install {
-  height: 24px; padding: 0 10px; border: none; border-radius: 6px; cursor: pointer;
-  background: var(--primary-bg); color: var(--primary-fg); font-size: 12px; font-weight: 500;
+.model-section { margin-top: 24px; }
+.model-group-title { margin: 0 0 8px; padding: 0 8px; font-size: 12px; font-weight: 500; color: var(--text-dim); }
+
+/* one 32 px row: name, licence, quiet Install; failure and progress wrap below */
+.pack-row {
+  display: grid; grid-template-columns: minmax(72px, 1fr) auto auto; align-items: center; column-gap: 8px;
+  min-height: 32px; padding: 0 8px; border-radius: var(--radius-control);
   transition: background-color 0.12s var(--ease);
 }
-.pack-install:hover { background: var(--primary-hover); }
-.pack-progress { font-size: 12px; color: var(--accent); }
-.pack-meta { display: flex; align-items: center; gap: 8px; margin-top: 2px; font-size: 11px; color: var(--text-muted); }
-.pack-nc { color: var(--warn); }
-.pack-file {
-  margin-left: auto; padding: 0; background: transparent; border: none; cursor: pointer;
+.pack-row:hover { background: var(--hover-bg); }
+.pack-name { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pack-licence { font-size: 11px; color: var(--text-muted); white-space: nowrap; cursor: help; }
+.pack-progress { font-size: 12px; color: var(--text-dim); min-width: 52px; text-align: right; }
+.pack-bar { grid-column: 1 / -1; height: 2px; margin: 0 0 6px; border-radius: 1px; background: var(--panel-border); overflow: hidden; }
+.pack-bar-fill { display: block; height: 100%; background: var(--accent); transition: width 0.3s var(--ease); }
+.pack-bar-indeterminate { width: 30%; animation: progress-slide 1.2s var(--ease) infinite; }
+.pack-fail {
+  grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; margin: 0 0 8px;
+  font-size: 11px; color: var(--text-muted);
+}
+.pack-fail-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--error); flex: none; }
+.pack-fail a { color: var(--text-dim); }
+.pack-fail a:hover { color: var(--text); }
+
+.quiet-button {
+  height: 24px; padding: 0 10px; border-radius: 6px; cursor: pointer;
+  background: transparent; border: 1px solid var(--border-strong); color: var(--text);
+  font-size: 12px; transition: background-color 0.12s var(--ease), border-color 0.12s var(--ease);
+}
+.quiet-button:hover { background: var(--hover-bg); border-color: var(--text-muted); }
+.link-button {
+  padding: 0; background: transparent; border: none; cursor: pointer;
   font-size: 11px; color: var(--text-dim); text-decoration: underline; text-underline-offset: 2px;
 }
-.pack-file:hover { color: var(--text); }
-.pack-error { margin-top: 4px; font-size: 11px; line-height: 1.4; color: var(--error); }
-.pack-error a { color: var(--text); }
+.link-button:hover { color: var(--text); }
+
+.model-train-line { display: flex; align-items: center; gap: 8px; padding-right: 8px; }
+.model-train-line .link-button { font-size: 12px; }
 .model-group-toggle {
-  display: flex; align-items: center; gap: 8px; margin-top: 16px; height: 32px; padding: 0 8px;
+  flex: 1 1 auto; display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 8px;
   background: transparent; border: none; border-radius: var(--radius-control); cursor: pointer;
   color: var(--text-dim); font-size: 12px; font-weight: 500; text-align: left;
 }
 .model-group-toggle:hover { background: var(--hover-bg); color: var(--text); }
-.model-group-count { margin-left: auto; color: var(--text-muted); font-weight: 400; }
-.model-group-muted { padding-left: 24px; }
-.model-row-muted { height: 28px; display: flex; align-items: center; font-size: 13px; color: var(--text-muted); cursor: default; }
+.model-row-muted {
+  display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 8px 0 28px;
+  font-size: 13px; color: var(--text-muted); border-radius: var(--radius-control);
+}
+.model-row-muted:hover { background: var(--hover-bg); color: var(--text-dim); }
+.row-action {
+  margin-left: auto; padding: 0 8px; height: 22px; border: none; border-radius: 4px; cursor: pointer;
+  background: transparent; color: var(--text-dim); font-size: 11px; opacity: 0;
+  transition: opacity 0.12s var(--ease), background-color 0.12s var(--ease);
+}
+.model-row-muted:hover .row-action, .row-action:focus-visible { opacity: 1; }
+.row-action:hover { background: var(--panel); color: var(--text); }
 
 /* --- Raster check (sidebar) --- */
 .raster-health {
