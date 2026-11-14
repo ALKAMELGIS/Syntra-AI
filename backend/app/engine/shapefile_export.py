@@ -30,9 +30,25 @@ SHAPE_POINT = 1
 SHAPE_POLYGON = 5
 
 
-def _dbf_field_spec(key: str, sample_value) -> tuple[str, str, int, int]:
+# DBF field names are at most 10 characters: readable short names for ours
+SHORT_NAMES = {"perimeter_m": "perim_m", "orientation_deg": "orient_deg", "tree_candidates": "trees",
+               "confidence": "conf"}
+
+
+def _short_name(key: str, used: set[str]) -> str:
+    name = SHORT_NAMES.get(key, key)[:10].encode("ascii", "replace").decode("ascii")
+    base, i = name, 1
+    while name.lower() in used:                       # keep names unique after shortening
+        suffix = str(i)
+        name = base[: 10 - len(suffix)] + suffix
+        i += 1
+    used.add(name.lower())
+    return name
+
+
+def _dbf_field_spec(key: str, sample_value, used: set[str] | None = None) -> tuple[str, str, int, int]:
     """(name, type_code, length, decimals) for one DBF field, inferred from a sample value."""
-    name = key[:10].encode("ascii", "replace").decode("ascii")  # DBF field names: max 10 chars
+    name = _short_name(key, used if used is not None else set())
     if isinstance(sample_value, bool):
         return name, "L", 1, 0
     if isinstance(sample_value, (int, float)):
@@ -41,6 +57,8 @@ def _dbf_field_spec(key: str, sample_value) -> tuple[str, str, int, int]:
 
 
 def _pack_dbf_value(value, type_code: str, length: int, decimals: int) -> bytes:
+    if value is None:
+        return b" " * length if type_code != "L" else b"?"
     if type_code == "N":
         s = f"{float(value):.{decimals}f}"
         return s[:length].rjust(length).encode("ascii")
@@ -54,8 +72,12 @@ def _write_dbf(path: Path, records: list[dict]) -> None:
     if not records:
         raise ValueError("Cannot write a .dbf with zero records.")
 
-    keys = list(records[0].keys())
-    specs = [_dbf_field_spec(k, records[0][k]) for k in keys]
+    # every key any record has (not only the first), typed from its first real value
+    keys: list[str] = []
+    for r in records:
+        keys += [k for k in r if k not in keys]
+    used: set[str] = set()
+    specs = [_dbf_field_spec(k, next((r[k] for r in records if r.get(k) is not None), ""), used) for k in keys]
 
     record_length = 1 + sum(length for _, _, length, _ in specs)  # +1 for the deletion flag byte
     header_length = 32 + 32 * len(specs) + 1  # file header + one 32-byte descriptor per field + terminator
@@ -83,7 +105,10 @@ def _write_dbf(path: Path, records: list[dict]) -> None:
         for rec in records:
             f.write(b" ")  # deletion flag: not deleted
             for key, (name, type_code, length, decimals) in zip(keys, specs):
-                f.write(_pack_dbf_value(rec[key], type_code, length, decimals))
+                v = rec.get(key)
+                if type_code == "N" and not isinstance(v, (int, float)) or isinstance(v, bool) and type_code == "N":
+                    v = None if v is None or isinstance(v, bool) else v
+                f.write(_pack_dbf_value(v, type_code, length, decimals))
         f.write(b"\x1a")  # EOF marker
 
 

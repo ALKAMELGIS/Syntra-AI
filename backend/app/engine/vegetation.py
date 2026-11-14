@@ -281,7 +281,8 @@ def run_vegetation(
     }
 
     geojson_path = out_dir / f"{model_id}.geojson"
-    geojson_path.write_text(json.dumps({"type": "FeatureCollection", "features": features}))
+    from app.engine.measure import measure_features
+    geojson_path.write_text(json.dumps(measure_features({"type": "FeatureCollection", "features": features})))
     manifest = {
         "model_id": model_id,
         "count": len(features),

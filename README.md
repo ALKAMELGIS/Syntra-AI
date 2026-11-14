@@ -148,6 +148,22 @@ Settings):
 Verified end to end in the browser (Playwright): 3 labels → 20 tiles → 2 epochs → registered → run →
 the result appears under Analysis. Training needs `ultralytics` + `torch` on the machine.
 
+## Measurements and exports (phase 2, part 1)
+
+Every result object now carries `area_m2` and `perimeter_m` (geodesic), `length_m`, `width_m` and
+`orientation_deg` (smallest rotated rectangle, measured in a local equidistant projection, bearing
+from north) and its centroid `lon`, `lat` (`engine/measure.py`, applied to detectors, segmentation
+and vegetation). A 40 x 8 m rectangle at any bearing is measured within 5 cm and 0.5 deg.
+
+Exports: GeoJSON, KML, Shapefile (now always with its `.prj`; it used to be left out for detector
+runs, and the DBF only took the first object's fields), **GeoPackage** (written directly, no GDAL
+needed; GDAL reads it back with its CRS) and **CSV** (attributes, lon, lat, WKT). Checked on the
+harbour run: 175 boats with all measurements in each format.
+
+Large uploads (>= 4096 px, stripped or without overviews) are rewritten in the background as
+512 px tiles with overviews, like a COG (`engine/optimize.py`): a 162 MB 9000 x 6000 file took about
+6.5 s and the image stays usable meanwhile.
+
 ## Imagery lands where it is
 
 The map preview used to be the raster's own pixel grid stretched over its lat/lon bounding box. On a

@@ -85,6 +85,12 @@ function FileMenu({ hasImage, hasJob, onExport }) {
           <button className="file-menu-item" disabled={!hasJob} onClick={() => onExport("shapefile")}>
             Export Shapefile
           </button>
+          <button className="file-menu-item" disabled={!hasJob} onClick={() => onExport("gpkg")}>
+            Export GeoPackage
+          </button>
+          <button className="file-menu-item" disabled={!hasJob} onClick={() => onExport("csv")}>
+            Export CSV
+          </button>
         </div>
       )}
     </div>

@@ -120,7 +120,8 @@ def run_segmentation(
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     gj = out_dir / f"{model_id}.geojson"
-    gj.write_text(json.dumps({"type": "FeatureCollection", "features": features}))
+    from app.engine.measure import measure_features
+    gj.write_text(json.dumps(measure_features({"type": "FeatureCollection", "features": features})))
     total_area = sum(f["properties"]["area_m2"] for f in features)
     summary = {"count": len(features), "total_area_ha": round(total_area / 10_000, 3),
                "image_gsd_m": round(gsd, 3) if gsd else None, "model_gsd_m": cfg["resolution"] / 100,

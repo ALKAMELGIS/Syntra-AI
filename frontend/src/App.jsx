@@ -197,7 +197,7 @@ export default function App() {
         const res = await fetch(url);
         if (!res.ok) continue;
         const blob = await res.blob();
-        const ext = format === "geojson" ? "geojson" : format === "kml" ? "kml" : "zip";
+        const ext = { geojson: "geojson", kml: "kml", gpkg: "gpkg", csv: "csv" }[format] || "zip";
         const a = document.createElement("a");
         a.href = URL.createObjectURL(blob);
         a.download = `${j.model_id}_${j.job_id.slice(0, 8)}.${ext}`;

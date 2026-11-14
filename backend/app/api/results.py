@@ -69,9 +69,9 @@ def get_shapefile(job_id: str, model_id: str):
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
             for key in ("shp", "shx", "dbf"):
                 zf.write(paths[key], arcname=f"{model_id}.{key}")
-            if _result_crs(job_id, model_id) == "EPSG:4326":
-                # Without a .prj, QGIS/ArcGIS ask the user to guess the CRS.
-                zf.writestr(f"{model_id}.prj", WGS84_PRJ)
+            # Results are always WGS84 lon/lat (pipeline reprojects); without a .prj,
+            # QGIS/ArcGIS ask the user to guess the CRS.
+            zf.writestr(f"{model_id}.prj", WGS84_PRJ)
         buf.seek(0)
 
     return Response(
@@ -79,6 +79,27 @@ def get_shapefile(job_id: str, model_id: str):
         media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="{model_id}_shapefile.zip"'},
     )
+
+
+@router.get("/{job_id}/{model_id}/gpkg")
+def get_gpkg(job_id: str, model_id: str):
+    from app.engine.gpkg_export import write_gpkg
+
+    geojson = json.loads(_result_path(job_id, model_id).read_text())
+    with tempfile.TemporaryDirectory() as tmp:
+        out = write_gpkg(Path(tmp) / f"{model_id}.gpkg", geojson, table=model_id)
+        data = out.read_bytes()
+    return Response(content=data, media_type="application/geopackage+sqlite3",
+                    headers={"Content-Disposition": f'attachment; filename="{model_id}.gpkg"'})
+
+
+@router.get("/{job_id}/{model_id}/csv")
+def get_csv(job_id: str, model_id: str):
+    from app.engine.gpkg_export import to_csv
+
+    geojson = json.loads(_result_path(job_id, model_id).read_text())
+    return Response(content=to_csv(geojson), media_type="text/csv",
+                    headers={"Content-Disposition": f'attachment; filename="{model_id}.csv"'})
 
 
 @router.get("/{job_id}/{model_id}/manifest")
