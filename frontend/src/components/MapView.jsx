@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import L from "leaflet";
 import { api } from "../api/client";
-import { MapContainer, TileLayer, GeoJSON, ImageOverlay, useMap, useMapEvents } from "react-leaflet";
+import { MapContainer, TileLayer, GeoJSON, ImageOverlay, Rectangle, Tooltip, useMap, useMapEvents } from "react-leaflet";
 import MapDrawTools from "./MapDrawTools.jsx";
 import AnnotationLayer from "./AnnotationTool.jsx";
 import ImageLibrary from "./ImageLibrary.jsx";
@@ -172,6 +172,31 @@ function SourceImage({ image, bounds }) {
   );
 }
 
+// Where the file sits on the ground, drawn whatever its pixels hold: a hairline
+// frame on the image's WGS84 extent. A file with no image data (a cloud mask
+// uploaded by mistake) gets the frame in the error colour and says so, so an
+// empty overlay never looks like a placement failure.
+function ImageFootprint({ image }) {
+  const b = image?.bounds_wgs84;
+  if (!b) return null;
+  const empty = image.health?.findings?.some((f) => f.code === "no_data");
+  const isMask = image.health?.findings?.some((f) => f.code === "no_data" && /mask/.test(f.title));
+  return (
+    <Rectangle
+      key={`fp-${image.image_id}-${empty}`}
+      bounds={[[b.south, b.west], [b.north, b.east]]}
+      interactive={false}
+      pathOptions={{ className: `image-footprint ${empty ? "empty" : ""}`, weight: 1, fill: false, dashArray: "6 4" }}
+    >
+      {empty && (
+        <Tooltip permanent direction="center" className="footprint-label">
+          {isMask ? "No image data · this file is a mask" : "No image data"}
+        </Tooltip>
+      )}
+    </Rectangle>
+  );
+}
+
 // Frames the newly loaded source image automatically, the same way the
 // reference app snaps to a freshly imported scene — real geographic bounds
 // from the backend (app.engine.raster_io.compute_wgs84_bounds), not a guess.
@@ -277,6 +302,7 @@ export default function MapView({
           }}
         />
         {overlayBounds && sourceImage?.image_id && <SourceImage image={sourceImage} bounds={overlayBounds} />}
+        <ImageFootprint image={sourceImage} />
         <AutoFitSourceImage sourceImage={sourceImage} />
         {detectionsVisible &&
           layers.map((l) =>

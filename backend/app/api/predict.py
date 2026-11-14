@@ -199,6 +199,16 @@ def _resolve_image_path(req: PredictRequest) -> str:
     raise HTTPException(status_code=400, detail="Provide image_id (preferred) or image_path.")
 
 
+def _refuse_no_data(req: PredictRequest) -> None:
+    """An all-empty file (typically the scene's cloud mask uploaded by mistake) would
+    'complete' with zero detections, which reads like a model failure. Say what it is."""
+    entry = find_entry_by_image_id(settings.UPLOAD_DIR, req.image_id) if req.image_id else None
+    health = (entry or {}).get("health") or {}
+    for fnd in health.get("findings", []):
+        if fnd.get("code") == "no_data":
+            raise HTTPException(status_code=409, detail=f"{fnd['title']}. {fnd.get('fix') or ''}".strip())
+
+
 def _refuse_wrong_scale(meta, image_path: str) -> None:
     """Drone-only models are refused on imagery far coarser than they were trained on
     (a 4 cm model on a 50 cm satellite scene would see every object as a few pixels)."""
@@ -238,6 +248,7 @@ def start_prediction(req: PredictRequest, background_tasks: BackgroundTasks):
         raise HTTPException(status_code=409, detail=(
             "This image has no coordinate system, so results can't be placed on the map. "
             "Assign one (QGIS: Raster > Projections > Assign Projection) and upload it again."))
+    _refuse_no_data(req)
     _refuse_wrong_scale(meta, req.image_path)
     if req.aoi is not None:
         # Fail fast with a clear message instead of a background error.

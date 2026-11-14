@@ -24,13 +24,14 @@ real failure modes seen on satellite products:
 from __future__ import annotations
 
 import math
+import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 import numpy as np
 
 # Bump when the findings change, so saved checks in the image library are redone.
-HEALTH_VERSION = 2
+HEALTH_VERSION = 3
 MODEL_GSD_RANGE_M = (0.01, 2.00)   # widest range any catalog detector supports (drone 1-15 cm, satellite up to 2 m)
 
 
@@ -68,6 +69,7 @@ class RasterHealth:
     rgb_bands: list[int] | None = None
     rgb_source: str | None = None
     sensor: str | None = None
+    distinct_values: int | None = None     # single-band files: how many values the sample holds
     findings: list[Finding] = field(default_factory=list)
 
     @property
@@ -135,6 +137,7 @@ def check_raster(path: str | Path, sample_dim: int = 1024) -> RasterHealth:
                          resampling=Resampling.nearest, masked=True)
         from app.engine.raster_prep import valid_pixels
         valid_fraction = round(float(np.mean(valid_pixels(sample, ds.nodata))), 4)
+        distinct = int(len(np.unique(np.ma.getdata(sample)[0]))) if ds.count == 1 else None
 
         rgb, rgb_source = choose_rgb_bands(ds.count, [c.name for c in ds.colorinterp], list(ds.descriptions), detect_sensor(path))
         h = RasterHealth(
@@ -150,12 +153,25 @@ def check_raster(path: str | Path, sample_dim: int = 1024) -> RasterHealth:
             has_rpc=ds.rpcs is not None,
             file_size_bytes=path.stat().st_size,
             rgb_bands=list(rgb), rgb_source=rgb_source, sensor=detect_sensor(path),
+            distinct_values=distinct,
         )
         from app.engine.vegetation import read_calibration_gains
         h.has_calibration = read_calibration_gains(path) is not None
 
     h.findings = _findings(h)
     return h
+
+
+_MASK_NAME = re.compile(r"(cloud|cld|mask|udm|_qa|qa_|snow|shadow)", re.I)
+
+
+def looks_like_mask(h: RasterHealth) -> bool:
+    """A cloud / quality mask: named like one, or one band with at most 3 values."""
+    if h.bands != 1:
+        return False
+    named = bool(_MASK_NAME.search(Path(h.path).stem))
+    few = h.distinct_values is not None and h.distinct_values <= 3
+    return named and (few or h.valid_fraction == 0) or (few and h.dtype == "uint8" and h.width * h.height > 1_000_000)
 
 
 def _findings(h: RasterHealth) -> list[Finding]:
@@ -188,7 +204,7 @@ def _findings(h: RasterHealth) -> list[Finding]:
         f.append(Finding("info", "bit_depth", f"{h.dtype} data",
                          "Converted to 8-bit for the models with one scene-wide 2–98% stretch, so all tiles are treated the same."))
 
-    if h.bands == 1:
+    if h.bands == 1 and not looks_like_mask(h):
         f.append(Finding("info", "single_band", "Single band (panchromatic)",
                          "Detection runs on the grey image. Colour helps some classes; pansharpening with the "
                          "multispectral image usually improves results."))
@@ -221,6 +237,25 @@ def _findings(h: RasterHealth) -> list[Finding]:
         f.append(Finding("ok", "calibration", "Calibration metadata found",
                          "NDVI uses calibrated reflectance."))
 
+    mask = looks_like_mask(h)
+    if h.valid_fraction == 0:
+        if mask:
+            f.append(Finding("error", "no_data", "No image data: this is a mask",
+                             f"{Path(h.path).name} is a mask that ships with the scene (cloud or quality), not the image. "
+                             "Every pixel is 0, so there is nothing to show on the map or to detect.",
+                             "Upload the image file from the same folder, the one without Cloud or Mask in its name "
+                             "(for SuperView Neo: the PAN, MUX or PMS .tiff)."))
+        else:
+            f.append(Finding("error", "no_data", "No image data",
+                             "Every pixel is 0 or no-data, so there is nothing to show on the map or to detect.",
+                             "Check the export: open the file in QGIS and confirm it shows the scene."))
+        return f
+    if mask:
+        f.append(Finding("warning", "mask", "Looks like a mask, not imagery",
+                         f"One band with {h.distinct_values} value{'s' if h.distinct_values != 1 else ''}"
+                         f"{' and a mask-like name' if _MASK_NAME.search(Path(h.path).stem) else ''}. "
+                         "Detection models need the image itself.",
+                         "Upload the scene's image file (for SuperView Neo: PAN, MUX or PMS)."))
     if h.valid_fraction is not None and h.valid_fraction < 0.5:
         f.append(Finding("info", "sparse", f"{h.valid_fraction:.0%} of the frame has data",
                          "Empty tiles are skipped automatically, so this costs no processing time."))

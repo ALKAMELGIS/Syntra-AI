@@ -304,6 +304,12 @@ for when it is exposed to a network (all in `backend/.env.example`):
 - Upload filenames are sanitised and capped by `SYNTRA_MAX_UPLOAD_MB`.
 - Library Status install/repair/update (which runs `pip`) only works from
   the server itself unless `SYNTRA_ALLOW_ENV_ACTIONS=1`.
+- **Masks uploaded instead of imagery.** A scene's cloud or quality mask
+  (for example SuperView Neo `*_Cloud.tiff`) is named in the raster check
+  as "No image data: this is a mask", with the file to upload instead;
+  predictions on it are refused, and the map draws the file's footprint in
+  red at its location. Verified by `test_mask_upload_offline.py` (4 tests)
+  and a live upload of an all-zero EPSG:4326 mask.
 - **Accounts.** The app opens on Sign in / Create account. The first account
   is the admin and can only be made from the computer running Syntra; after
   that anyone with the address can create an account unless

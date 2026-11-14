@@ -122,9 +122,11 @@ async def upload_image(file: UploadFile, background_tasks: BackgroundTasks, meta
     out = entry.to_dict()
     # Large stripped files or files without overviews are made fast to read in the
     # background (tiles + overviews); the image is usable meanwhile.
+    # A file with no image data (a mask) is not worth retiling: nothing will run on it.
+    empty = any(f.get("code") == "no_data" for f in (health or {}).get("findings", []))
     try:
         from app.engine.optimize import needs_optimizing
-        plan = await run_in_threadpool(needs_optimizing, dest)
+        plan = None if empty else await run_in_threadpool(needs_optimizing, dest)
     except Exception:
         plan = None
     if plan:

@@ -46,6 +46,13 @@ real, what is written but unrun, and how it was verified.
   listed in `hidden_classes` and left out of the catalog entry, not returned.
 - A raster-check rule change bumps `HEALTH_VERSION` in `raster_health.py`
   so saved checks in the library are redone.
+- An image that "doesn't show on the map" is first a content question,
+  not a placement one. Satellite products ship side files (cloud, quality,
+  UDM masks) next to the scene; an all-zero mask reads 0% data and draws
+  fully transparent. `looks_like_mask()` names it as an error finding
+  (`no_data`), predict refuses it, optimise skips it, and the map always
+  draws the file's footprint (`ImageFootprint` in MapView) so the location
+  is visible whatever the pixels hold.
 - PROJ/GDAL data comes from this environment (`app/core/proj_env.py`, run
   from `app/__init__.py`): never rely on a system-wide `PROJ_LIB`, which
   PostGIS and QGIS installers set on Windows.
