@@ -93,7 +93,7 @@ function MapToolbar({
       </button>
       <button
         className={`map-tool-btn ${legendOpen ? "active" : ""}`}
-        data-tool="legend" title="Toggle legend"
+        data-tool="legend" title="Legend" aria-expanded={legendOpen}
         onClick={onLegendToggle}
       >
         <IconLegend />
@@ -176,7 +176,26 @@ export default function MapView({
   analysisOpen, onToggleAnalysis, analysisCount, analysisPanel,
 }) {
   const [basemap, setBasemap] = useState("satellite");
-  const [legendOpen, setLegendOpen] = useState(true);
+  const [legendOpen, setLegendOpen] = useState(false);
+
+  // Legend and Analysis both open beside the toolbar: show one at a time.
+  useEffect(() => {
+    if (analysisOpen) setLegendOpen(false);
+  }, [analysisOpen]);
+
+  useEffect(() => {
+    if (!legendOpen) return;
+    const onKey = (e) => { if (e.key === "Escape") setLegendOpen(false); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [legendOpen]);
+
+  function toggleLegend() {
+    setLegendOpen((open) => {
+      if (!open && analysisOpen) onToggleAnalysis?.();
+      return !open;
+    });
+  }
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [annotateOpen, setAnnotateOpen] = useState(false);
@@ -235,7 +254,7 @@ export default function MapView({
           basemap={basemap}
           onBasemapChange={setBasemap}
           legendOpen={legendOpen}
-          onLegendToggle={() => setLegendOpen((o) => !o)}
+          onLegendToggle={toggleLegend}
           onOpenLibrary={() => setLibraryOpen(true)}
           onOpenSettings={() => setSettingsOpen(true)}
           analysisOpen={analysisOpen}
@@ -275,31 +294,44 @@ export default function MapView({
         onChangeIconStyle={changeIconStyle}
       />
       {legendOpen && (
-        <div className="map-legend">
-          <div className="map-legend-title">Legend</div>
-          {layers.length === 0 && <div className="map-legend-row dim">No results yet</div>}
-          {layers.map((l) => (
-            <div className="map-legend-row" key={l.key}>
-              <span className="map-legend-swatch" style={{ background: l.color }} />
-              {l.name}
-            </div>
-          ))}
-          {aoi && (
-            <div className="map-legend-row">
-              <span className="map-legend-swatch" style={{ background: "#ffcf5c" }} />
-              Area of interest
-            </div>
+        <section className="legend-popover" aria-label="Legend">
+          <header className="legend-head">
+            <span className="legend-title">Legend</span>
+            <span className="legend-total mono">{layers.length + (aoi ? 1 : 0) || ""}</span>
+          </header>
+          {layers.length === 0 && !aoi ? (
+            <p className="legend-empty">No layers yet</p>
+          ) : (
+            <ul className="legend-list">
+              {layers.map((l) => (
+                <li className="legend-row" key={l.key}>
+                  <span className="legend-swatch" style={{ background: l.color }} />
+                  <span className="legend-name">{l.name}</span>
+                  <span className="legend-value mono">{l.value}</span>
+                </li>
+              ))}
+              {aoi && (
+                <li className="legend-row">
+                  <span className="legend-swatch legend-swatch-aoi" />
+                  <span className="legend-name">Area of interest</span>
+                  {measurement != null && <span className="legend-value mono">{measurement}</span>}
+                </li>
+              )}
+              {!aoi && measurement != null && (
+                <li className="legend-row">
+                  <span className="legend-swatch legend-swatch-line" />
+                  <span className="legend-name">Measured</span>
+                  <span className="legend-value mono">{measurement}</span>
+                </li>
+              )}
+            </ul>
           )}
-          {measurement != null && (
-            <div className="map-legend-row dim">Measured: {measurement}</div>
-          )}
-
           {sourceImage?.filename && (
-            <div className="map-legend-row dim">
+            <footer className="legend-foot mono" title={sourceImage.filename}>
               {sourceImage.filename}{!sourceImage.bounds_wgs84 ? " · no CRS" : ""}
-            </div>
+            </footer>
           )}
-        </div>
+        </section>
       )}
     </div>
   );
