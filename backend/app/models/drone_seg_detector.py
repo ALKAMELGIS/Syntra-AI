@@ -33,7 +33,8 @@ def _load(path: str, device: str):
         if key not in _CACHE:
             from app.models.onnx_seg import OnnxSegModel
 
-            providers = ["CUDAExecutionProvider", "CPUExecutionProvider"] if device.startswith("cuda") else None
+            from app.core.onnx_runtime import session_providers, trt_cache_dir
+            providers = session_providers(device, trt_cache_dir())   # TensorRT > CUDA > DirectML > CPU
             _CACHE[key] = OnnxSegModel(path, providers=providers)
         return _CACHE[key]
 

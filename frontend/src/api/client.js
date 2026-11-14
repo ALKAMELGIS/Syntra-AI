@@ -17,6 +17,15 @@ export function withKey(url) {
   return `${url}${url.includes("?") ? "&" : "?"}api_key=${encodeURIComponent(API_KEY)}`;
 }
 
+// 45 s · 3 min · 1 h 20 min
+export function formatDuration(s) {
+  if (s == null) return "";
+  if (s < 60) return `${Math.max(1, Math.round(s))} s`;
+  if (s < 3600) return `${Math.round(s / 60)} min`;
+  const h = Math.floor(s / 3600), m = Math.round((s % 3600) / 60);
+  return m ? `${h} h ${m} min` : `${h} h`;
+}
+
 // One readable message for every failed request: the server's own explanation
 // when it sent one, otherwise what the status code means and what to do. The
 // code is always shown, so a screenshot says what happened.
@@ -60,6 +69,7 @@ export const auth = {
 };
 
 export const api = {
+  estimate: (body) => request(`${BASE}/predict/estimate`, json(body)).then(handle),
   browseLocal: (path) => request(`${BASE}/images/local/browse${path ? `?path=${encodeURIComponent(path)}` : ""}`).then(handle),
   importLocal: (path) => request(`${BASE}/images/local`, json({ path })).then(handle),
   listPacks: () => request(`${BASE}/models/packs`).then(handle),

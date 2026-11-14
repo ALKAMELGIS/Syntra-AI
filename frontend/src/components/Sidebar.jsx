@@ -3,8 +3,8 @@ import ModelList from "./ModelList.jsx";
 import LocalBrowser from "./LocalBrowser.jsx";
 import InfoNote, { splitMessage } from "./InfoNote.jsx";
 import { useOptimizeJob } from "./OptimizeNote.jsx";
-import React, { useRef, useState } from "react";
-import { api } from "../api/client.js";
+import React, { useEffect, useRef, useState } from "react";
+import { api, formatDuration } from "../api/client.js";
 import { IconUpload, IconFolder, IconPlay, IconClose, IconDashboard } from "./Icons.jsx";
 
 function formatBytes(bytes) {
@@ -25,8 +25,32 @@ function FileName({ name }) {
   );
 }
 
-export default function Sidebar({ models, selectedModels, onToggleModel, onModelsChanged, onTrain, image, onImageUploaded, onRun, running, hasAoi = false, onClearAoi }) {
+// Area and expected time for the selected models: the time comes only from
+// runs measured on this computer, so before the first run only the area shows.
+function useRunEstimate(image, selectedModels, aoi) {
+  const [est, setEst] = useState(null);
+  const key = `${image?.image_id}|${selectedModels.join(",")}|${aoi ? JSON.stringify(aoi).length : 0}`;
+  useEffect(() => {
+    if (!image?.image_id || !selectedModels.length) { setEst(null); return; }
+    let live = true;
+    const t = setTimeout(() => {
+      Promise.all(selectedModels.map((m) => api.estimate({ image_id: image.image_id, model_id: m, aoi: aoi || null }).catch(() => null)))
+        .then((rs) => {
+          if (!live) return;
+          const ok = rs.filter(Boolean);
+          if (!ok.length) return setEst(null);
+          const seconds = ok.length === rs.length && ok.every((r) => r.seconds != null) ? ok.reduce((a, r) => a + r.seconds, 0) : null;
+          setEst({ area_km2: ok[0].area_km2, seconds, device: ok[0].device });
+        });
+    }, 300);
+    return () => { live = false; clearTimeout(t); };
+  }, [key]);
+  return est;
+}
+
+export default function Sidebar({ models, selectedModels, onToggleModel, onModelsChanged, onTrain, image, onImageUploaded, onRun, running, hasAoi = false, onClearAoi, aoi = null }) {
   const optimizing = useOptimizeJob(image, onImageUploaded);
+  const estimate = useRunEstimate(image, selectedModels, aoi);
   const fileInput = useRef(null);
   const batchInput = useRef(null);
   const [mode, setMode] = useState("single"); // "single" | "local" | "batch"
@@ -273,6 +297,12 @@ export default function Sidebar({ models, selectedModels, onToggleModel, onModel
             <IconClose />
           </button>
         </div>
+      )}
+      {mode !== "batch" && estimate && !running && (
+        <p className="run-estimate mono" title={estimate.seconds == null ? "The time shows after this model has run once on this computer" : `Measured on this computer (${estimate.device})`}>
+          {[estimate.area_km2 != null ? `${estimate.area_km2 < 10 ? estimate.area_km2.toFixed(2) : Math.round(estimate.area_km2)} km²` : null,
+            estimate.seconds != null ? `about ${formatDuration(estimate.seconds)}` : null].filter(Boolean).join(" · ")}
+        </p>
       )}
       <button className="run-button" disabled={!canRun} onClick={handleRunClick}>
         {running ? "Running…" : <><IconPlay /> {hasAoi ? "Run in area" : "Run prediction"}</>}

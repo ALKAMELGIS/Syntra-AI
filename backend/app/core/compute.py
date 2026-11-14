@@ -40,14 +40,28 @@ class DeviceProfile:
 
 
 def _cuda_devices() -> list[dict]:
-    """Return available CUDA devices with free/total VRAM, or [] if none / torch missing."""
+    """GPUs a model can actually run on, with free/total VRAM, or [].
+
+    The models run on onnxruntime, so a card counts when onnxruntime has a GPU
+    provider for it (CUDA / TensorRT for NVIDIA, DirectML for any DirectX 12
+    card), whether or not torch is installed. torch, when present with CUDA, is
+    still used for the memory figures.
+    """
+    from app.core.onnx_runtime import gpu_providers, nvidia_gpus
+
+    provs = gpu_providers()
     try:
         import torch
+        torch_cuda = torch.cuda.is_available()
     except ImportError:
-        return []
-
-    if not torch.cuda.is_available():
-        return []
+        torch_cuda = False
+    if not torch_cuda:
+        if not provs:
+            return []
+        cards = [dict(c) for c in nvidia_gpus()] if any(p != "DmlExecutionProvider" for p in provs) else []
+        if not cards and "DmlExecutionProvider" in provs:
+            cards = [{"index": 0, "name": "GPU (DirectML)", "free_vram_mb": 0, "total_vram_mb": 0}]
+        return cards
 
     devices = []
     for i in range(torch.cuda.device_count()):
@@ -63,6 +77,12 @@ def _cuda_devices() -> list[dict]:
     return devices
 
 
+def _gpu_status() -> dict:
+    from app.core.onnx_runtime import gpu_status
+
+    return gpu_status()
+
+
 def list_devices() -> dict:
     """Inventory used by the /api/compute endpoint and the dashboard's device badge."""
     gpus = _cuda_devices()
@@ -70,6 +90,7 @@ def list_devices() -> dict:
         "cpu0": {"threads": settings.CPU0_THREADS},
         "cpu1": {"threads": settings.CPU1_THREADS},
         "gpu": gpus,
+        "gpu_status": _gpu_status(),
         "gpu_count": len(gpus),
     }
 

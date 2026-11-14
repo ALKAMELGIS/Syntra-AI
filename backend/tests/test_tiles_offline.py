@@ -69,3 +69,54 @@ def test_stretch_plan_computed_once_under_parallel_tile_requests(monkeypatch, tm
     with ThreadPoolExecutor(16) as ex:
         list(ex.map(lambda _: tiles.plan_for(str(f)), range(16)))
     assert len(calls) == 1
+
+
+def test_prefetch_keeps_order_reads_ahead_and_passes_errors():
+    import threading
+    import time
+
+    from app.engine.raster_io import prefetch
+
+    seen_threads = set()
+
+    def slow():
+        for i in range(6):
+            seen_threads.add(threading.current_thread().name)
+            time.sleep(0.01)
+            yield i
+
+    assert list(prefetch(slow(), depth=2)) == list(range(6))
+    assert seen_threads == {"syntra-tile-reader"}              # read on the background thread
+
+    def broken():
+        yield 1
+        raise ValueError("bad window")
+
+    it = prefetch(broken())
+    assert next(it) == 1
+    import pytest
+    with pytest.raises(ValueError, match="bad window"):
+        next(it)
+
+
+def test_prefetch_stops_the_reader_when_the_consumer_stops():
+    import time
+
+    from app.engine.raster_io import prefetch
+
+    produced = []
+
+    def endless():
+        i = 0
+        while True:
+            produced.append(i)
+            yield i
+            i += 1
+
+    it = prefetch(endless(), depth=2)
+    next(it)
+    it.close()                                                  # e.g. the job was cancelled
+    time.sleep(0.5)
+    n = len(produced)
+    time.sleep(0.3)
+    assert len(produced) == n and n < 10                       # reader stopped, bounded read-ahead

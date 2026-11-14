@@ -58,7 +58,7 @@ def run_segmentation(
     from shapely.geometry import mapping, shape
     from shapely.ops import transform as shp_transform
 
-    from app.engine.raster_io import count_tiles, iter_tiles
+    from app.engine.raster_io import count_tiles, iter_tiles, prefetch
     from app.engine.raster_prep import plan_rgb
     from app.models.geodeep_onnx import load_session, segment_tile, tile_px_for_gsd
 
@@ -88,9 +88,9 @@ def run_segmentation(
         if progress_cb:
             progress_cb(done, total)
 
-    for t in iter_tiles(path, tile_size=tile, overlap=0.1, rgb_plan=plan, on_skip=skip,
-                        window=aoi.window if aoi else None,
-                        tile_filter=aoi.tile_intersects if aoi else None):
+    for t in prefetch(iter_tiles(path, tile_size=tile, overlap=0.1, rgb_plan=plan, on_skip=skip,
+                                 window=aoi.window if aoi else None,
+                                 tile_filter=aoi.tile_intersects if aoi else None)):
         m = segment_tile(t.data, sess, cfg, nominal_tile=tile)
         r, c = t.row_off - r0, t.col_off - c0
         region = mask[r:r + t.height, c:c + t.width]

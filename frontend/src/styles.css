@@ -1485,3 +1485,12 @@ path.image-footprint.empty { stroke: var(--error); stroke-opacity: 1; }
 .local-row.dir .local-name { color: var(--text-dim); }
 .local-meta { flex: none; font-size: 12px; color: var(--text-muted); }
 .local-empty { padding: 8px; font-size: 12px; color: var(--text-muted); }
+
+/* expected run size and time, above the Run button */
+.run-estimate { margin: 0 0 8px; font-size: 12px; line-height: 16px; color: var(--text-muted); text-align: center; }
+
+/* a part of the interface that failed: says so, offers a reload */
+.error-boundary { margin: 16px; padding: 16px; border: 1px solid var(--panel-border); border-radius: var(--radius);
+  background: var(--panel); display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.error-boundary-title { margin: 0; font-size: 13px; font-weight: 500; color: var(--text); }
+.error-boundary-detail { margin: 0; font-size: 12px; color: var(--error); overflow-wrap: anywhere; }

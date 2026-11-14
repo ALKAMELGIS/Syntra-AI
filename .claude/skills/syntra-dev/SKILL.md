@@ -55,6 +55,13 @@ real, what is written but unrun, and how it was verified.
   MapView) and fetch everything heavy back from the server. Anything
   expensive to render (previews) is cached on disk keyed by file size and
   mtime, with an ETag.
+- Hardware for a model comes from `app/core/onnx_runtime.py`
+  (`session_providers(device)`), never a hand-written provider list, and a
+  GPU is found by what onnxruntime can use, not by torch.
+- A time shown to the user is measured: from this run's pace (`Eta`) or
+  from runs recorded on this machine (`speed.record`). No measurement, no
+  number. A speed-up that changes results (INT8) is measured against the
+  full model on real imagery and stays opt-in until it matches.
 - Caches shared by parallel requests (one map view asks for ~30 tiles at
   once) need a lock: `lru_cache` alone lets every request miss together.
 - An image that "doesn't show on the map" is first a content question,
@@ -108,7 +115,8 @@ reimplement them.
   dir is refused.
 - Run `python -m pytest -q backend/tests` before committing, and say how many
   passed.
-- For the UI, `npx vite build` in `frontend/` must succeed. When you can,
+- For the UI, `npm run build` in `frontend/` must succeed: it runs ESLint
+  first, which fails on a name used but never imported (vite alone does not). When you can,
   start the backend and `npx vite`, screenshot the changed screen, and look
   at it before calling the work done.
 

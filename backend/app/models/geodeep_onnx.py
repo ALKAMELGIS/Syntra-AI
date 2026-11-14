@@ -38,7 +38,8 @@ def load_session(path: str, device: str = "cpu"):
             return _SESSIONS[key]
         import onnxruntime as ort
 
-        providers = ["CUDAExecutionProvider", "CPUExecutionProvider"] if device.startswith("cuda") else ["CPUExecutionProvider"]
+        from app.core.onnx_runtime import session_providers, trt_cache_dir
+        providers = session_providers(device, trt_cache_dir())   # TensorRT > CUDA > DirectML > CPU
         opts = ort.SessionOptions()
         opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
         sess = ort.InferenceSession(path, sess_options=opts, providers=providers)

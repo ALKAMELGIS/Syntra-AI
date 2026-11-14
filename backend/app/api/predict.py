@@ -59,7 +59,7 @@ def _run_job(job_id: str, req: PredictRequest):
             _run_segmentation_job(job_id, req, pack)
             return
         from app.engine.pipeline import DetectionEngine
-        from app.engine.raster_io import count_tiles, iter_tiles, raster_crs_and_size
+        from app.engine.raster_io import prefetch, count_tiles, iter_tiles, raster_crs_and_size
         from app.engine.raster_prep import plan_rgb
         from app.models.factory import build_model
 
@@ -67,12 +67,17 @@ def _run_job(job_id: str, req: PredictRequest):
         engine = DetectionEngine(model)
 
         processed, skipped = {"n": 0}, {"n": 0}
+        from app.engine.speed import Eta
+        eta = Eta()
+        total_ref = {"n": None}
 
         def progress(done, total):
             # done is None for an empty tile skipped before inference
             if done is not None:
                 processed["n"] = done
-            jobs.update(job_id, tiles_processed=processed["n"] + skipped["n"], tiles_empty=skipped["n"])
+            n = processed["n"] + skipped["n"]
+            jobs.update(job_id, tiles_processed=n, tiles_empty=skipped["n"],
+                        eta_seconds=eta.update(n, total_ref["n"]))
 
         source_crs, width, height = raster_crs_and_size(req.image_path)
         if hasattr(model, "preferred_tile_size"):
@@ -90,6 +95,7 @@ def _run_job(job_id: str, req: PredictRequest):
         tiles_total = count_tiles(width, height, req.tile_size, req.overlap) if aoi is None else \
             _count_aoi_tiles(req.image_path, aoi, req.tile_size, req.overlap)
         jobs.update(job_id, tiles_total=tiles_total)
+        total_ref["n"] = tiles_total
         plan = plan_rgb(req.image_path, override=req.rgb_bands)
         jobs.update(job_id, rgb_plan=plan.to_dict())
 
@@ -97,10 +103,11 @@ def _run_job(job_id: str, req: PredictRequest):
             skipped["n"] += 1
             progress(None, None)
 
-        tiles = iter_tiles(req.image_path, tile_size=req.tile_size, overlap=req.overlap,
-                           rgb_plan=plan, on_skip=on_skip,
-                           window=aoi.window if aoi else None,
-                           tile_filter=aoi.tile_intersects if aoi else None)
+        # read the next tiles on a background thread while the model runs
+        tiles = prefetch(iter_tiles(req.image_path, tile_size=req.tile_size, overlap=req.overlap,
+                                    rgb_plan=plan, on_skip=on_skip,
+                                    window=aoi.window if aoi else None,
+                                    tile_filter=aoi.tile_intersects if aoi else None))
         out_dir = settings.RESULTS_DIR / job_id
         result = engine.run(
             tiles, out_dir, device_option=req.device,
@@ -109,7 +116,10 @@ def _run_job(job_id: str, req: PredictRequest):
             source_crs=source_crs, tiles_total=tiles_total,
             keep_detection=(lambda d: aoi.contains_point(*d["centroid_geo"])) if aoi else None,
         )
-        jobs.update(job_id, status="completed", result=result.__dict__)
+        jobs.update(job_id, status="completed", result=result.__dict__, eta_seconds=0)
+        from app.engine.speed import record as record_speed
+        record_speed(settings.DATA_DIR, req.model_id, result.device_used, req.tile_size,
+                     result.tiles_processed, result.duration_seconds)
         record_run(
             settings.DATA_DIR, req.model_id, status="completed",
             tiles_processed=result.tiles_processed, detection_count=result.final_detection_count,
@@ -197,6 +207,56 @@ def _resolve_image_path(req: PredictRequest) -> str:
     if req.image_path:
         return str(confine_path(req.image_path, field="image_path", must_exist=True))
     raise HTTPException(status_code=400, detail="Provide image_id (preferred) or image_path.")
+
+
+class EstimateRequest(BaseModel):
+    image_id: str
+    model_id: str
+    aoi: dict | None = None
+
+
+@router.post("/estimate")
+def estimate(req: EstimateRequest):
+    """Area and, once this machine has run the model before, the time a Run will take.
+
+    Same tile count as the job (the model's own tile size, the AOI's tiles);
+    empty tiles are left out of the time since they are skipped before the
+    model. No earlier run = `seconds: null`: the interface shows the area only.
+    """
+    from app.core.compute import DeviceOption, resolve_device
+    from app.engine.raster_io import count_tiles, raster_crs_and_size
+    from app.engine.speed import seconds_per_tile
+    from app.models.factory import build_model
+
+    entry = find_entry_by_image_id(settings.UPLOAD_DIR, req.image_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="Unknown image")
+    path = entry["path"]
+    health = entry.get("health") or {}
+    valid = health.get("valid_fraction")
+    valid = 1.0 if valid is None else float(valid)
+    gsd = health.get("gsd_m") or entry.get("gsd_x_m")
+    _, width, height = raster_crs_and_size(path)
+    tile, overlap = settings.DEFAULT_TILE_SIZE, settings.DEFAULT_TILE_OVERLAP
+    try:
+        model = build_model(req.model_id)
+        if hasattr(model, "preferred_tile_size") and gsd:
+            tile = model.preferred_tile_size(gsd)
+    except Exception:
+        pass
+    if req.aoi:
+        from app.engine.aoi import prepare_aoi
+        aoi = prepare_aoi(path, req.aoi, grid=(tile, overlap))
+        tiles = _count_aoi_tiles(path, aoi, tile, overlap)
+        area_km2 = aoi.area_m2 / 1e6
+    else:
+        tiles = count_tiles(width, height, tile, overlap)
+        area_km2 = width * height * (gsd or 0) ** 2 * valid / 1e6 if gsd else None
+    device = resolve_device(DeviceOption.AUTO).resolved
+    spt = seconds_per_tile(settings.DATA_DIR, req.model_id, device, tile)
+    model_tiles = max(1, round(tiles * valid))
+    return {"tiles": tiles, "area_km2": round(area_km2, 2) if area_km2 is not None else None,
+            "device": device, "seconds": round(model_tiles * spt) if spt else None}
 
 
 def _refuse_no_data(req: PredictRequest) -> None:

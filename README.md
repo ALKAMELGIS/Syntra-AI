@@ -304,6 +304,27 @@ for when it is exposed to a network (all in `backend/.env.example`):
 - Upload filenames are sanitised and capped by `SYNTRA_MAX_UPLOAD_MB`.
 - Library Status install/repair/update (which runs `pip`) only works from
   the server itself unless `SYNTRA_ALLOW_ENV_ACTIONS=1`.
+- **Faster Run, with honest timing (plan stage 1).**
+  - Tiles are read on a background thread while the model runs
+    (`prefetch`); reading was 28% of a run when done in line.
+  - The GPU is found through onnxruntime, not torch: an NVIDIA card with
+    `onnxruntime-gpu`, or any DirectX 12 card with DirectML, is now offered
+    and used (TensorRT FP16 with an engine cache, then CUDA, then DirectML,
+    then CPU). A card without GPU onnxruntime shows the one-line fix in
+    `/api/compute` (`gpu_status`). Before, GPUs were only found when torch had
+    CUDA, so most machines ran on the CPU whatever they had.
+  - Above the Run button: area in km2 and, once the model has run on this
+    computer, the expected time (median of its last five measured runs;
+    never an invented figure). During a run: tiles done and time left from
+    the run's own pace. Live check: "27 s left" at second 4 of a run that
+    ended at second 29.
+  - INT8 measured, not shipped as default: on Dubai harbour (0.3 m) a
+    calibrated INT8 YOLO11n-OBB with the head kept in float ran 1.9x faster
+    (191 -> 100 ms/tile on 2 cores) and found 96% of what the full model
+    found. Fully quantising the head returned 0 detections.
+  - `npm run lint` (part of `npm run build`) fails on undefined names: a
+    missing `useEffect` import had blanked the page with a green build. Error
+    boundaries keep a failing part from blanking the whole interface.
 - **Open from this computer (This PC tab).** The engine runs on the same
   machine, so a multi-GB scene is not uploaded: the file is hard-linked into
   the library (instant, no extra disk space) or, across disks, copied by the

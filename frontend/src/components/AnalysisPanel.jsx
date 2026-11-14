@@ -1,3 +1,4 @@
+import { formatDuration } from "../api/client.js";
 import React from "react";
 import { IconClose } from "./Icons.jsx";
 
@@ -28,7 +29,9 @@ function JobRow({ entry, color, shown }) {
   let meta;
   if (job.status === "completed" && job.result) meta = `${job.result.duration_seconds} s`;
   else if (job.status === "queued") meta = "Queued";
-  else if (running) meta = job.tiles_total ? `${job.tiles_processed ?? 0}/${job.tiles_total}` : "Running";
+  else if (running) meta = job.tiles_total
+    ? `${job.tiles_processed ?? 0}/${job.tiles_total}${job.eta_seconds ? ` · ${formatDuration(job.eta_seconds)} left` : ""}`
+    : "Running";
   else if (job.status === "interrupted") meta = "Interrupted";
   else meta = "Failed";
 

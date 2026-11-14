@@ -53,7 +53,8 @@ def _load_yolo(weights: str, device: str):
             if str(weights).lower().endswith(".onnx"):
                 from app.models.onnx_obb import OnnxObbModel
 
-                providers = ["CUDAExecutionProvider", "CPUExecutionProvider"] if device.startswith("cuda") else None
+                from app.core.onnx_runtime import session_providers, trt_cache_dir
+                providers = session_providers(device, trt_cache_dir())   # TensorRT > CUDA > DirectML > CPU
                 model = OnnxObbModel(weights, providers=providers)
             else:
                 from ultralytics import YOLO  # lazy: needs torch + ultralytics

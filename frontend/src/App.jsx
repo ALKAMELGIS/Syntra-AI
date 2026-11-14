@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import TopBar from "./components/TopBar.jsx";
+import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import Sidebar from "./components/Sidebar.jsx";
 import MapView from "./components/MapView.jsx";
 import AnalysisPanel from "./components/AnalysisPanel.jsx";
@@ -334,6 +335,7 @@ export default function App({ user = null, onSignOut = null }) {
       />
       <>
         <div className={`layout pane-${mobilePane}`}>
+          <ErrorBoundary label="The sidebar">
           <Sidebar
             models={models}
             selectedModels={selectedModels}
@@ -345,8 +347,10 @@ export default function App({ user = null, onSignOut = null }) {
             onRun={handleRun}
             running={running}
             hasAoi={!!aoi}
+            aoi={aoi}
             onClearAoi={() => setAoi(null)}
           />
+          </ErrorBoundary>
           <MapView
             layers={mapLayers}
             detectionsVisible={detectionsVisible}
