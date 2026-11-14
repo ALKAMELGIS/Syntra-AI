@@ -3,7 +3,7 @@
 
     powershell -ExecutionPolicy Bypass -File scripts\start-windows.ps1
 
-  Options: -ApiPort 8765 -WebPort 5180 -CondaEnv syntra
+  Options: -ApiPort 8765 -WebPort 5291 -CondaEnv syntra
   First run creates the conda environment "syntra" if it does not exist
   (rasterio comes from conda-forge, which is the reliable route on Windows).
 #>
