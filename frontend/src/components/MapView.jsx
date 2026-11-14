@@ -6,7 +6,7 @@ import MapDrawTools from "./MapDrawTools.jsx";
 import AnnotationLayer from "./AnnotationTool.jsx";
 import ImageLibrary from "./ImageLibrary.jsx";
 import SettingsPanel from "./SettingsPanel.jsx";
-import { IconExpand, IconBasemap, IconLegend, IconGallery, IconGear, IconAnalysis, IconTrain, IconEye, IconEyeOff } from "./Icons.jsx";
+import { IconExpand, IconBasemap, IconLegend, IconGallery, IconGear, IconAnalysis, IconTrain, IconPerformance, IconEye, IconEyeOff } from "./Icons.jsx";
 
 const BASEMAPS = {
   satellite: {
@@ -49,7 +49,7 @@ const MAX_ZOOM = 24;
 function MapToolbar({
   layers, sourceImage, basemap, onBasemapChange, legendOpen, onLegendToggle,
   onOpenLibrary, onOpenSettings, analysisOpen, onToggleAnalysis, analysisCount,
-  detectionsVisible, onToggleDetections, trainOpen, onToggleTrain, editMenu,
+  detectionsVisible, onToggleDetections, trainOpen, onToggleTrain, perfOpen, onTogglePerf, editMenu,
 }) {
   const map = useMap();
   const toolbarRef = useRef(null);
@@ -127,6 +127,10 @@ function MapToolbar({
         <IconAnalysis />
         {analysisCount > 0 && <span className="map-tool-badge">{analysisCount}</span>}
       </button>
+      <button className={`map-tool-btn ${perfOpen ? "active" : ""}`} data-tool="performance" title="Model performance"
+              aria-expanded={perfOpen} onClick={onTogglePerf}>
+        <IconPerformance />
+      </button>
     </div>
   );
 }
@@ -173,7 +177,7 @@ function L_boundsFromGeojson(geojson) {
 export default function MapView({
   layers, detectionsVisible = true, onToggleDetections,
   aoi, onAoiChange, measurement, onMeasurementChange,
-  trainOpen, onToggleTrain, onAnnotate, labels, trainPanel,
+  trainOpen, onToggleTrain, onAnnotate, labels, trainPanel, perfOpen, onTogglePerf, perfPanel,
   onSelectLibraryImage, currentImageId, sourceImage,
   analysisOpen, onToggleAnalysis, analysisCount, analysisPanel,
 }) {
@@ -182,8 +186,8 @@ export default function MapView({
 
   // Legend and Analysis both open beside the toolbar: show one at a time.
   useEffect(() => {
-    if (analysisOpen || trainOpen) setLegendOpen(false);
-  }, [analysisOpen, trainOpen]);
+    if (analysisOpen || trainOpen || perfOpen) setLegendOpen(false);
+  }, [analysisOpen, trainOpen, perfOpen]);
 
   useEffect(() => {
     if (!legendOpen) return;
@@ -196,6 +200,7 @@ export default function MapView({
     setLegendOpen((open) => {
       if (!open && analysisOpen) onToggleAnalysis?.();
       if (!open && trainOpen) onToggleTrain?.();
+      if (!open && perfOpen) onTogglePerf?.();
       return !open;
     });
   }
@@ -266,6 +271,8 @@ export default function MapView({
           onToggleDetections={onToggleDetections}
           trainOpen={trainOpen}
           onToggleTrain={onToggleTrain}
+          perfOpen={perfOpen}
+          onTogglePerf={onTogglePerf}
           editMenu={
             <MapDrawTools
               aoi={aoi}
@@ -282,6 +289,7 @@ export default function MapView({
       </MapContainer>
       {analysisOpen && analysisPanel}
       {trainPanel}
+      {perfPanel}
       <ImageLibrary
         open={libraryOpen}
         onClose={() => setLibraryOpen(false)}

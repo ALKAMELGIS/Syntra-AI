@@ -120,10 +120,40 @@ async def upload_image(file: UploadFile, metadata: UploadFile | None = None):
     return entry.to_dict()
 
 
+def _fresh(entry: dict) -> dict:
+    """A raster check saved by an older version of the rules is redone once and saved,
+    so the library never shows a warning that no longer applies."""
+    health = entry.get("health")
+    if not health:
+        return entry
+    try:
+        from app.engine.raster_health import HEALTH_VERSION, check_raster
+    except ImportError:
+        return entry
+    if health.get("version") == HEALTH_VERSION:
+        return entry
+    try:
+        new = check_raster(entry["path"]).to_dict()
+    except Exception:
+        return entry
+    kept = [f for f in health.get("findings", []) if str(f.get("code", "")).startswith("georef")]
+    new["findings"] = kept + new["findings"]
+    if any(f["level"] == "warning" for f in kept) and new["status"] == "ok":
+        new["status"] = "warning"
+    entry = {**entry, "health": new}
+    try:
+        import json
+        from app.core.image_library import sidecar_path
+        sidecar_path(Path(entry["path"])).write_text(json.dumps(entry, indent=2))
+    except OSError:
+        pass
+    return entry
+
+
 @router.get("")
 def list_images():
     settings.ensure_dirs()
-    return list_library(settings.UPLOAD_DIR)
+    return [_fresh(e) for e in list_library(settings.UPLOAD_DIR)]
 
 
 @router.get("/{image_id}")
@@ -132,7 +162,7 @@ def get_image(image_id: str):
     entry = find_entry_by_image_id(settings.UPLOAD_DIR, image_id)
     if entry is None:
         raise HTTPException(status_code=404, detail=f"No library image with id '{image_id}'.")
-    return entry
+    return _fresh(entry)
 
 
 @router.get("/{image_id}/health")

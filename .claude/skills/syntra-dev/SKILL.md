@@ -37,7 +37,18 @@ real, what is written but unrun, and how it was verified.
 - When you add or change a capability, update its README row: what changed,
   and how you verified it (test name, live check, or "not run, needs X").
 - Never claim something ran if it did not. "Written, not built" is a fine
-  status.
+  status. Check a long run's log before quoting it: a training run that
+  stopped early is reported with the epochs it actually completed.
+- Every model that can be run shows its evidence in the Model performance
+  panel. A model trained here has its `results.csv` beside the weights; a
+  pack ships `app/models/pack_metrics/<pack_id>.json` (epochs, per-class
+  mAP50, training images, GSD, note). Classes scoring mAP50 below 0.2 are
+  listed in `hidden_classes` and left out of the catalog entry, not returned.
+- A raster-check rule change bumps `HEALTH_VERSION` in `raster_health.py`
+  so saved checks in the library are redone.
+- PROJ/GDAL data comes from this environment (`app/core/proj_env.py`, run
+  from `app/__init__.py`): never rely on a system-wide `PROJ_LIB`, which
+  PostGIS and QGIS installers set on Windows.
 
 ## 2. Security rules for the API
 
@@ -108,10 +119,18 @@ direction in a comment. Work inside them:
 - **Icons** come from `components/Icons.jsx` (inline SVG, one stroke). No
   emoji in the UI.
 - **Map panels.** Map tools live in the one toolbar on the right. A tool
-  with content (Edit, Legend, Analysis) opens a floating panel just left of
-  the toolbar, aligned with its icon, never a fixed corner box or a layout
-  column; one panel at a time; Esc closes it. Rows are 32 px: swatch, name,
-  one mono value. Explanations go in tooltips, not on the panel.
+  with content (Edit, Legend, Analysis, Train, Model performance) opens a
+  floating panel just left of the toolbar, never a separate page, a fixed
+  corner box or a layout column; one panel at a time (App.jsx closes the
+  others); Esc closes it. Rows are 32 px: swatch, name, one mono value. On
+  phones panels span the map left of the toolbar.
+- **Short text.** One line per fact or error, with a small (i) from
+  `InfoNote.jsx` that opens the explanation and the fix in place beneath it,
+  never a popup and never a paragraph on the panel.
+- **Charts** in panels are hand-drawn SVG: the measure that matters in the
+  accent, everything else in grey steps, values at the line ends in mono,
+  no legend box. Detection models are measured with loss (train vs val),
+  precision, recall and mAP50, never "accuracy".
 - **Motion.** Name transitions (`background-color`, `color`, `transform`)
   with `var(--ease)`; no looping animation except a live spinner.
 

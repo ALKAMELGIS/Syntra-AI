@@ -146,6 +146,26 @@ def uninstall_pack(pack_id: str):
     return {"pack_id": pack_id, "installed": False}
 
 
+@router.get("/performance")
+def list_performance():
+    """Models that have a training history to show in the Model performance panel."""
+    from app.engine.performance import models_with_performance
+    return models_with_performance()
+
+
+@router.get("/{model_id}/performance")
+def get_performance(model_id: str):
+    from app.engine.performance import model_performance
+    try:
+        get_metadata(model_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    perf = model_performance(model_id)
+    if perf is None:
+        raise HTTPException(status_code=404, detail="No training history for this model.")
+    return perf
+
+
 @router.get("")
 def list_models():
     return [_serialize(m) for m in list_catalog()]

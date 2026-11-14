@@ -39,6 +39,8 @@ export const api = {
     return request(`${BASE}/models/packs/${packId}/file`, { method: "POST", body: form }).then(handle);
   },
   listModels: () => request(`${BASE}/models`).then(handle),
+  listPerformance: () => request(`${BASE}/models/performance`).then(handle),
+  modelPerformance: (modelId) => request(`${BASE}/models/${modelId}/performance`).then(handle),
   getModel: (modelId) => request(`${BASE}/models/${modelId}`).then(handle),
   gsdCheck: (modelId, gsd) => request(`${BASE}/models/${modelId}/gsd-check?gsd=${gsd}`).then(handle),
   deleteModel: (modelId) => request(`${BASE}/models/${modelId}`, { method: "DELETE" }).then(handle),

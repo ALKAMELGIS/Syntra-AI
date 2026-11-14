@@ -29,6 +29,8 @@ from pathlib import Path
 
 import numpy as np
 
+# Bump when the findings change, so saved checks in the image library are redone.
+HEALTH_VERSION = 2
 MODEL_GSD_RANGE_M = (0.01, 2.00)   # widest range any catalog detector supports (drone 1-15 cm, satellite up to 2 m)
 
 
@@ -79,6 +81,7 @@ class RasterHealth:
         d = asdict(self)
         d["nodata"] = json_safe(d["nodata"])
         d["status"] = self.status
+        d["version"] = HEALTH_VERSION
         return d
 
 

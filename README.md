@@ -148,10 +148,21 @@ Settings):
 Verified end to end in the browser (Playwright): 3 labels → 20 tiles → 2 epochs → registered → run →
 the result appears under Analysis. Training needs `ultralytics` + `torch` on the machine.
 
+## Model performance
+
+The chart icon in the map toolbar opens the Model performance panel: mAP50 on held-out images (the
+best epoch), loss per epoch (training against validation, with a one-line reading of the gap),
+validation precision / recall / mAP50 per epoch, and mAP50 per class (classes under 0.2 are dimmed
+and not returned). Data: `results.csv` beside a model trained here, or
+`app/models/pack_metrics/<pack_id>.json` for packs (`GET /api/models/performance`,
+`GET /api/models/{id}/performance`). Tested in `test_performance_offline.py`; screenshots at
+1440 px and 390 px.
+
 ## Drone objects (trained here, non-commercial)
 
 `syntra-drone-objects` is YOLO11n-seg fine-tuned on the TU Graz Semantic Drone Dataset (340 photos,
-60 held out, about 4 cm per pixel as the model sees them). Mask mAP50 on the held-out photos:
+60 held out, about 4 cm per pixel as the model sees them). The run was planned for 30 epochs and
+stopped after 14; the weights are the best of those (epoch 12). Mask mAP50 on the held-out photos:
 
 | Class | mAP50 |
 |---|---|

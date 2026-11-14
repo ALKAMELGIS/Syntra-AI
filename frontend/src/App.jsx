@@ -4,6 +4,7 @@ import Sidebar from "./components/Sidebar.jsx";
 import MapView from "./components/MapView.jsx";
 import AnalysisPanel from "./components/AnalysisPanel.jsx";
 import TrainPanel from "./components/TrainPanel.jsx";
+import PerformancePanel from "./components/PerformancePanel.jsx";
 import { IconMap, IconSliders } from "./components/Icons.jsx";
 import { api } from "./api/client.js";
 
@@ -31,6 +32,15 @@ export default function App() {
   const [analysisOpen, setAnalysisOpenRaw] = useState(false);
   // Train panel: one flyout beside the map toolbar at a time (Analysis or Train)
   const [trainOpen, setTrainOpenRaw] = useState(false);
+  const [perfOpen, setPerfOpenRaw] = useState(false);
+  const [perfModel, setPerfModel] = useState(null);
+  function setPerfOpen(v) {
+    setPerfOpenRaw((prev) => {
+      const next = typeof v === "function" ? v(prev) : v;
+      if (next) { setAnalysisOpenRaw(false); setTrainOpenRaw(false); setDrawMode(null); setMobilePane("map"); }
+      return next;
+    });
+  }
   const [trainStep, setTrainStep] = useState(0);
   const [annotations, setAnnotations] = useState([]);
   const [extraClasses, setExtraClasses] = useState([]);
@@ -40,14 +50,14 @@ export default function App() {
   function setAnalysisOpen(v) {
     setAnalysisOpenRaw((prev) => {
       const next = typeof v === "function" ? v(prev) : v;
-      if (next) setTrainOpenRaw(false);
+      if (next) { setTrainOpenRaw(false); setPerfOpenRaw(false); }
       return next;
     });
   }
   function setTrainOpen(v) {
     setTrainOpenRaw((prev) => {
       const next = typeof v === "function" ? v(prev) : v;
-      if (next) { setAnalysisOpenRaw(false); setMobilePane("map"); }
+      if (next) { setAnalysisOpenRaw(false); setPerfOpenRaw(false); setMobilePane("map"); }
       if (!next) setDrawMode(null);
       return next;
     });
@@ -301,6 +311,9 @@ export default function App() {
               className: activeClass, annotations,
               onDrawn: saveLabel, onShapeClick: deleteLabel,
             }}
+            perfOpen={perfOpen}
+            onTogglePerf={() => setPerfOpen((v) => !v)}
+            perfPanel={<PerformancePanel open={perfOpen} onClose={() => setPerfOpen(false)} preferModelId={perfModel} />}
             trainPanel={
               <TrainPanel
                 open={trainOpen} onClose={() => setTrainOpen(false)}
