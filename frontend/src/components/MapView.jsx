@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import L from "leaflet";
 import { api } from "../api/client";
-import { MapContainer, TileLayer, GeoJSON, ImageOverlay, useMap } from "react-leaflet";
+import { MapContainer, TileLayer, GeoJSON, ImageOverlay, useMap, useMapEvents } from "react-leaflet";
 import MapDrawTools from "./MapDrawTools.jsx";
 import AnnotationLayer from "./AnnotationTool.jsx";
 import ImageLibrary from "./ImageLibrary.jsx";
@@ -135,6 +135,43 @@ function MapToolbar({
   );
 }
 
+// The GeoTIFF on the map. Zoomed out: one preview picture (at most 2048 px,
+// in Web Mercator, exact corners). Zoomed in past the preview's own detail:
+// full-resolution tiles cut from the file (/tiles/{z}/{x}/{y}.png), so a
+// 20 000 px orthomosaic is as sharp on screen as it is on disk.
+const PREVIEW_MAX_PX = 2048;
+const EARTH = 2 * Math.PI * 6378137;
+
+function SourceImage({ image, bounds }) {
+  const map = useMap();
+  const [zoom, setZoom] = useState(map.getZoom());
+  useMapEvents({ zoomend: () => setZoom(map.getZoom()) });
+  const lat = (bounds.north + bounds.south) / 2;
+  const cosLat = Math.cos((lat * Math.PI) / 180);
+  const gsd = image.health?.gsd_m || image.gsd_x_m;
+  const sidePx = Math.max(image.width || 0, image.height || 0);
+  // ground metres per preview pixel; tiles take over when the map shows finer than that
+  const previewRes = gsd && sidePx ? (gsd * sidePx) / Math.min(PREVIEW_MAX_PX, sidePx) : null;
+  const tileZoom = previewRes && sidePx > PREVIEW_MAX_PX
+    ? Math.ceil(Math.log2((EARTH * cosLat) / 256 / previewRes)) : null;
+  const nativeZoom = gsd ? Math.ceil(Math.log2((EARTH * cosLat) / 256 / gsd)) : null;
+  const useTiles = tileZoom != null && zoom >= tileZoom;
+  const ll = [[bounds.south, bounds.west], [bounds.north, bounds.east]];
+  return useTiles ? (
+    <TileLayer
+      key={`tiles-${image.image_id}`}
+      url={api.imageTileUrl(image.image_id)}
+      bounds={ll}
+      zIndex={10}
+      maxZoom={MAX_ZOOM}
+      maxNativeZoom={Math.min(MAX_ZOOM, nativeZoom ?? MAX_ZOOM)}
+      keepBuffer={1}
+    />
+  ) : (
+    <ImageOverlay key={image.image_id} url={api.imagePreviewUrl(image.image_id)} bounds={ll} />
+  );
+}
+
 // Frames the newly loaded source image automatically, the same way the
 // reference app snaps to a freshly imported scene — real geographic bounds
 // from the backend (app.engine.raster_io.compute_wgs84_bounds), not a guess.
@@ -206,8 +243,19 @@ export default function MapView({
   }
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // one panel beside the toolbar at a time
+  useEffect(() => {
+    if (analysisOpen || trainOpen || perfOpen || legendOpen) setSettingsOpen(false);
+  }, [analysisOpen, trainOpen, perfOpen, legendOpen]);
   const [iconStyle, setIconStyle] = useState(() => localStorage.getItem("syntra_icon_style") || "mono");
   const bm = BASEMAPS[basemap];
+  // Basemap health: tiles that never load (offline, firewall) leave the map
+  // black with no explanation; say so in one line.
+  const [tiles, setTiles] = useState({ ok: false, failed: 0 });
+  useEffect(() => setTiles({ ok: false, failed: 0 }), [basemap]);
+  // The preview is drawn in Web Mercator; only its own corners place it exactly.
+  // (Without them the overlay is not drawn: the old lat/lon box misplaced it.)
+  const overlayBounds = sourceImage?.preview_bounds_wgs84 || null;
 
   function changeIconStyle(style) {
     setIconStyle(style);
@@ -218,21 +266,17 @@ export default function MapView({
     <div className={`map-area icon-style-${iconStyle} ${libraryOpen ? "library-open" : ""}`}>
       <MapContainer center={[24.7, 46.7]} zoom={5} maxZoom={MAX_ZOOM} scrollWheelZoom>
         <TileLayer
+          key={basemap}
           attribution={bm.attribution}
           url={bm.url}
           maxZoom={MAX_ZOOM}
           maxNativeZoom={bm.maxNativeZoom}
+          eventHandlers={{
+            tileload: () => setTiles((t) => (t.ok ? t : { ...t, ok: true })),
+            tileerror: () => setTiles((t) => ({ ...t, failed: t.failed + 1 })),
+          }}
         />
-        {sourceImage?.bounds_wgs84 && sourceImage?.image_id && (
-          <ImageOverlay
-            key={sourceImage.image_id}
-            url={api.imagePreviewUrl(sourceImage.image_id)}
-            bounds={[
-              [sourceImage.bounds_wgs84.south, sourceImage.bounds_wgs84.west],
-              [sourceImage.bounds_wgs84.north, sourceImage.bounds_wgs84.east],
-            ]}
-          />
-        )}
+        {overlayBounds && sourceImage?.image_id && <SourceImage image={sourceImage} bounds={overlayBounds} />}
         <AutoFitSourceImage sourceImage={sourceImage} />
         {detectionsVisible &&
           layers.map((l) =>
@@ -263,7 +307,15 @@ export default function MapView({
           legendOpen={legendOpen}
           onLegendToggle={toggleLegend}
           onOpenLibrary={() => setLibraryOpen(true)}
-          onOpenSettings={() => setSettingsOpen(true)}
+          onOpenSettings={() => setSettingsOpen((o) => {
+            if (!o) {
+              setLegendOpen(false);
+              if (analysisOpen) onToggleAnalysis?.();
+              if (trainOpen) onToggleTrain?.();
+              if (perfOpen) onTogglePerf?.();
+            }
+            return !o;
+          })}
           analysisOpen={analysisOpen}
           onToggleAnalysis={onToggleAnalysis}
           analysisCount={analysisCount}
@@ -282,11 +334,23 @@ export default function MapView({
               annotateOpen={false}
               onToggleAnnotate={onAnnotate}
               canAnnotate={Boolean(sourceImage?.image_id)}
+              otherPanelOpen={analysisOpen || trainOpen || perfOpen || legendOpen || settingsOpen}
+              onMenuOpen={() => {
+                setLegendOpen(false); setSettingsOpen(false);
+                if (analysisOpen) onToggleAnalysis?.();
+                if (trainOpen) onToggleTrain?.();
+                if (perfOpen) onTogglePerf?.();
+              }}
             />
           }
         />
         <AnnotationLayer {...labels} />
       </MapContainer>
+      {!tiles.ok && tiles.failed >= 4 && (
+        <p className="basemap-note" role="status">
+          {bm.label} base map can't load: this computer can't reach its tile server
+        </p>
+      )}
       {analysisOpen && analysisPanel}
       {trainPanel}
       {perfPanel}

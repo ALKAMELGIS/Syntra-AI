@@ -38,7 +38,8 @@ class LibraryEntry:
     gsd_x_m: float | None = None
     gsd_y_m: float | None = None
     area_km2: float | None = None
-    bounds_wgs84: dict[str, float] | None = None  # {south, west, north, east} — for map ImageOverlay placement
+    bounds_wgs84: dict[str, float] | None = None  # {south, west, north, east} of the footprint (zoom to, filters)
+    preview_bounds_wgs84: dict[str, float] | None = None  # exact corners of the Web Mercator preview: ImageOverlay
     raster_meta_note: str | None = None  # set when raster metadata couldn't be read
     health: dict[str, Any] | None = None  # app.engine.raster_health.check_raster(...).to_dict()
 
@@ -64,6 +65,7 @@ def build_entry(
     raster_meta_note: str | None = None,
     bounds_wgs84: dict[str, float] | None = None,
     health: dict[str, Any] | None = None,
+    preview_bounds_wgs84: dict[str, float] | None = None,
 ) -> LibraryEntry:
     raster_meta = raster_meta or {}
     width = raster_meta.get("width")
@@ -85,6 +87,7 @@ def build_entry(
         gsd_y_m=gsd_y_m,
         area_km2=compute_area_km2(width, height, gsd_x_m, gsd_y_m),
         bounds_wgs84=bounds_wgs84,
+        preview_bounds_wgs84=preview_bounds_wgs84,
         raster_meta_note=raster_meta_note,
         health=health,
     )

@@ -22,7 +22,8 @@ function JobRow({ entry, color, shown }) {
   const { job, modelMeta, imageName } = entry;
   const running = !TERMINAL.has(job.status);
   const pct = running ? progressPct(job) : null;
-  const unvalidated = job.status === "completed" && modelMeta && modelMeta.status !== "ready";
+  const f1 = modelMeta?.accuracy_f1;
+  const unvalidated = job.status === "completed" && modelMeta && modelMeta.status !== "ready" && f1 == null;
 
   let meta;
   if (job.status === "completed" && job.result) meta = `${job.result.duration_seconds} s`;
@@ -51,7 +52,8 @@ function JobRow({ entry, color, shown }) {
           <span className="analysis-meta mono" title="Estimated tree crowns">{job.result.summary.tree_candidates} trees</span>
         )}
         <span className="analysis-meta mono">{meta}</span>
-        {unvalidated && <span className="status-pill status-validation">Unvalidated</span>}
+        {f1 != null && job.status === "completed" && <span className="analysis-meta mono" title="F1 on your accuracy areas">F1 {f1.toFixed(2)}</span>}
+        {unvalidated && <span className="model-unchecked" title="Not yet checked on your imagery" aria-label="Not yet checked on your imagery" />}
       </div>
       {running && (
         <div className="progress-bar analysis-progress">

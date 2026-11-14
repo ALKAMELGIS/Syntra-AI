@@ -69,6 +69,7 @@ async def upload_image(file: UploadFile, metadata: UploadFile | None = None):
 
     raster_meta = None
     raster_meta_note = None
+    preview_bounds = None
     bounds_wgs84 = None
     health = None
     georef = None
@@ -88,6 +89,8 @@ async def upload_image(file: UploadFile, metadata: UploadFile | None = None):
             "dtype": info.dtype, "crs": info.crs, "gsd_x_m": info.gsd_x, "gsd_y_m": info.gsd_y,
         }
         bounds_wgs84 = await run_in_threadpool(compute_wgs84_bounds, dest)
+        from app.engine.raster_io import preview_bounds_wgs84
+        preview_bounds = await run_in_threadpool(preview_bounds_wgs84, dest)
         from app.engine.raster_health import check_raster
         health = (await run_in_threadpool(check_raster, dest)).to_dict()
         from app.engine.georef import georef_finding
@@ -114,6 +117,7 @@ async def upload_image(file: UploadFile, metadata: UploadFile | None = None):
         raster_meta_note=raster_meta_note,
         bounds_wgs84=bounds_wgs84,
         health=health,
+        preview_bounds_wgs84=preview_bounds,
     )
     write_entry(dest, entry)
 
@@ -121,8 +125,16 @@ async def upload_image(file: UploadFile, metadata: UploadFile | None = None):
 
 
 def _fresh(entry: dict) -> dict:
-    """A raster check saved by an older version of the rules is redone once and saved,
-    so the library never shows a warning that no longer applies."""
+    """Bring a saved library entry up to date once, and save it: the Web Mercator
+    preview bounds (missing on images uploaded before the preview was reprojected),
+    and a raster check saved by an older version of the rules."""
+    if entry.get("bounds_wgs84") and not entry.get("preview_bounds_wgs84"):
+        try:
+            from app.engine.raster_io import preview_bounds_wgs84
+            entry = {**entry, "preview_bounds_wgs84": preview_bounds_wgs84(entry["path"])}
+            _save(entry)
+        except Exception:
+            pass
     health = entry.get("health")
     if not health:
         return entry
@@ -141,13 +153,17 @@ def _fresh(entry: dict) -> dict:
     if any(f["level"] == "warning" for f in kept) and new["status"] == "ok":
         new["status"] = "warning"
     entry = {**entry, "health": new}
+    _save(entry)
+    return entry
+
+
+def _save(entry: dict) -> None:
     try:
         import json
         from app.core.image_library import sidecar_path
         sidecar_path(Path(entry["path"])).write_text(json.dumps(entry, indent=2))
     except OSError:
         pass
-    return entry
 
 
 @router.get("")
@@ -179,6 +195,37 @@ def get_image_health(image_id: str):
         raise HTTPException(status_code=503, detail="rasterio not installed — health check unavailable in this environment.")
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"Could not read raster: {exc}")
+
+
+_EMPTY_TILE = None
+
+
+def _empty_png() -> bytes:
+    global _EMPTY_TILE
+    if _EMPTY_TILE is None:
+        import io
+        from PIL import Image
+        b = io.BytesIO()
+        Image.new("RGBA", (1, 1), (0, 0, 0, 0)).save(b, format="PNG")
+        _EMPTY_TILE = b.getvalue()
+    return _EMPTY_TILE
+
+
+@router.get("/{image_id}/tiles/{z}/{x}/{y}.png")
+def get_image_tile(image_id: str, z: int, x: int, y: int):
+    """Full-resolution XYZ tile (Web Mercator, 256 px) cut from the GeoTIFF."""
+    if not (0 <= z <= 26 and 0 <= x < 2 ** z and 0 <= y < 2 ** z):
+        raise HTTPException(status_code=400, detail="Tile out of range.")
+    entry = find_entry_by_image_id(settings.UPLOAD_DIR, image_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail=f"No library image with id '{image_id}'.")
+    try:
+        from app.engine.tiles import render_tile
+        png = render_tile(entry["path"], z, x, y)
+    except ImportError:
+        raise HTTPException(status_code=503, detail="rasterio not installed.")
+    headers = {"Cache-Control": "private, max-age=3600"}
+    return Response(content=png or _empty_png(), media_type="image/png", headers=headers)
 
 
 @router.get("/{image_id}/preview.png")

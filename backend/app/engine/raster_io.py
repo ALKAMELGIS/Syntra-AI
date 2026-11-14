@@ -63,13 +63,45 @@ def compute_wgs84_bounds(path: str | Path) -> dict[str, float] | None:
         return {"south": south, "west": west, "north": north, "east": east}
 
 
-def read_preview_png(path: str | Path, max_dim: int = 1024) -> bytes:
+def _preview_vrt(ds):
+    """The raster warped to Web Mercator, the projection of the web map.
+
+    A Leaflet ImageOverlay stretches its picture linearly between two corners
+    in Web Mercator. Only a picture that is itself in Web Mercator lands right:
+    a UTM picture stretched over its lat/lon bounding box was off by ~8 m
+    (north-up), 165 m (rotated 15 deg) and 460 m (south-up, drawn upside down).
     """
-    A small, real true-color (or single-band grayscale) PNG rendering of the
-    raster for map display — decimated at read time via rasterio's out_shape
-    so this never materializes the full-resolution array (orthomosaics here
-    run into the tens of thousands of pixels per side).
+    from rasterio.enums import Resampling
+    from rasterio.vrt import WarpedVRT
+
+    return WarpedVRT(ds, crs="EPSG:3857", resampling=Resampling.bilinear, add_alpha=ds.nodata is None)
+
+
+def preview_bounds_wgs84(path: str | Path) -> dict[str, float] | None:
+    """Exact lat/lon corners of the Web Mercator preview (what ImageOverlay needs)."""
+    import rasterio
+    from pyproj import Transformer
+
+    with rasterio.open(path) as ds:
+        if ds.crs is None:
+            return None
+        with _preview_vrt(ds) as vrt:
+            b = vrt.bounds
+    t = Transformer.from_crs("EPSG:3857", "EPSG:4326", always_xy=True)
+    west, south = t.transform(b.left, b.bottom)
+    east, north = t.transform(b.right, b.top)
+    return {"south": south, "west": west, "north": north, "east": east}
+
+
+def read_preview_png(path: str | Path, max_dim: int = 2048) -> bytes:
     """
+    A true-colour PNG of the raster for the map, in Web Mercator so it sits on
+    its real footprint (see _preview_vrt). Decimated at read time via out_shape,
+    so a multi-GB orthomosaic never loads at full resolution. Pixels outside the
+    footprint are transparent. Same bands, stretch and masking the detector sees.
+    """
+    import io
+
     import rasterio  # lazy import
     from PIL import Image
 
@@ -77,16 +109,23 @@ def read_preview_png(path: str | Path, max_dim: int = 1024) -> bytes:
 
     plan = plan_rgb(path)
     with rasterio.open(path) as ds:
-        scale = min(1.0, max_dim / max(ds.width, ds.height))
-        out_w = max(1, round(ds.width * scale))
-        out_h = max(1, round(ds.height * scale))
-        # Same bands, stretch and masking the detector sees, so what the
-        # analyst looks at on the map is what the model was given.
-        data, valid = read_rgb(ds, plan, out_shape=(out_h, out_w))
+        if ds.crs is None:
+            src = ds
+            ctx = None
+        else:
+            ctx = _preview_vrt(ds)
+            src = ctx
+        try:
+            scale = min(1.0, max_dim / max(src.width, src.height))
+            out_w = max(1, round(src.width * scale))
+            out_h = max(1, round(src.height * scale))
+            data, valid = read_rgb(src, plan, out_shape=(out_h, out_w))
+        finally:
+            if ctx is not None:
+                ctx.close()
 
-    import io
     buf = io.BytesIO()
-    alpha = np.where(valid, 255, 0).astype(np.uint8)          # empty footprint -> transparent
+    alpha = np.where(valid, 255, 0).astype(np.uint8)          # outside the footprint -> transparent
     Image.fromarray(np.dstack([data, alpha]), mode="RGBA").save(buf, format="PNG")
     return buf.getvalue()
 

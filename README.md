@@ -148,6 +148,23 @@ Settings):
 Verified end to end in the browser (Playwright): 3 labels → 20 tiles → 2 epochs → registered → run →
 the result appears under Analysis. Training needs `ultralytics` + `torch` on the machine.
 
+## Imagery lands where it is
+
+The map preview used to be the raster's own pixel grid stretched over its lat/lon bounding box. On a
+web map that is wrong whenever the raster is not in Web Mercator: measured 7.5 m off on the 30 cm
+UTM harbour scene (25 image pixels, enough to put boxes beside the boats), 165 m on a raster
+rotated 15° and 460 m on a south-up raster (drawn upside down). The preview is now warped to Web
+Mercator and placed by its exact corners (`preview_bounds_wgs84`). Zoomed in past the preview's
+detail, full-resolution tiles are cut from the GeoTIFF (`/api/images/{id}/tiles/{z}/{x}/{y}.png`),
+so a 20 000 px orthomosaic is as sharp on screen as on disk. Tests: a marker in north-up, rotated
+and south-up rasters lands within 0.6 m in the preview and within 0.5 m in a zoom-20 tile.
+
+The layout no longer scrolls the page (at 1280×720 it was 964 px tall and scrolled 244 px, hiding
+the top bar), Settings is a map panel instead of a cut-off modal, the Edit menu closes when another
+panel opens, and panels stay clear of the image library. Checked with an overlap audit of every
+panel state at four screen sizes: no overlaps. When the satellite basemap can't load, a one-line
+notice says so instead of a black map.
+
 ## Accuracy on your own images
 
 Two area tools in the Train panel's Label step:

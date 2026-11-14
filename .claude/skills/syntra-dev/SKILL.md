@@ -124,6 +124,17 @@ direction in a comment. Work inside them:
   corner box or a layout column; one panel at a time (App.jsx closes the
   others); Esc closes it. Rows are 32 px: swatch, name, one mono value. On
   phones panels span the map left of the toolbar.
+- **Imagery on the map** is drawn in Web Mercator: the preview PNG is warped
+  (`_preview_vrt`) and placed with `preview_bounds_wgs84`; zoomed in, full-
+  resolution tiles from `/api/images/{id}/tiles/{z}/{x}/{y}.png` take over.
+  Never stretch a raster-grid picture over a lat/lon box (8 m off north-up,
+  460 m south-up). `test_preview_placement_offline.py` guards it.
+- **No overlap, no page scroll.** The app is one screen tall
+  (`minmax(0, 1fr)` rows); panels, the sidebar and lists scroll inside. Panels
+  stay clear of the library dock (`--dock-h`). After a layout change, run the
+  overlap audit: every pair of floating elements measured with
+  getBoundingClientRect, in every panel state, at 1440, 1280x720, tablet and
+  phone. Zero overlaps is the bar.
 - **Short text.** One line per fact or error, with a small (i) from
   `InfoNote.jsx` that opens the explanation and the fix in place beneath it,
   never a popup and never a paragraph on the panel.

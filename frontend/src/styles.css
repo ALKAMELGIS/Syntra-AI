@@ -54,10 +54,15 @@ button, input, select, textarea { font-family: inherit; }
   font-variant-numeric: tabular-nums;
 }
 
+/* The app is exactly one screen tall: nothing scrolls the page. The sidebar,
+   panels and lists scroll inside themselves (minmax(0, 1fr) lets grid rows and
+   columns shrink below their content instead of growing the page). */
+html, body, #root { height: 100%; overflow: hidden; }
 .app-shell {
   display: grid;
-  grid-template-rows: 52px 1fr;
+  grid-template-rows: 52px minmax(0, 1fr);
   height: 100vh;
+  overflow: hidden;
 }
 
 .topbar {
@@ -122,9 +127,14 @@ button, input, select, textarea { font-family: inherit; }
 
 .layout {
   display: grid;
-  grid-template-columns: 300px 1fr;
+  grid-template-columns: 300px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   height: 100%;
+  min-height: 0;
+  overflow: hidden;
 }
+.layout > .panel { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.map-area { min-height: 0; min-width: 0; }
 
 .panel {
   background: var(--panel);
@@ -1013,7 +1023,7 @@ button, input, select, textarea { font-family: inherit; }
 }
 
 @media (max-width: 699px) {
-  .app-shell { grid-template-rows: 48px 1fr auto; }
+  .app-shell { grid-template-rows: 48px minmax(0, 1fr) auto; }
   .topbar { padding: 0 12px; gap: 8px; }
   .topbar-left { gap: 8px; }
   .brand-name { font-size: 14px; }
@@ -1259,3 +1269,53 @@ button, input, select, textarea { font-family: inherit; }
 }
 .analysis-score input { width: 100%; accent-color: var(--accent); }
 .analysis-score .mono { text-align: right; color: var(--text); }
+
+/* --- Library dock: a fixed height, and nothing on the map runs under it --- */
+.map-area { --dock-h: 0px; }
+.map-area.library-open { --dock-h: 152px; }
+.image-library-dock { height: var(--dock-h); max-height: none; }
+.image-library-dock > :last-child { min-height: 0; overflow: auto; }
+.map-area .leaflet-bottom { bottom: var(--dock-h); transition: bottom 0.15s var(--ease); }
+.analysis-flyout, .train-flyout, .perf-flyout, .legend-popover {
+  max-height: calc(100% - 32px - var(--dock-h));
+}
+.map-toolbar { max-height: calc(100% - 32px - var(--dock-h)); overflow-y: auto; scrollbar-width: none; }
+.map-toolbar::-webkit-scrollbar { display: none; }
+@media (max-width: 699px) {
+  .map-area.library-open { --dock-h: 152px; }
+  .analysis-flyout, .train-flyout, .perf-flyout, .legend-popover { max-height: calc(100% - 24px - var(--dock-h)); }
+}
+
+/* --- quiet results: one accent per screen, status as a dot --- */
+.analysis-count { color: var(--text); }
+.analysis-row-meta .model-unchecked { margin-left: auto; }
+.train-row-split .link-button { display: inline-flex; align-items: center; gap: 4px; line-height: 1; text-decoration: none; }
+.train-row-split .link-button:hover { text-decoration: underline; }
+.train-row-split .link-button svg { font-size: 12px; }
+
+/* --- Settings: a map panel, not a modal --- */
+.settings-flyout {
+  position: absolute; top: 16px; right: 70px; z-index: 950;
+  width: 360px; max-height: calc(100% - 32px - var(--dock-h, 0px)); display: flex; flex-direction: column;
+  background: var(--panel); border: 1px solid var(--panel-border); border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.32);
+  animation: menu-in 0.14s var(--ease); transform-origin: top right;
+}
+.settings-flyout .analysis-head .panel-close-btn { margin-left: auto; }
+.settings-body { padding: 12px 16px 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+.settings-fold {
+  display: flex; align-items: center; gap: 8px; height: 32px; margin-top: 8px; padding: 0;
+  background: transparent; border: none; color: var(--text); font-size: 13px; cursor: pointer; text-align: left;
+}
+.settings-env { margin: 0 -16px; }
+.settings-env .panel { padding: 0 16px; background: transparent; border: none; }
+@media (max-width: 699px) {
+  .settings-flyout { top: 12px; left: 12px; right: 66px; width: auto; max-height: calc(100% - 24px - var(--dock-h, 0px)); }
+}
+
+.basemap-note {
+  position: absolute; left: 16px; bottom: calc(16px + var(--dock-h, 0px)); z-index: 800; margin: 0;
+  padding: 6px 12px; border-radius: var(--radius-control); background: var(--panel); border: 1px solid var(--panel-border);
+  font-size: 12px; color: var(--text-dim); white-space: nowrap; pointer-events: none;
+}
+@media (max-width: 699px) { .basemap-note { left: 12px; bottom: calc(28px + var(--dock-h, 0px)); white-space: normal; max-width: calc(100% - 24px); } }

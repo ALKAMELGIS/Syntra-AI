@@ -117,6 +117,7 @@ export const api = {
   resultDownloadUrl: (jobId, modelId, format) =>
     withKey(format === "geojson" ? `${BASE}/results/${jobId}/${modelId}` : `${BASE}/results/${jobId}/${modelId}/${format}`),
   imagePreviewUrl: (imageId) => withKey(`${BASE}/images/${imageId}/preview.png`),
+  imageTileUrl: (imageId) => withKey(`${BASE}/images/${imageId}/tiles/{z}/{x}/{y}.png`),
   // --- Model Setup wizard: Dataset export + Train steps ---
   exportDataset: (payload) =>
     request(`${BASE}/training/export-dataset`, {

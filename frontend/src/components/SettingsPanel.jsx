@@ -1,49 +1,33 @@
-import React from "react";
+import React, { useState } from "react";
 import EnvironmentPanel from "./EnvironmentPanel.jsx";
 import { IconClose } from "./Icons.jsx";
 
-// Applies immediately (no "Save" button, matching the reference) and is
-// persisted per-browser via localStorage, read by MapView to add/remove
-// the `.icon-style-colour` class on the toolbar rail.
+// Settings, beside the map toolbar like every other tool. Toolbar icon style
+// applies immediately (remembered per browser). The Python environment check
+// is long, so it stays folded until asked for.
 export default function SettingsPanel({ open, onClose, iconStyle, onChangeIconStyle }) {
+  const [envOpen, setEnvOpen] = useState(false);
   if (!open) return null;
 
   return (
-    <div className="settings-modal-backdrop" onClick={onClose}>
-      <div className="settings-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="settings-modal-header">
-          <span>Settings</span>
-          <button className="settings-modal-close" onClick={onClose} aria-label="Close"><IconClose /></button>
+    <section className="settings-flyout" aria-label="Settings">
+      <header className="analysis-head">
+        <span className="analysis-title">Settings</span>
+        <button type="button" className="panel-close-btn" onClick={onClose} aria-label="Close"><IconClose /></button>
+      </header>
+      <div className="settings-body">
+        <p className="perf-label">Toolbar icons</p>
+        <div className="train-seg">
+          <button type="button" className={iconStyle === "mono" ? "selected" : ""} onClick={() => onChangeIconStyle("mono")}>Monochrome</button>
+          <button type="button" className={iconStyle === "colour" ? "selected" : ""} onClick={() => onChangeIconStyle("colour")}>Colour</button>
         </div>
-        <div className="settings-modal-body">
-          <p className="settings-section-title">Icon style</p>
-          <p className="note">
-            How the tools in the right-hand rail are drawn. Applies immediately and is remembered on this browser.
-          </p>
 
-          <div
-            className={`settings-option-card ${iconStyle === "mono" ? "selected" : ""}`}
-            onClick={() => onChangeIconStyle("mono")}
-          >
-            <div className="settings-option-title">Monochrome</div>
-            <div className="settings-option-desc">Black and white, following the theme. The original look.</div>
-            {iconStyle === "mono" && <span className="settings-option-check">✓</span>}
-          </div>
-
-          <div
-            className={`settings-option-card ${iconStyle === "colour" ? "selected" : ""}`}
-            onClick={() => onChangeIconStyle("colour")}
-          >
-            <div className="settings-option-title">Colour</div>
-            <div className="settings-option-desc">A hue per tool — basemap, results, visibility, catalogue.</div>
-            {iconStyle === "colour" && <span className="settings-option-check">✓</span>}
-          </div>
-
-          <p className="settings-section-title" style={{ marginTop: 24 }}>Environment</p>
-          <p className="note">Python libraries the analysis and training steps need on this computer.</p>
-          <EnvironmentPanel />
-        </div>
+        <button type="button" className="settings-fold" aria-expanded={envOpen} onClick={() => setEnvOpen((o) => !o)}>
+          <span className={`env-collapse-caret ${envOpen ? "open" : ""}`}>▶</span>
+          Python environment
+        </button>
+        {envOpen && <div className="settings-env"><EnvironmentPanel /></div>}
       </div>
-    </div>
+    </section>
   );
 }

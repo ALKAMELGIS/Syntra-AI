@@ -209,6 +209,14 @@ export default function App() {
     }
   }
 
+  // An image remembered from an earlier session may predate fields the map needs
+  // (the exact preview bounds): refresh it once from the library.
+  useEffect(() => {
+    if (image?.image_id && !image.preview_bounds_wgs84 && image.bounds_wgs84) {
+      api.getImage(image.image_id).then((fresh) => fresh && setImage((cur) => (cur?.image_id === fresh.image_id ? { ...cur, ...fresh } : cur))).catch(() => {});
+    }
+  }, [image?.image_id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // training labels for the current image
   useEffect(() => {
     if (!image?.image_id) { setAnnotations([]); return; }
