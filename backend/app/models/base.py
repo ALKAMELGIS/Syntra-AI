@@ -27,6 +27,7 @@ class ModelStatus(str, Enum):
     ERROR = "error"
     DISABLED = "disabled"
     NOT_PRODUCTION_READY = "not_production_ready"   # no validated weights/dataset yet
+    NOT_INSTALLED = "not_installed"                 # open weights exist (app.models.packs); not downloaded yet
 
 
 @dataclass

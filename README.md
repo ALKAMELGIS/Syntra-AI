@@ -44,6 +44,36 @@ real and has passing tests. The ML models themselves need your GPU box,
 your datasets, and a normal internet connection to install dependencies and
 train/fine-tune.
 
+## Model packs: install open models on demand
+
+Categories with open pretrained weights show under **Available to add** with
+an **Install** button instead of "Not ready". Install downloads one ONNX file
+from a fixed, reviewed URL into `SYNTRA_WEIGHTS_DIR/packs/`, checks it loads
+and is the right kind of model, and the category becomes runnable. Offline
+machines use **From file** with the same file. Clients only ever name a pack
+id, never a URL. Chosen from the research report *Open models for satellite
+detection* (Nov 2026):
+
+| Category | Pack | Licence | Training data |
+|---|---|---|---|
+| Tree Detection | DeepForest RetinaNet (GeoDeep ONNX) | MIT | NEON aerial, ~10 cm |
+| Buildings | RAMP U-Net (GeoDeep ONNX) | CC BY-NC 4.0 (non-commercial) | ≤50 cm, 8 regions incl. Oman |
+
+Tiles are read at the scale each model was trained at (from the ONNX
+metadata), so a 10 cm model on 50 cm imagery sees upsampled tiles. Building
+masks are merged across tiles before polygonising, so footprints cut by a
+tile edge come out whole, with area in m².
+
+The model list is grouped: **ready** (an amber dot means pretrained, not yet
+checked on your imagery), **available to add**, and **needs training data**
+(collapsed): palms, field boundaries, vacant land, roads, construction
+waste, walls, change detection. The research found no open model for those
+that is both usable at 0.3–0.7 m and licensed for commercial use.
+
+Verified by `test_model_packs_offline.py` with synthetic ONNX models in the
+same format. **Not yet run with the real weights**: Hugging Face is blocked
+from the build sandbox; the first real install happens on your machine.
+
 ## Analyse a drawn area only
 
 Draw a rectangle, circle or freehand area with the Edit tools; the sidebar

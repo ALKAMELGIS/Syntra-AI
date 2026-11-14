@@ -30,6 +30,14 @@ async function handle(res) {
 }
 
 export const api = {
+  listPacks: () => request(`${BASE}/models/packs`).then(handle),
+  installPack: (packId) => request(`${BASE}/models/packs/${packId}/install`, { method: "POST" }).then(handle),
+  installStatus: (jobId) => request(`${BASE}/models/packs/install/${jobId}`).then(handle),
+  installPackFile: (packId, file) => {
+    const form = new FormData();
+    form.append("file", file);
+    return request(`${BASE}/models/packs/${packId}/file`, { method: "POST", body: form }).then(handle);
+  },
   listModels: () => request(`${BASE}/models`).then(handle),
   getModel: (modelId) => request(`${BASE}/models/${modelId}`).then(handle),
   gsdCheck: (modelId, gsd) => request(`${BASE}/models/${modelId}/gsd-check?gsd=${gsd}`).then(handle),
