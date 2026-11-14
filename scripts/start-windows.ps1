@@ -11,15 +11,36 @@ param([int]$ApiPort = 8765, [int]$WebPort = 5291, [string]$CondaEnv = "syntra")
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 
+# conda is often installed without being on PATH (the Anaconda Prompt adds it,
+# a plain PowerShell does not), so look for it in the usual install folders.
+function Find-Conda {
+    $cmd = Get-Command conda -ErrorAction SilentlyContinue
+    if ($cmd) { return $cmd.Source }
+    foreach ($b in @("$env:USERPROFILE\anaconda3", "$env:USERPROFILE\miniconda3", "$env:LOCALAPPDATA\anaconda3",
+                     "$env:LOCALAPPDATA\miniconda3", "C:\ProgramData\anaconda3", "C:\ProgramData\miniconda3")) {
+        foreach ($c in @("$b\Scripts\conda.exe", "$b\condabin\conda.bat")) { if (Test-Path $c) { return $c } }
+    }
+    return $null
+}
+
+$conda = Find-Conda
+
 function Find-EnvPython {
     $bases = @()
-    try { $bases += (& conda info --base 2>$null) } catch {}
+    if ($conda) {
+        $ErrorActionPreference = "Continue"
+        $b = & $conda info --base 2>$null
+        $ErrorActionPreference = "Stop"
+        if ($b) { $bases += $b }
+    }
     $bases += "$env:USERPROFILE\anaconda3", "$env:USERPROFILE\miniconda3", "$env:LOCALAPPDATA\anaconda3", "C:\ProgramData\anaconda3"
     foreach ($b in $bases | Where-Object { $_ }) {
-        foreach ($p in @("$b\envs\$CondaEnv\python.exe")) { if (Test-Path $p) { return $p } }
+        $p = "$b\envs\$CondaEnv\python.exe"
+        if (Test-Path $p) { return $p }
     }
-    $p = "$env:USERPROFILE\.conda\envs\$CondaEnv\python.exe"
-    if (Test-Path $p) { return $p }
+    foreach ($p in @("$env:USERPROFILE\.conda\envs\$CondaEnv\python.exe", "$env:USERPROFILE\conda-envs\$CondaEnv\python.exe")) {
+        if (Test-Path $p) { return $p }
+    }
     return $null
 }
 
@@ -42,15 +63,22 @@ function Get-FreePort([int]$start) {
 
 $py = Find-EnvPython
 if (-not $py) {
-    Write-Host "Creating conda environment '$CondaEnv' (first run only, a few minutes)..."
-    conda create -n $CondaEnv -c conda-forge python=3.11 rasterio shapely pyproj -y
+    if (-not $conda) { throw "Anaconda/Miniconda was not found. Install Miniconda, or pass -CondaEnv with an existing environment." }
+    Write-Host "Creating conda environment '$CondaEnv' with $conda (first run only, a few minutes)..."
+    & $conda create -n $CondaEnv -c conda-forge python=3.11 rasterio shapely pyproj -y
+    if ($LASTEXITCODE -ne 0) { throw "conda create failed; see the messages above." }
     $py = Find-EnvPython
     if (-not $py) { throw "Could not find the '$CondaEnv' environment after creating it. Is Anaconda installed?" }
 }
 Write-Host "Python: $py"
 
+# Windows PowerShell 5.1 turns a redirected stderr line into a terminating error
+# under "Stop", so this probe runs with "Continue".
+$ErrorActionPreference = "Continue"
 & $py -c "import fastapi, uvicorn, multipart, rasterio, cv2, onnxruntime, yaml" 2>$null
-if ($LASTEXITCODE -ne 0) {
+$missing = $LASTEXITCODE -ne 0
+$ErrorActionPreference = "Stop"
+if ($missing) {
     Write-Host "Installing Python packages..."
     & $py -m pip install fastapi "uvicorn[standard]" python-multipart numpy opencv-python-headless pillow onnxruntime pyyaml python-dotenv
     if ($LASTEXITCODE -ne 0) { throw "pip install failed; see the messages above." }
