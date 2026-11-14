@@ -74,7 +74,13 @@ def _preview_vrt(ds):
     from rasterio.enums import Resampling
     from rasterio.vrt import WarpedVRT
 
-    return WarpedVRT(ds, crs="EPSG:3857", resampling=Resampling.bilinear, add_alpha=ds.nodata is None)
+    from rasterio.enums import ColorInterp
+
+    # Outside the footprint must read as empty: add an alpha band unless the file
+    # already says what is empty (a no-data value or its own alpha band).
+    has_alpha = ColorInterp.alpha in ds.colorinterp
+    return WarpedVRT(ds, crs="EPSG:3857", resampling=Resampling.bilinear,
+                     add_alpha=ds.nodata is None and not has_alpha)
 
 
 def preview_bounds_wgs84(path: str | Path) -> dict[str, float] | None:
