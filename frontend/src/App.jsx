@@ -192,6 +192,10 @@ export default function App() {
       name: models.find((m) => m.model_id === job.model_id)?.name || job.model_id,
       color: colorFor(job.model_id),
       geojson: geojsonByKey[key],
+      // what the legend shows beside the name: hectares for area layers, else the feature count
+      value: job.result?.summary?.vegetation_area_ha != null
+        ? `${job.result.summary.vegetation_area_ha} ha`
+        : String(geojsonByKey[key]?.features?.length ?? 0),
     }));
 
   return (

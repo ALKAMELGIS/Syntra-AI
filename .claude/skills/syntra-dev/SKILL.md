@@ -107,6 +107,11 @@ direction in a comment. Work inside them:
   dependencies are red.
 - **Icons** come from `components/Icons.jsx` (inline SVG, one stroke). No
   emoji in the UI.
+- **Map panels.** Map tools live in the one toolbar on the right. A tool
+  with content (Edit, Legend, Analysis) opens a floating panel just left of
+  the toolbar, aligned with its icon, never a fixed corner box or a layout
+  column; one panel at a time; Esc closes it. Rows are 32 px: swatch, name,
+  one mono value. Explanations go in tooltips, not on the panel.
 - **Motion.** Name transitions (`background-color`, `color`, `transform`)
   with `var(--ease)`; no looping animation except a live spinner.
 

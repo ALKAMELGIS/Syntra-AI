@@ -225,26 +225,35 @@ button, input, select, textarea { font-family: inherit; }
 }
 .panel-close-btn:hover { color: var(--text); }
 
-.map-legend {
-  position: absolute; bottom: 16px; left: 16px; z-index: 500;
-  background: var(--panel); border: 1px solid var(--panel-border);
-  border-radius: var(--radius); padding: 10px 12px; font-size: 12px;
-  min-width: 160px;
-  transition: bottom 0.15s var(--ease);
+/* Legend: opens beside its toolbar icon, same pattern as Edit and Analysis.
+   top = toolbar top 16 + border 1 + padding 4 + two 36 px rows, less 4 to
+   centre the 40 px header on the 32 px icon. */
+.legend-popover {
+  position: absolute; top: 89px; right: 70px; z-index: 950;
+  width: 240px; max-height: calc(100% - 105px); display: flex; flex-direction: column;
+  background: var(--panel); border: 1px solid var(--panel-border); border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.32);
+  animation: menu-in 0.14s var(--ease);
+  transform-origin: top right;
 }
-/* Keep the bottom-anchored toolbar/legend clear of the image-library dock
-   (below) instead of letting them overlap it when the dock is open. */
-.map-area.library-open .map-legend {
-  bottom: 300px;
+@media (prefers-reduced-motion: reduce) { .legend-popover { animation: none; } }
+.legend-head {
+  display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 12px; flex: none;
+  border-bottom: 1px solid var(--panel-border);
 }
-.map-legend-title {
-  font-size: 12px; font-weight: 500; color: var(--text-dim); margin-bottom: 8px;
-}
-.map-legend-row { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
-.map-legend-row.dim { color: var(--text-muted); font-size: 12px; }
-.map-legend-swatch {
-  width: 12px; height: 12px; border-radius: 3px;
-  background: rgba(76,195,138,0.5); border: 1px solid var(--accent);
+.legend-title { font-size: 13px; font-weight: 500; }
+.legend-total { font-size: 12px; color: var(--text-muted); }
+.legend-empty { margin: 0; padding: 12px; font-size: 12px; color: var(--text-muted); }
+.legend-list { list-style: none; margin: 0; padding: 4px; overflow-y: auto; }
+.legend-row { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 8px; }
+.legend-swatch { width: 10px; height: 10px; border-radius: 2px; flex: none; }
+.legend-swatch-aoi { background: transparent; border: 1.5px dashed #ffcf5c; box-sizing: border-box; }
+.legend-swatch-line { height: 2px; border-radius: 1px; background: var(--accent); }
+.legend-name { flex: 1 1 auto; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.legend-value { flex: none; font-size: 12px; color: var(--text-dim); }
+.legend-foot {
+  padding: 8px 12px; border-top: 1px solid var(--panel-border); flex: none;
+  font-size: 11px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
 .run-button {
