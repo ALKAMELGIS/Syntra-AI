@@ -60,7 +60,7 @@ class Settings:
     MAX_UPLOAD_MB: int = int(os.getenv("SYNTRA_MAX_UPLOAD_MB", 20480))  # 20 GB: large orthomosaics are normal
 
     # --- API ---------------------------------------------------------------
-    CORS_ORIGINS: list[str] = os.getenv("SYNTRA_CORS_ORIGINS", "http://localhost:5173").split(",")
+    CORS_ORIGINS: list[str] = os.getenv("SYNTRA_CORS_ORIGINS", "http://localhost:5180,http://localhost:5173").split(",")
 
     def ensure_dirs(self) -> None:
         for d in (self.DATA_DIR, self.UPLOAD_DIR, self.RESULTS_DIR, self.WEIGHTS_DIR):

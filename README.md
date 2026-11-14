@@ -242,6 +242,13 @@ docker-compose.yml
 
 ## Running it for real
 
+**Windows, one command** (creates the conda env on first run, then opens the browser):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\start-windows.ps1
+# interface http://localhost:5180, API port 8765; change with -WebPort / -ApiPort
+```
+
 ```bash
 # 0. Check what your machine actually has before installing anything
 python scripts/check_environment.py
@@ -258,7 +265,7 @@ uvicorn app.main:app --reload --port 8000
 # Frontend
 cd frontend
 npm install
-npm run dev   # http://localhost:5173, proxies /api -> :8000
+npm run dev   # http://localhost:5180 (VITE_PORT), proxies /api -> :8000 (VITE_API_PORT)
 
 # Offline tests (no GPU/rasterio/torch needed)
 cd backend
