@@ -56,7 +56,7 @@ detection* (Nov 2026):
 
 | Category | Pack | Licence | Training data |
 |---|---|---|---|
-| Tree Detection | DeepForest RetinaNet (GeoDeep ONNX) | MIT | NEON aerial, ~10 cm |
+| Trees | DeepForest RetinaNet (GeoDeep ONNX) | MIT | NEON aerial, ~10 cm |
 | Buildings | RAMP U-Net (GeoDeep ONNX) | CC BY-NC 4.0 (non-commercial) | ≤50 cm, 8 regions incl. Oman |
 
 Tiles are read at the scale each model was trained at (from the ONNX
@@ -84,7 +84,7 @@ and drops detections whose centre falls outside. An AOI that misses the
 image is refused before the job starts. This is how a multi-GB scene is
 analysed in seconds. Verified by `test_aoi_vegetation_offline.py`.
 
-## Vegetation & Trees (spectral index, no trained model)
+## Vegetation (spectral index, no trained model)
 
 `vegetation_index` computes **NDVI** from red and near-infrared (VARI for
 RGB-only images), outputs vegetation polygons with area (ha), mean index
