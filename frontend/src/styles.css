@@ -989,3 +989,79 @@ button, input, select, textarea { font-family: inherit; }
 .folder-pick-title { font-weight: 500; color: var(--text); margin-bottom: 2px; }
 .folder-pick-hint { font-size: 12px; }
 .folder-pick-confirm-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+
+/* =====================================================================
+   Responsive: desktop (>= 1100), tablet (700-1099), phone (< 700).
+   Desktop is the reference layout. Tablet narrows the sidebar and keeps
+   the header on one line. Phones show one pane at a time, the setup panel
+   or the full-screen map, switched from a bottom bar.
+   ===================================================================== */
+.app-shell { height: 100vh; height: 100dvh; }
+.topbar, .topbar-left, .topbar-right, .topbar-tabs { min-width: 0; white-space: nowrap; }
+.theme-toggle-btn svg { font-size: 16px; }
+.mobile-switch { display: none; }
+
+@media (max-width: 1099px) {
+  .brand-sub { display: none; }
+  .topbar-left { gap: 12px; }
+  .usage-badge-label { display: none; }
+}
+
+@media (max-width: 899px) {
+  .tab-button { padding: 0 8px; }
+  .usage-badge { display: none; }
+}
+
+@media (max-width: 699px) {
+  .app-shell { grid-template-rows: 48px 1fr auto; }
+  .topbar { padding: 0 12px; gap: 8px; }
+  .topbar-left { gap: 8px; }
+  .brand-name { font-size: 14px; }
+  .tab-label, .device-label, .device-caret { display: none; }
+  .tab-button { width: 36px; height: 36px; padding: 0; justify-content: center; }
+  .device-badge { width: 36px; height: 36px; padding: 0; justify-content: center; }
+  .theme-toggle-btn { width: 36px; height: 36px; }
+  .file-menu-trigger { height: 36px; }
+
+  /* both panes stay mounted so the map keeps its size and position;
+     the setup panel slides over it */
+  .layout { display: block; position: relative; overflow: hidden; min-height: 0; }
+  .layout > .map-area { position: absolute; inset: 0; }
+  .layout > .panel {
+    position: absolute; inset: 0; z-index: 1100; border-right: none;
+    transition: transform 0.2s var(--ease), visibility 0.2s;
+  }
+  .layout.pane-map > .panel { transform: translateX(-100%); visibility: hidden; }
+
+  .mobile-switch {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 4px;
+    padding: 4px 12px calc(4px + env(safe-area-inset-bottom));
+    background: var(--panel); border-top: 1px solid var(--panel-border);
+  }
+  .mobile-switch button {
+    display: flex; align-items: center; justify-content: center; gap: 8px; height: 44px;
+    background: transparent; border: none; border-radius: var(--radius-control);
+    color: var(--text-dim); font-size: 13px; font-weight: 500; cursor: pointer;
+    transition: background-color 0.12s var(--ease), color 0.12s var(--ease);
+  }
+  .mobile-switch button svg { font-size: 18px; }
+  .mobile-switch button.active { background: var(--hover-bg); color: var(--text); }
+  .mobile-switch-count { font-size: 12px; color: var(--accent); }
+
+  /* map chrome: pinch replaces the zoom buttons; panels become sheets that
+     span the map left of the toolbar instead of fixed-width popovers */
+  .map-area .leaflet-control-zoom { display: none; }
+  .map-toolbar { top: 12px; right: 12px; }
+  .analysis-flyout, .legend-popover {
+    top: 12px; left: 12px; right: 66px; width: auto; max-height: calc(100% - 24px);
+  }
+  .edit-menu { width: min(248px, calc(100vw - 90px)); }
+  .file-menu-dropdown { position: fixed; top: 52px; left: 12px; right: 12px; min-width: 0; }
+  .device-dropdown { position: fixed; top: 52px; left: 12px; right: 12px; min-width: 0; }
+
+  /* model setup wizard: steps scroll sideways instead of squeezing */
+  .wizard-steps { overflow-x: auto; scrollbar-width: none; }
+  .wizard-step { flex: 0 0 auto; min-width: 72px; }
+}
+.status-pill.status-not_installed { background: transparent; color: var(--text-muted); box-shadow: inset 0 0 0 1px var(--panel-border); }
+.model-card-toggle { display: inline-flex; align-items: center; gap: 4px; }

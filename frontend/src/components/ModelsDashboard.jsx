@@ -1,11 +1,13 @@
 import React, { useEffect, useState } from "react";
 import { api } from "../api/client.js";
 import EnvironmentPanel from "./EnvironmentPanel.jsx";
+import { IconChevronDown } from "./Icons.jsx";
 
 const STATUS_LABEL = {
   ready: "Ready",
   validation: "Unvalidated",
-  not_production_ready: "Not Ready",
+  not_production_ready: "Not ready",
+  not_installed: "Not installed",
   loading: "Loading",
   processing: "Processing",
   training: "Training",
@@ -289,7 +291,9 @@ function ModelCard({ model, expanded, onToggle, datasetReloadToken, onDeleted })
           </div>
         </div>
         <span className={`status-pill status-${m.status}`}>{STATUS_LABEL[m.status] || m.status}</span>
-        <button className="model-card-toggle">{expanded ? "▲ Hide" : "▼ Details"}</button>
+        <button className="model-card-toggle">
+          <IconChevronDown style={{ transform: expanded ? "rotate(180deg)" : "none" }} /> {expanded ? "Hide" : "Details"}
+        </button>
       </div>
       {expanded && (
         <div className="model-card-details">
@@ -345,7 +349,7 @@ export default function ModelsDashboard() {
       <EnvironmentPanel />
 
       <div className="models-dashboard-header" style={{ marginTop: 22 }}>
-        <p className="section-title" style={{ margin: 0 }}>Detection models — Status</p>
+        <p className="section-title" style={{ margin: 0 }}>Detection models</p>
         <button className="run-button" style={{ width: "auto", marginTop: 0, padding: "6px 14px" }} onClick={refresh}>
           Refresh
         </button>

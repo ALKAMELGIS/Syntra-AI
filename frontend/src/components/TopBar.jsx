@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { api } from "../api/client.js";
-import { IconMap, IconDashboard, IconFolder, IconClose, IconUpload } from "./Icons.jsx";
+import { IconMap, IconDashboard, IconFolder, IconClose, IconUpload, IconSun, IconMoon } from "./Icons.jsx";
 
 function useOutsideClose(ref, close) {
   useEffect(() => {
@@ -67,9 +67,9 @@ function FileMenu({ hasImage, hasJob, onExport }) {
       </button>
       {open && (
         <div className="file-menu-dropdown">
-          <button className="file-menu-item" onClick={createNewProject}><IconFolder /> Create New Project</button>
+          <button className="file-menu-item" onClick={createNewProject}><IconFolder /> New project</button>
           <label className="file-menu-item">
-            <IconFolder /> Import Project
+            <IconFolder /> Open project
             <input type="file" accept="application/json" hidden onChange={openProjectFile} />
           </label>
           <div className="file-menu-divider" />
@@ -77,13 +77,13 @@ function FileMenu({ hasImage, hasJob, onExport }) {
           <button className="file-menu-item" disabled={!hasImage} onClick={closeProject}><IconClose /> Close project</button>
           <div className="file-menu-divider" />
           <button className="file-menu-item" disabled={!hasJob} onClick={() => onExport("geojson")}>
-            Export Results — GeoJSON
+            Export GeoJSON
           </button>
           <button className="file-menu-item" disabled={!hasJob} onClick={() => onExport("kml")}>
-            Export Results — KML
+            Export KML
           </button>
           <button className="file-menu-item" disabled={!hasJob} onClick={() => onExport("shapefile")}>
-            Export Results — Shapefile
+            Export Shapefile
           </button>
         </div>
       )}
@@ -101,13 +101,12 @@ function GpuMenu({ devices, enabledGpus, onToggleGpu }) {
 
   return (
     <div className="device-badge-wrap" ref={ref}>
-      <button className="device-badge" onClick={() => setOpen((o) => !o)}>
+      <button className="device-badge" onClick={() => setOpen((o) => !o)}
+              title={gpuCount > 0 ? `${activeCount} of ${gpuCount} GPUs in use` : "No CUDA device: runs on CPU"}>
         <span className="device-dot" />
-        {devices === null
-          ? "Checking compute…"
-          : gpuCount > 0
-          ? `${activeCount}/${gpuCount} GPU${gpuCount > 1 ? "s" : ""} connected`
-          : "CPU only (no CUDA device)"}
+        <span className="device-label">
+          {devices === null ? "Checking…" : gpuCount > 0 ? `${activeCount}/${gpuCount} GPU` : "CPU only"}
+        </span>
         <span className="device-caret">▾</span>
       </button>
       {open && devices && (
@@ -177,10 +176,10 @@ export default function TopBar({ view, onViewChange, devices, enabledGpus, onTog
 
       <div className="topbar-tabs">
         <button className={`tab-button ${view === "detect" ? "active" : ""}`} onClick={() => onViewChange("detect")}>
-          <IconMap /> Full map
+          <IconMap /> <span className="tab-label">Full map</span>
         </button>
         <button className={`tab-button ${view === "models" ? "active" : ""}`} onClick={() => onViewChange("models")}>
-          <IconDashboard /> Model setup
+          <IconDashboard /> <span className="tab-label">Model setup</span>
         </button>
       </div>
 
@@ -188,9 +187,10 @@ export default function TopBar({ view, onViewChange, devices, enabledGpus, onTog
         <button
           className="theme-toggle-btn"
           onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
-          title="Toggle light/dark theme"
+          title={theme === "dark" ? "Light theme" : "Dark theme"}
+          aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
         >
-          {theme === "dark" ? "☀" : "☾"}
+          {theme === "dark" ? <IconSun /> : <IconMoon />}
         </button>
         <GpuMenu devices={devices} enabledGpus={enabledGpus} onToggleGpu={onToggleGpu} />
         <div className="usage-badge" title="Real usage counter — not a payment balance">

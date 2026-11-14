@@ -4,6 +4,7 @@ import Sidebar from "./components/Sidebar.jsx";
 import MapView from "./components/MapView.jsx";
 import AnalysisPanel from "./components/AnalysisPanel.jsx";
 import ModelSetupWizard from "./components/ModelSetupWizard.jsx";
+import { IconMap, IconSliders } from "./components/Icons.jsx";
 import { api } from "./api/client.js";
 
 const PALETTE = ["#5b8cff", "#b48ead", "#f5a623", "#ff5d6c", "#c678dd", "#56c7d6", "#e8a87c", "#a8e6cf"];
@@ -16,6 +17,8 @@ function jobKey(imageId, modelId) {
 
 export default function App() {
   const [view, setView] = useState("detect"); // "detect" | "models"
+  // phones show one pane at a time: the setup panel or the map
+  const [mobilePane, setMobilePane] = useState("setup");
   const [wizardStep, setWizardStep] = useState(null); // open the wizard on a given step
   const [models, setModels] = useState([]);
   const [selectedModels, setSelectedModels] = useState([]);
@@ -125,6 +128,7 @@ export default function App() {
   }, [jobs]);
 
   async function handleRun(images) {
+    setMobilePane("map");
     const validImages = (images || []).filter(Boolean);
     if (validImages.length === 0 || selectedModels.length === 0) return;
 
@@ -214,7 +218,8 @@ export default function App() {
       {view === "models" ? (
         <ModelSetupWizard onViewChange={(v) => { setWizardStep(null); setView(v); }} initialStep={wizardStep} />
       ) : (
-        <div className="layout">
+        <>
+        <div className={`layout pane-${mobilePane}`}>
           <Sidebar
             models={models}
             selectedModels={selectedModels}
@@ -248,6 +253,16 @@ export default function App() {
             }
           />
         </div>
+        <nav className="mobile-switch" aria-label="Panels">
+          <button type="button" className={mobilePane === "setup" ? "active" : ""} onClick={() => setMobilePane("setup")}>
+            <IconSliders /> Setup
+          </button>
+          <button type="button" className={mobilePane === "map" ? "active" : ""} onClick={() => setMobilePane("map")}>
+            <IconMap /> Map
+            {analysisEntries.length > 0 && <span className="mono mobile-switch-count">{analysisEntries.length}</span>}
+          </button>
+        </nav>
+        </>
       )}
     </div>
   );
