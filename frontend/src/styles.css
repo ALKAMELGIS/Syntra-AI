@@ -1319,3 +1319,11 @@ html, body, #root { height: 100%; overflow: hidden; }
   font-size: 12px; color: var(--text-dim); white-space: nowrap; pointer-events: none;
 }
 @media (max-width: 699px) { .basemap-note { left: 12px; bottom: calc(28px + var(--dock-h, 0px)); white-space: normal; max-width: calc(100% - 24px); } }
+
+/* The one primary action stays in view while the sidebar scrolls */
+.run-dock {
+  position: sticky; bottom: -16px; margin: 12px -16px -16px; padding: 12px 16px 16px;
+  background: var(--panel); border-top: 1px solid var(--panel-border); z-index: 2;
+}
+.run-dock .run-button { margin-top: 0; }
+.run-dock .aoi-chip { margin: 0 0 8px; }

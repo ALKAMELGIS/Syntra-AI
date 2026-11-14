@@ -236,6 +236,7 @@ export default function Sidebar({ models, selectedModels, onToggleModel, onModel
         imageGsd={image?.health?.gsd_m ?? null}
       />
 
+      <div className="run-dock">
       {hasAoi && (
         <div className="aoi-chip">
           <span className="aoi-chip-swatch" />
@@ -248,6 +249,7 @@ export default function Sidebar({ models, selectedModels, onToggleModel, onModel
       <button className="run-button" disabled={!canRun} onClick={handleRunClick}>
         {running ? "Running…" : <><IconPlay /> {hasAoi ? "Run in area" : "Run prediction"}</>}
       </button>
+      </div>
     </div>
   );
 }
