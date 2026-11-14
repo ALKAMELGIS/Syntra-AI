@@ -56,6 +56,24 @@ app.include_router(annotations.router, dependencies=_protected)
 app.include_router(jobs.router, dependencies=_protected)
 
 
+@app.exception_handler(Exception)
+async def explain_errors(request, exc):
+    """An unexpected error still says what went wrong, as JSON the interface can
+    show, instead of a bare "Internal Server Error". A full disk is named, since
+    large uploads are the usual way to hit it."""
+    import errno
+    import logging
+
+    from fastapi.responses import JSONResponse
+
+    logging.getLogger("syntra").exception("Unhandled error on %s", request.url.path)
+    if isinstance(exc, OSError) and exc.errno == errno.ENOSPC:
+        return JSONResponse(status_code=507, content={"detail": (
+            "The disk is full. Free space on the drive that holds Syntra's data and Windows' temp folder, "
+            "or open the image from the This PC tab, which needs no copy.")})
+    return JSONResponse(status_code=500, content={"detail": f"The engine hit an error: {type(exc).__name__}: {exc}"})
+
+
 @app.get("/api/health")
 def health():
     return {"status": "ok", "service": "syntra-ai-detection-engine"}

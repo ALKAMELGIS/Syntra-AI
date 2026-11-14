@@ -136,3 +136,32 @@ def test_api_key_enforced_when_configured(client, monkeypatch):
 
 def test_api_open_when_no_key_configured(client):
     assert client.get("/api/images").status_code == 200
+
+
+def test_unexpected_errors_are_explained_as_json(monkeypatch, tmp_path):
+    import errno
+
+    from fastapi.testclient import TestClient
+
+    import app.api.images as images
+    from app.core.config import settings
+    from app.main import app
+
+    monkeypatch.setattr(settings, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(settings, "UPLOAD_DIR", tmp_path / "uploads")
+    monkeypatch.delenv("SYNTRA_API_KEY", raising=False)
+    c = TestClient(app, raise_server_exceptions=False)
+
+    def full(*a, **k):
+        raise OSError(errno.ENOSPC, "No space left on device")
+
+    monkeypatch.setattr(images, "list_library", full)
+    r = c.get("/api/images")
+    assert r.status_code == 507 and "disk is full" in r.json()["detail"]
+
+    def boom(*a, **k):
+        raise ValueError("bad band count")
+
+    monkeypatch.setattr(images, "list_library", boom)
+    r = c.get("/api/images")
+    assert r.status_code == 500 and "ValueError: bad band count" in r.json()["detail"]

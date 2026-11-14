@@ -17,6 +17,21 @@ export function withKey(url) {
   return `${url}${url.includes("?") ? "&" : "?"}api_key=${encodeURIComponent(API_KEY)}`;
 }
 
+// One readable message for every failed request: the server's own explanation
+// when it sent one, otherwise what the status code means and what to do. The
+// code is always shown, so a screenshot says what happened.
+export function failureMessage(status, detail, upload = false) {
+  const said = typeof detail === "string" ? detail : detail?.message;
+  if (said) return said;
+  const tip = upload ? " For files on this computer, use the This PC tab: it opens them without uploading." : "";
+  if (status === 413) return `Too large to upload (HTTP 413).${tip}`;
+  if (status === 507) return `The disk is full (HTTP 507).${tip}`;
+  if (status === 502 || status === 503 || status === 504)
+    return `The engine stopped during the request (HTTP ${status}). Check its window, start it again, then retry.${tip}`;
+  if (status >= 500) return `The engine failed (HTTP ${status}). Its window shows the reason.${tip}`;
+  return `Request failed (HTTP ${status}).${tip}`;
+}
+
 // A 401 from any data route means the session ended (signed out elsewhere,
 // expired): tell the sign-in gate, which swaps the app for the sign-in page.
 export const SIGNED_OUT = "syntra:signed-out";
@@ -26,7 +41,7 @@ async function handle(res) {
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     const detail = body.detail;
-    const message = typeof detail === "string" ? detail : detail?.message || `Request failed: ${res.status}`;
+    const message = failureMessage(res.status, detail);
     const err = new Error(message);
     err.detail = detail;
     throw err;
@@ -90,7 +105,7 @@ export const api = {
         } else {
           if (xhr.status === 401) window.dispatchEvent(new Event(SIGNED_OUT));
           const detail = body.detail;
-          const message = typeof detail === "string" ? detail : detail?.message || `Request failed: ${xhr.status}`;
+          const message = failureMessage(xhr.status, detail, true);
           const err = new Error(message);
           err.detail = detail;
           reject(err);
@@ -99,7 +114,7 @@ export const api = {
       // The browser can't tell why a connection dropped; ask the server whether it is up.
       xhr.onerror = () => {
         fetch(`${BASE}/health`).then((r) => r.ok).catch(() => false).then((up) => reject(new Error(up
-          ? `The upload was cut off at ${sent}%. The server is running: try again, and for very large files restart with the latest start script (it removes the 5-minute limit).`
+          ? `The upload was cut off at ${sent}%. The server is running: try again, or open the file from the This PC tab, which needs no upload.`
           : "Couldn't reach the Syntra AI server. Check that the backend window is still open, then try again.")));
       };
       xhr.send(form);
