@@ -53,7 +53,8 @@ def _load_yolo(weights: str, device: str):
             if str(weights).lower().endswith(".onnx"):
                 from app.models.onnx_obb import OnnxObbModel
 
-                providers = ["CUDAExecutionProvider", "CPUExecutionProvider"] if device.startswith("cuda") else None
+                from app.core.onnx_runtime import session_providers, trt_cache_dir
+                providers = session_providers(device, trt_cache_dir())   # TensorRT > CUDA > DirectML > CPU
                 model = OnnxObbModel(weights, providers=providers)
             else:
                 from ultralytics import YOLO  # lazy: needs torch + ultralytics
@@ -62,6 +63,21 @@ def _load_yolo(weights: str, device: str):
                 model.to(device)
             _MODEL_CACHE[key] = model
         return model
+
+
+def resolve_obb_weights(configured: str) -> str:
+    """The configured path when it exists; otherwise the same model found in a
+    model folder (ONNX preferred: it needs no torch). Falls back to the
+    configured name, which ultralytics downloads on first use."""
+    from pathlib import Path
+
+    if configured and Path(configured).is_file():
+        return configured
+    from app.models.packs import find_model_file
+
+    stem = Path(configured or "yolo11n-obb.pt").stem
+    found = find_model_file(f"{stem}.onnx", f"{stem}.pt", Path(configured).name if configured else "")
+    return str(found) if found else configured
 
 
 def _names_dict(names) -> dict[int, str]:
@@ -77,7 +93,7 @@ class AerialObbDetector(DetectionModel):
         if metadata.model_id not in DOTA_CLASS_MAP:
             raise ValueError(f"No DOTA class mapping configured for '{metadata.model_id}'.")
         self.metadata = metadata
-        self.weights = weights or settings.AERIAL_OBB_WEIGHTS
+        self.weights = weights or resolve_obb_weights(settings.AERIAL_OBB_WEIGHTS)
         self.wanted = DOTA_CLASS_MAP[metadata.model_id]
         self._model = None
         self._device = "cpu"
@@ -121,7 +137,8 @@ class AerialObbDetector(DetectionModel):
         tile_bgr = np.ascontiguousarray(tile_rgb[..., ::-1])
         from app.models.onnx_obb import OnnxObbModel
         if isinstance(self._model, OnnxObbModel):
-            dets = self._model.predict(tile_bgr, conf=conf, classes=sorted(self._dota_to_ours))
+            dets = self._model.predict(tile_bgr, conf=conf, classes=sorted(self._dota_to_ours),
+                                       nominal_tile=getattr(self, "nominal_tile", None))
             return [
                 RawDetection(
                     box=(float(d.corners[:, 0].min()), float(d.corners[:, 1].min()),

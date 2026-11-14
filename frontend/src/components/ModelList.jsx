@@ -13,6 +13,7 @@ const RUNNABLE = new Set(["ready", "validation"]);
 
 // Short in the row (CC BY-NC 4.0 -> CC BY-NC), full wording in the tooltip.
 function licenceShort(pack) {
+  if (/^non-commercial$/i.test(pack.licence)) return "NC";
   return pack.licence.replace(/\s+\d+(\.\d+)*$/, "");
 }
 function licenceTitle(pack) {
@@ -87,29 +88,46 @@ function PackRow({ m, onInstalled }) {
   );
 }
 
-export default function ModelList({ models, selectedModels, onToggleModel, onModelsChanged, onTrain }) {
+// Does a model suit this image's ground resolution? Unsuited models move to
+// the end of the list, muted, with the reason in their tooltip; a drone-only
+// model on satellite imagery can't be ticked (the server refuses it too).
+function fit(m, gsd) {
+  if (!gsd || !m.supported_gsd_m) return { ok: true };
+  const [lo, hi] = m.supported_gsd_m;
+  const cm = (v) => `${Math.round(v * 100)} cm`;
+  const ok = gsd >= lo / 2 && gsd <= hi * 1.5;
+  const blocked = (m.supported_image_sources || []).join() === "drone" && gsd > hi * 1.5;
+  return { ok, blocked, why: ok ? "" : `Made for ${cm(lo)}–${cm(hi)} per pixel; this image is ${cm(gsd)}` };
+}
+
+export default function ModelList({ models, selectedModels, onToggleModel, onModelsChanged, onTrain, imageGsd = null }) {
   const [showTraining, setShowTraining] = useState(false);
-  const ready = models.filter((m) => RUNNABLE.has(m.status));
+  const ready = models.filter((m) => RUNNABLE.has(m.status))
+    .map((m) => ({ m, f: fit(m, imageGsd) }))
+    .sort((a, b) => Number(b.f.ok) - Number(a.f.ok));
   const installable = models.filter((m) => m.status === "not_installed" && m.pack);
   const training = models.filter((m) => !RUNNABLE.has(m.status) && m.status !== "not_installed");
 
   return (
     <div className="model-list">
       <ul className="model-group">
-        {ready.map((m) => {
+        {ready.map(({ m, f }) => {
           const on = selectedModels.includes(m.model_id);
+          const checked = m.accuracy_f1 != null;
           return (
             <li key={m.model_id}>
-              <label className={`model-row ${on ? "selected" : ""}`} title={m.notes}>
-                <input type="checkbox" checked={on} onChange={() => onToggleModel(m.model_id)} />
+              <label className={`model-row ${on ? "selected" : ""} ${f.ok ? "" : "model-row-unfit"}`} title={f.why || m.notes}>
+                <input type="checkbox" checked={on} disabled={f.blocked && !on} onChange={() => onToggleModel(m.model_id)} />
                 <span className="model-name-text">{m.name}</span>
-                {m.status === "validation" && <span className="model-unchecked" aria-label="Not yet checked on your imagery" />}
+                {checked ? (
+                  <span className="model-f1 mono" title="F1 on your accuracy areas">{m.accuracy_f1.toFixed(2)}</span>
+                ) : m.status === "validation" && <span className="model-unchecked" aria-label="Not yet checked on your imagery" />}
               </label>
             </li>
           );
         })}
       </ul>
-      {ready.some((m) => m.status === "validation") && (
+      {ready.some(({ m }) => m.status === "validation" && m.accuracy_f1 == null) && (
         <p className="model-key"><span className="model-unchecked" /> Not yet checked on your imagery</p>
       )}
 

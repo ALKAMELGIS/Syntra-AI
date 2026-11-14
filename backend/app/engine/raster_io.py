@@ -63,13 +63,85 @@ def compute_wgs84_bounds(path: str | Path) -> dict[str, float] | None:
         return {"south": south, "west": west, "north": north, "east": east}
 
 
-def read_preview_png(path: str | Path, max_dim: int = 1024) -> bytes:
+def _preview_vrt(ds):
+    """The raster warped to Web Mercator, the projection of the web map.
+
+    A Leaflet ImageOverlay stretches its picture linearly between two corners
+    in Web Mercator. Only a picture that is itself in Web Mercator lands right:
+    a UTM picture stretched over its lat/lon bounding box was off by ~8 m
+    (north-up), 165 m (rotated 15 deg) and 460 m (south-up, drawn upside down).
     """
-    A small, real true-color (or single-band grayscale) PNG rendering of the
-    raster for map display — decimated at read time via rasterio's out_shape
-    so this never materializes the full-resolution array (orthomosaics here
-    run into the tens of thousands of pixels per side).
+    from rasterio.enums import Resampling
+    from rasterio.vrt import WarpedVRT
+
+    from rasterio.enums import ColorInterp
+
+    # Outside the footprint must read as empty: add an alpha band unless the file
+    # already says what is empty (a no-data value or its own alpha band).
+    has_alpha = ColorInterp.alpha in ds.colorinterp
+    return WarpedVRT(ds, crs="EPSG:3857", resampling=Resampling.bilinear,
+                     add_alpha=ds.nodata is None and not has_alpha)
+
+
+def preview_bounds_wgs84(path: str | Path) -> dict[str, float] | None:
+    """Exact lat/lon corners of the Web Mercator preview (what ImageOverlay needs)."""
+    import rasterio
+    from pyproj import Transformer
+
+    with rasterio.open(path) as ds:
+        if ds.crs is None:
+            return None
+        with _preview_vrt(ds) as vrt:
+            b = vrt.bounds
+    t = Transformer.from_crs("EPSG:3857", "EPSG:4326", always_xy=True)
+    west, south = t.transform(b.left, b.bottom)
+    east, north = t.transform(b.right, b.top)
+    return {"south": south, "west": west, "north": north, "east": east}
+
+
+def _warped_preview(ds, plan, max_dim: int):
+    """Decimate first, then warp the small picture to Web Mercator.
+
+    Reading a WarpedVRT straight from a file without overviews makes GDAL warp
+    from full resolution: 118 s for a 1.8 GB SuperView Neo MUX scene. Reading a
+    reduced copy in the file's own CRS (one strip per output row) and warping
+    that in memory takes seconds, on the same grid and bounds as the VRT, so
+    placement is unchanged.
     """
+    from rasterio.enums import Resampling
+    from rasterio.transform import Affine
+    from rasterio.warp import reproject
+
+    from app.engine.raster_prep import read_rgb
+
+    with _preview_vrt(ds) as vrt:                      # opening it only computes the target grid
+        scale = min(1.0, max_dim / max(vrt.width, vrt.height))
+        out_w, out_h = max(1, round(vrt.width * scale)), max(1, round(vrt.height * scale))
+        dst_transform = vrt.transform * Affine.scale(vrt.width / out_w, vrt.height / out_h)
+    # read the source a little finer than the output so the warp has pixels to blend
+    s_scale = min(1.0, 1.5 * max_dim / max(ds.width, ds.height))
+    sw, sh = max(1, round(ds.width * s_scale)), max(1, round(ds.height * s_scale))
+    small, small_valid = read_rgb(ds, plan, out_shape=(sh, sw))
+    src_transform = ds.transform * Affine.scale(ds.width / sw, ds.height / sh)
+    out = np.zeros((3, out_h, out_w), np.uint8)
+    for b in range(3):
+        reproject(np.ascontiguousarray(small[..., b]), out[b], src_transform=src_transform, src_crs=ds.crs,
+                  dst_transform=dst_transform, dst_crs="EPSG:3857", resampling=Resampling.bilinear)
+    vmask = np.zeros((out_h, out_w), np.uint8)
+    reproject(small_valid.astype(np.uint8) * 255, vmask, src_transform=src_transform, src_crs=ds.crs,
+              dst_transform=dst_transform, dst_crs="EPSG:3857", resampling=Resampling.nearest, dst_nodata=0)
+    return np.moveaxis(out, 0, -1), vmask > 127
+
+
+def read_preview_png(path: str | Path, max_dim: int = 2048) -> bytes:
+    """
+    A true-colour PNG of the raster for the map, in Web Mercator so it sits on
+    its real footprint (see _preview_vrt). Decimated at read time via out_shape,
+    so a multi-GB orthomosaic never loads at full resolution. Pixels outside the
+    footprint are transparent. Same bands, stretch and masking the detector sees.
+    """
+    import io
+
     import rasterio  # lazy import
     from PIL import Image
 
@@ -77,16 +149,13 @@ def read_preview_png(path: str | Path, max_dim: int = 1024) -> bytes:
 
     plan = plan_rgb(path)
     with rasterio.open(path) as ds:
-        scale = min(1.0, max_dim / max(ds.width, ds.height))
-        out_w = max(1, round(ds.width * scale))
-        out_h = max(1, round(ds.height * scale))
-        # Same bands, stretch and masking the detector sees, so what the
-        # analyst looks at on the map is what the model was given.
-        data, valid = read_rgb(ds, plan, out_shape=(out_h, out_w))
-
-    import io
+        if ds.crs is None:
+            scale = min(1.0, max_dim / max(ds.width, ds.height))
+            data, valid = read_rgb(ds, plan, out_shape=(max(1, round(ds.height * scale)), max(1, round(ds.width * scale))))
+        else:
+            data, valid = _warped_preview(ds, plan, max_dim)
     buf = io.BytesIO()
-    alpha = np.where(valid, 255, 0).astype(np.uint8)          # empty footprint -> transparent
+    alpha = np.where(valid, 255, 0).astype(np.uint8)          # outside the footprint -> transparent
     Image.fromarray(np.dstack([data, alpha]), mode="RGBA").save(buf, format="PNG")
     return buf.getvalue()
 
@@ -224,3 +293,48 @@ def iter_tiles_from_array(
             height=h,
             transform=transform.offset(col_off, row_off),
         )
+
+
+def prefetch(iterable, depth: int = 4):
+    """Read ahead on a background thread while the caller runs the model.
+
+    Tile reads (decompression, band stretch) release the GIL inside GDAL and
+    numpy, so they overlap with ONNX inference instead of waiting for it.
+    Measured on a 9000 px uint16 scene with YOLO11n-OBB at 1024 px: reading was
+    28% of the run when done in line. Order is preserved; an exception in the
+    reader is raised in the caller; closing the generator stops the reader.
+    """
+    import queue
+    import threading
+
+    q: queue.Queue = queue.Queue(maxsize=max(1, depth))
+    done = object()
+    stop = threading.Event()
+
+    def work():
+        try:
+            for item in iterable:
+                while not stop.is_set():
+                    try:
+                        q.put(item, timeout=0.2)
+                        break
+                    except queue.Full:
+                        continue
+                if stop.is_set():
+                    return
+            q.put(done)
+        except BaseException as exc:  # noqa: BLE001 - re-raised in the consumer
+            q.put(exc)
+
+    t = threading.Thread(target=work, name="syntra-tile-reader", daemon=True)
+    t.start()
+    try:
+        while True:
+            item = q.get()
+            if item is done:
+                return
+            if isinstance(item, BaseException):
+                raise item
+            yield item
+    finally:
+        stop.set()

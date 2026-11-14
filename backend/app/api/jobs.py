@@ -15,7 +15,7 @@ from app.core.jobs import get_store
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 
-_KINDS = {"predict", "dataset_export", "train", "environment", "model_install"}
+_KINDS = {"predict", "dataset_export", "train", "environment", "model_install", "accuracy", "optimize"}
 
 
 @router.get("")

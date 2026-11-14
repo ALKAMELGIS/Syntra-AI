@@ -1,0 +1,166 @@
+{
+ "name": "Drone objects",
+ "source": "YOLO11n-seg fine-tuned by Syntra on the TU Graz Semantic Drone Dataset",
+ "task": "segment",
+ "classes": [
+  "tree",
+  "building",
+  "vehicle",
+  "person",
+  "fence",
+  "bicycle"
+ ],
+ "per_class": {
+  "tree": 0.44,
+  "building": 0.552,
+  "vehicle": 0.991,
+  "person": 0.648,
+  "fence": 0.044,
+  "bicycle": 0.146
+ },
+ "hidden_classes": [
+  "fence",
+  "bicycle"
+ ],
+ "training": {
+  "train_images": 340,
+  "val_images": 60,
+  "gsd_cm": 4,
+  "epochs": 14,
+  "imgsz": 640,
+  "final_check": {
+   "mask_mAP50": 0.47,
+   "mask_mAP50_95": 0.296,
+   "box_mAP50": 0.523
+  },
+  "note": "Planned 30 epochs; the run stopped after epoch 14, the weights are the best of those 14."
+ },
+ "epochs": [
+  {
+   "epoch": 1,
+   "train_loss": 9.6788,
+   "val_loss": 9.1137,
+   "precision": 0.32706,
+   "recall": 0.2796,
+   "map50": 0.24663,
+   "map50_95": 0.13365
+  },
+  {
+   "epoch": 2,
+   "train_loss": 8.1781,
+   "val_loss": 8.3205,
+   "precision": 0.42442,
+   "recall": 0.3065,
+   "map50": 0.31376,
+   "map50_95": 0.1948
+  },
+  {
+   "epoch": 3,
+   "train_loss": 7.9516,
+   "val_loss": 8.2269,
+   "precision": 0.35905,
+   "recall": 0.36854,
+   "map50": 0.31258,
+   "map50_95": 0.18336
+  },
+  {
+   "epoch": 4,
+   "train_loss": 7.6989,
+   "val_loss": 7.849,
+   "precision": 0.48126,
+   "recall": 0.3718,
+   "map50": 0.39137,
+   "map50_95": 0.25703
+  },
+  {
+   "epoch": 5,
+   "train_loss": 7.5014,
+   "val_loss": 8.2086,
+   "precision": 0.48724,
+   "recall": 0.31562,
+   "map50": 0.36236,
+   "map50_95": 0.22782
+  },
+  {
+   "epoch": 6,
+   "train_loss": 7.5321,
+   "val_loss": 7.9567,
+   "precision": 0.42064,
+   "recall": 0.4154,
+   "map50": 0.37739,
+   "map50_95": 0.23462
+  },
+  {
+   "epoch": 7,
+   "train_loss": 7.2143,
+   "val_loss": 7.6213,
+   "precision": 0.66862,
+   "recall": 0.35972,
+   "map50": 0.38925,
+   "map50_95": 0.23416
+  },
+  {
+   "epoch": 8,
+   "train_loss": 6.9457,
+   "val_loss": 7.3954,
+   "precision": 0.52555,
+   "recall": 0.3669,
+   "map50": 0.38677,
+   "map50_95": 0.23972
+  },
+  {
+   "epoch": 9,
+   "train_loss": 6.7822,
+   "val_loss": 7.2235,
+   "precision": 0.54143,
+   "recall": 0.38723,
+   "map50": 0.41773,
+   "map50_95": 0.26537
+  },
+  {
+   "epoch": 10,
+   "train_loss": 6.7682,
+   "val_loss": 6.9029,
+   "precision": 0.54342,
+   "recall": 0.4337,
+   "map50": 0.44182,
+   "map50_95": 0.28082
+  },
+  {
+   "epoch": 11,
+   "train_loss": 6.6667,
+   "val_loss": 7.3007,
+   "precision": 0.61644,
+   "recall": 0.41811,
+   "map50": 0.4311,
+   "map50_95": 0.25858
+  },
+  {
+   "epoch": 12,
+   "train_loss": 6.4872,
+   "val_loss": 6.7942,
+   "precision": 0.67075,
+   "recall": 0.43805,
+   "map50": 0.47585,
+   "map50_95": 0.30032
+  },
+  {
+   "epoch": 13,
+   "train_loss": 6.4488,
+   "val_loss": 6.8257,
+   "precision": 0.5342,
+   "recall": 0.4404,
+   "map50": 0.44739,
+   "map50_95": 0.27425
+  },
+  {
+   "epoch": 14,
+   "train_loss": 6.3592,
+   "val_loss": 6.7565,
+   "precision": 0.55232,
+   "recall": 0.47938,
+   "map50": 0.47009,
+   "map50_95": 0.29611
+  }
+ ]
+}

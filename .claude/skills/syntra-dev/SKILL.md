@@ -37,7 +37,46 @@ real, what is written but unrun, and how it was verified.
 - When you add or change a capability, update its README row: what changed,
   and how you verified it (test name, live check, or "not run, needs X").
 - Never claim something ran if it did not. "Written, not built" is a fine
-  status.
+  status. Check a long run's log before quoting it: a training run that
+  stopped early is reported with the epochs it actually completed.
+- Every model that can be run shows its evidence in the Model performance
+  panel. A model trained here has its `results.csv` beside the weights; a
+  pack ships `app/models/pack_metrics/<pack_id>.json` (epochs, per-class
+  mAP50, training images, GSD, note). Classes scoring mAP50 below 0.2 are
+  listed in `hidden_classes` and left out of the catalog entry, not returned.
+- A raster-check rule change bumps `HEALTH_VERSION` in `raster_health.py`
+  so saved checks in the library are redone.
+- Never write into a user's original file. Images opened from disk are
+  hard-linked into the library; call `detach_if_linked(path)` before any
+  in-place write (`rasterio.open(path, "r+")`, overviews). Writes that go
+  through a temp file and `os.replace` are already safe.
+- Work must survive a browser refresh. Keep small identifiers in the
+  browser (`PROJECT_KEY` in App.jsx, the map view and layer settings in
+  MapView) and fetch everything heavy back from the server. Anything
+  expensive to render (previews) is cached on disk keyed by file size and
+  mtime, with an ETag.
+- Single-letter map shortcuts (MapDrawTools) are global; a panel with its
+  own keys puts `data-own-keys` on its root so they are not taken by the map
+  (the review list's A / R once opened the Train panel instead).
+- Hardware for a model comes from `app/core/onnx_runtime.py`
+  (`session_providers(device)`), never a hand-written provider list, and a
+  GPU is found by what onnxruntime can use, not by torch.
+- A time shown to the user is measured: from this run's pace (`Eta`) or
+  from runs recorded on this machine (`speed.record`). No measurement, no
+  number. A speed-up that changes results (INT8) is measured against the
+  full model on real imagery and stays opt-in until it matches.
+- Caches shared by parallel requests (one map view asks for ~30 tiles at
+  once) need a lock: `lru_cache` alone lets every request miss together.
+- An image that "doesn't show on the map" is first a content question,
+  not a placement one. Satellite products ship side files (cloud, quality,
+  UDM masks) next to the scene; an all-zero mask reads 0% data and draws
+  fully transparent. `looks_like_mask()` names it as an error finding
+  (`no_data`), predict refuses it, optimise skips it, and the map always
+  draws the file's footprint (`ImageFootprint` in MapView) so the location
+  is visible whatever the pixels hold.
+- PROJ/GDAL data comes from this environment (`app/core/proj_env.py`, run
+  from `app/__init__.py`): never rely on a system-wide `PROJ_LIB`, which
+  PostGIS and QGIS installers set on Windows.
 
 ## 2. Security rules for the API
 
@@ -79,7 +118,8 @@ reimplement them.
   dir is refused.
 - Run `python -m pytest -q backend/tests` before committing, and say how many
   passed.
-- For the UI, `npx vite build` in `frontend/` must succeed. When you can,
+- For the UI, `npm run build` in `frontend/` must succeed: it runs ESLint
+  first, which fails on a name used but never imported (vite alone does not). When you can,
   start the backend and `npx vite`, screenshot the changed screen, and look
   at it before calling the work done.
 
@@ -108,10 +148,29 @@ direction in a comment. Work inside them:
 - **Icons** come from `components/Icons.jsx` (inline SVG, one stroke). No
   emoji in the UI.
 - **Map panels.** Map tools live in the one toolbar on the right. A tool
-  with content (Edit, Legend, Analysis) opens a floating panel just left of
-  the toolbar, aligned with its icon, never a fixed corner box or a layout
-  column; one panel at a time; Esc closes it. Rows are 32 px: swatch, name,
-  one mono value. Explanations go in tooltips, not on the panel.
+  with content (Edit, Legend, Analysis, Train, Model performance) opens a
+  floating panel just left of the toolbar, never a separate page, a fixed
+  corner box or a layout column; one panel at a time (App.jsx closes the
+  others); Esc closes it. Rows are 32 px: swatch, name, one mono value. On
+  phones panels span the map left of the toolbar.
+- **Imagery on the map** is drawn in Web Mercator: the preview PNG is warped
+  (`_preview_vrt`) and placed with `preview_bounds_wgs84`; zoomed in, full-
+  resolution tiles from `/api/images/{id}/tiles/{z}/{x}/{y}.png` take over.
+  Never stretch a raster-grid picture over a lat/lon box (8 m off north-up,
+  460 m south-up). `test_preview_placement_offline.py` guards it.
+- **No overlap, no page scroll.** The app is one screen tall
+  (`minmax(0, 1fr)` rows); panels, the sidebar and lists scroll inside. Panels
+  stay clear of the library dock (`--dock-h`). After a layout change, run the
+  overlap audit: every pair of floating elements measured with
+  getBoundingClientRect, in every panel state, at 1440, 1280x720, tablet and
+  phone. Zero overlaps is the bar.
+- **Short text.** One line per fact or error, with a small (i) from
+  `InfoNote.jsx` that opens the explanation and the fix in place beneath it,
+  never a popup and never a paragraph on the panel.
+- **Charts** in panels are hand-drawn SVG: the measure that matters in the
+  accent, everything else in grey steps, values at the line ends in mono,
+  no legend box. Detection models are measured with loss (train vs val),
+  precision, recall and mAP50, never "accuracy".
 - **Motion.** Name transitions (`background-color`, `color`, `transform`)
   with `var(--ease)`; no looping animation except a live spinner.
 

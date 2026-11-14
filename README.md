@@ -133,6 +133,113 @@ an 8-band uint16 UTM GeoTIFF with RGB in bands 3/2/1 and an empty strip:
 health ok, bands 3·2·1 picked from the sensor name, 2 empty tiles skipped,
 181 ships, ONNX only.
 
+## Train your own model, on the map
+
+The Train icon in the map toolbar opens a five-step panel beside the map
+(it replaced the separate Model setup page; the environment check is now in
+Settings):
+
+1. **Data**: upload a drone or satellite GeoTIFF (or pick one from the library) and name the classes.
+2. **Label**: draw boxes or polygons on the map, over the base map and the image. Click a saved shape to delete it.
+3. **Dataset**: tiles the image and labels into a YOLO dataset (boxes, rotated boxes or outlines), 20% held out.
+4. **Train**: fine-tunes YOLO11 as a background job; the panel can be closed while it runs.
+5. **Use**: adds the model to the sidebar list (Unvalidated) and runs it on the current image.
+
+Verified end to end in the browser (Playwright): 3 labels → 20 tiles → 2 epochs → registered → run →
+the result appears under Analysis. Training needs `ultralytics` + `torch` on the machine.
+
+## Measurements and exports (phase 2, part 1)
+
+Every result object now carries `area_m2` and `perimeter_m` (geodesic), `length_m`, `width_m` and
+`orientation_deg` (smallest rotated rectangle, measured in a local equidistant projection, bearing
+from north) and its centroid `lon`, `lat` (`engine/measure.py`, applied to detectors, segmentation
+and vegetation). A 40 x 8 m rectangle at any bearing is measured within 5 cm and 0.5 deg.
+
+Exports: GeoJSON, KML, Shapefile (now always with its `.prj`; it used to be left out for detector
+runs, and the DBF only took the first object's fields), **GeoPackage** (written directly, no GDAL
+needed; GDAL reads it back with its CRS) and **CSV** (attributes, lon, lat, WKT). Checked on the
+harbour run: 175 boats with all measurements in each format.
+
+Large uploads (>= 4096 px, stripped or without overviews) are rewritten in the background as
+512 px tiles with overviews, like a COG (`engine/optimize.py`): a 162 MB 9000 x 6000 file took about
+6.5 s and the image stays usable meanwhile.
+
+## Imagery lands where it is
+
+The map preview used to be the raster's own pixel grid stretched over its lat/lon bounding box. On a
+web map that is wrong whenever the raster is not in Web Mercator: measured 7.5 m off on the 30 cm
+UTM harbour scene (25 image pixels, enough to put boxes beside the boats), 165 m on a raster
+rotated 15° and 460 m on a south-up raster (drawn upside down). The preview is now warped to Web
+Mercator and placed by its exact corners (`preview_bounds_wgs84`). Zoomed in past the preview's
+detail, full-resolution tiles are cut from the GeoTIFF (`/api/images/{id}/tiles/{z}/{x}/{y}.png`),
+so a 20 000 px orthomosaic is as sharp on screen as on disk. Tests: a marker in north-up, rotated
+and south-up rasters lands within 0.6 m in the preview and within 0.5 m in a zoom-20 tile.
+
+The layout no longer scrolls the page (at 1280×720 it was 964 px tall and scrolled 244 px, hiding
+the top bar), Settings is a map panel instead of a cut-off modal, the Edit menu closes when another
+panel opens, and panels stay clear of the image library. Checked with an overlap audit of every
+panel state at four screen sizes: no overlaps. When the satellite basemap can't load, a one-line
+notice says so instead of a black map.
+
+## Accuracy on your own images
+
+Two area tools in the Train panel's Label step:
+
+- **Training area**: label every object inside it; dataset tiles are cut only from inside training
+  areas, so an object you did not label is never taught as background.
+- **Accuracy area**: label every object inside it; it is kept out of training (labels inside it are
+  dropped from the dataset and its pixels masked) and used to score models.
+
+Model performance → *Check on this image* runs a model inside the accuracy areas and matches each
+result to a label of the same class at IoU ≥ 0.5: found / wrong / missed, precision, recall, F1 per
+class (`engine/accuracy.py`, `POST /api/predict/accuracy`). The latest F1 shows next to the model in
+the sidebar. A one-class model is matched to one-class labels whatever the names (ship → boat).
+
+Verified in the browser on the Dubai harbour scene: an accuracy area with 17 boats, labels for 15 of
+them plus one object that is not there → exactly 15 found, 2 wrong, 1 missed (F1 0.91).
+
+Two bugs found and fixed on the way (both changed results everywhere, not only in checks):
+
+- Partial edge tiles were enlarged to fill the model input (a 576×432 tile went in 1.78× larger), so
+  edge objects were seen at the wrong scale. Every runtime now scales a partial tile like a full one
+  (`nominal_tile`); tests in `test_drone_seg_offline.py`.
+- Area-limited runs used their own tile grid, so results inside an area differed from a whole-image
+  run (F1 0.79 between the two). The area window is now aligned to the whole image's grid: identical
+  results inside the area (17 of 17), and fewer tiles read. Test in `test_accuracy_offline.py`.
+
+The Analysis panel has a *Min score* slider that filters results on the map and in the counts
+without rerunning. The model list puts models suited to the image's resolution first; the others
+are muted with the reason in their tooltip.
+
+## Model performance
+
+The chart icon in the map toolbar opens the Model performance panel: mAP50 on held-out images (the
+best epoch), loss per epoch (training against validation, with a one-line reading of the gap),
+validation precision / recall / mAP50 per epoch, and mAP50 per class (classes under 0.2 are dimmed
+and not returned). Data: `results.csv` beside a model trained here, or
+`app/models/pack_metrics/<pack_id>.json` for packs (`GET /api/models/performance`,
+`GET /api/models/{id}/performance`). Tested in `test_performance_offline.py`; screenshots at
+1440 px and 390 px.
+
+## Drone objects (trained here, non-commercial)
+
+`syntra-drone-objects` is YOLO11n-seg fine-tuned on the TU Graz Semantic Drone Dataset (340 photos,
+60 held out, about 4 cm per pixel as the model sees them). The run was planned for 30 epochs and
+stopped after 14; the weights are the best of those (epoch 12). Mask mAP50 on the held-out photos:
+
+| Class | mAP50 |
+|---|---|
+| Vehicles | 0.99 |
+| People | 0.65 |
+| Roofs | 0.55 |
+| Trees | 0.44 |
+| Fences, bicycles | < 0.2 (trained, not returned) |
+
+It runs through onnxruntime (`models/onnx_seg.py`, no torch), reads tiles at its training scale, and is
+refused with a 409 on imagery coarser than 22 cm. Checked on a 2 cm GeoTIFF: 6 outlines, WGS84, correct
+place. One suburban Austrian site: check it on Gulf imagery before relying on counts. Dataset terms are
+non-commercial.
+
 ## Works with any GeoTIFF: the 21-file matrix
 
 `backend/tests/geotiff_matrix/variants.py` writes 21 GeoTIFFs that differ the
@@ -197,9 +304,81 @@ for when it is exposed to a network (all in `backend/.env.example`):
 - Upload filenames are sanitised and capped by `SYNTRA_MAX_UPLOAD_MB`.
 - Library Status install/repair/update (which runs `pip`) only works from
   the server itself unless `SYNTRA_ALLOW_ENV_ACTIONS=1`.
+- **Review results, then train on the review (plan stage 2).** Analysis >
+  Review on a finished run lists its objects least sure first. Accept (A) or
+  reject (R) each one; the map flies to it, outlined, clear of the panel; the
+  list moves on by itself. Decisions are saved beside the result
+  (`<model>.review.json`) and survive a refresh. Add to training turns them
+  into the image's training data: an accepted object becomes a label inside a
+  small training area, a rejected one an empty small area (a hard negative,
+  "not a ship"). Training tiles are masked to their areas, so the unreviewed
+  objects around them are never taught as background. Applying again replaces
+  what the last apply wrote. Verified by `test_review_offline.py` (4 tests)
+  and live on 175 ships detected in Dubai harbour (3 accepted, 1 rejected by
+  keyboard -> 3 labels + 4 areas). Missed objects are still drawn in Train.
+- **Faster Run, with honest timing (plan stage 1).**
+  - Tiles are read on a background thread while the model runs
+    (`prefetch`); reading was 28% of a run when done in line.
+  - The GPU is found through onnxruntime, not torch: an NVIDIA card with
+    `onnxruntime-gpu`, or any DirectX 12 card with DirectML, is now offered
+    and used (TensorRT FP16 with an engine cache, then CUDA, then DirectML,
+    then CPU). A card without GPU onnxruntime shows the one-line fix in
+    `/api/compute` (`gpu_status`). Before, GPUs were only found when torch had
+    CUDA, so most machines ran on the CPU whatever they had.
+  - Above the Run button: area in km2 and, once the model has run on this
+    computer, the expected time (median of its last five measured runs;
+    never an invented figure). During a run: tiles done and time left from
+    the run's own pace. Live check: "27 s left" at second 4 of a run that
+    ended at second 29.
+  - INT8 measured, not shipped as default: on Dubai harbour (0.3 m) a
+    calibrated INT8 YOLO11n-OBB with the head kept in float ran 1.9x faster
+    (191 -> 100 ms/tile on 2 cores) and found 96% of what the full model
+    found. Fully quantising the head returned 0 detections.
+  - `npm run lint` (part of `npm run build`) fails on undefined names: a
+    missing `useEffect` import had blanked the page with a green build. Error
+    boundaries keep a failing part from blanking the whole interface.
+- **Open from this computer (This PC tab).** The engine runs on the same
+  machine, so a multi-GB scene is not uploaded: the file is hard-linked into
+  the library (instant, no extra disk space) or, across disks, copied by the
+  file system. The original is never modified: anything that writes into a
+  library file (overviews, a GCP transform) first breaks the link
+  (`detach_if_linked`). Opening the same file again reuses its entry. Only
+  requests from this computer can use it, inside `SYNTRA_IMPORT_ROOTS`
+  (default: the home folder). Verified by `test_local_import_offline.py`
+  (8 tests; the original-unchanged test fails when the detach is removed) and
+  live: a 486 MB scene on the map 2.8 s after the click.
+- **A refresh keeps your work.** The session (image, selected models, AOI,
+  score filter), the map view per image and the image layer's opacity are
+  kept in the browser; results and running jobs come back from the server.
+  The preview is cached on disk with an ETag, so after a refresh the image is
+  back in 0.4 s instead of being read again. File > Save project now saves
+  this record (it used to save an empty `{}`).
+- **Large scenes on the map.** Measured on a real SuperView Neo-3 MUX scene
+  (10,806 x 10,395 px, 8 bands, uint16, 1.8 GB, stripped, no overviews) on a
+  2-core VM: raster check 1.5 s; preview 7.6 s (was 118 s: it is now read
+  decimated in the file's CRS and warped in memory, not warped from full
+  resolution); background optimise 114 s; after it, tiles 0.2-0.7 s at
+  z13-z16. The map stays on the preview while the optimise runs, then
+  switches to full-resolution tiles. The scene stretch is computed once per
+  file even when a view asks for 30 tiles at once (was 30 x 0.35 s).
+  The Legend has the image as a layer: show/hide, opacity, ground resolution.
+- **Masks uploaded instead of imagery.** A scene's cloud or quality mask
+  (for example SuperView Neo `*_Cloud.tiff`) is named in the raster check
+  as "No image data: this is a mask", with the file to upload instead;
+  predictions on it are refused, and the map draws the file's footprint in
+  red at its location. Verified by `test_mask_upload_offline.py` (4 tests)
+  and a live upload of an all-zero EPSG:4326 mask.
+- **Accounts.** The app opens on Sign in / Create account. The first account
+  is the admin and can only be made from the computer running Syntra; after
+  that anyone with the address can create an account unless
+  `SYNTRA_ALLOW_SIGNUP=0`. Passwords are scrypt-hashed with a per-user salt;
+  the session is an HttpOnly cookie whose token is stored only as a SHA-256
+  hash in `syntra.db`. Five wrong passwords lock an email or address for ten
+  minutes. `SYNTRA_AUTH=off` restores open access. Verified by
+  `test_auth_offline.py` (9 tests) and a live browser run at four screen sizes.
 - `SYNTRA_API_KEY` turns on a shared key for every `/api/*` route except
   `/api/health`; set `VITE_API_KEY` in `frontend/.env` to match. This is a
-  LAN gate, not per-user login, which is the next step.
+  shared key for scripts and QGIS; people sign in with accounts (above).
 
 Verified by `backend/tests/test_security_offline.py` (19 tests).
 
@@ -242,6 +421,13 @@ docker-compose.yml
 
 ## Running it for real
 
+**Windows, one command** (creates the conda env on first run, then opens the browser):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\start-windows.ps1
+# interface http://localhost:5291, API 8765; the next free port is used if one is taken
+```
+
 ```bash
 # 0. Check what your machine actually has before installing anything
 python scripts/check_environment.py
@@ -258,7 +444,7 @@ uvicorn app.main:app --reload --port 8000
 # Frontend
 cd frontend
 npm install
-npm run dev   # http://localhost:5173, proxies /api -> :8000
+npm run dev   # http://localhost:5291 (VITE_PORT), proxies /api -> :8000 (VITE_API_PORT)
 
 # Offline tests (no GPU/rasterio/torch needed)
 cd backend

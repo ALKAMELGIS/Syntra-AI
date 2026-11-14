@@ -138,6 +138,8 @@ def export_results(
     else:
         raise ValueError(f"Unknown geometry kind: {geometry}")
 
+    from app.engine.measure import measure_features
+    measure_features(geojson)
     geojson_path = out_dir / f"{model_id}.geojson"
     geojson_path.write_text(json.dumps(geojson, indent=2))
 

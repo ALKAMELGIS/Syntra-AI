@@ -1,7 +1,10 @@
 import RasterHealth from "./RasterHealth.jsx";
 import ModelList from "./ModelList.jsx";
-import React, { useRef, useState } from "react";
-import { api } from "../api/client.js";
+import LocalBrowser from "./LocalBrowser.jsx";
+import InfoNote, { splitMessage } from "./InfoNote.jsx";
+import { useOptimizeJob } from "./OptimizeNote.jsx";
+import React, { useEffect, useRef, useState } from "react";
+import { api, formatDuration } from "../api/client.js";
 import { IconUpload, IconFolder, IconPlay, IconClose, IconDashboard } from "./Icons.jsx";
 
 function formatBytes(bytes) {
@@ -9,10 +12,48 @@ function formatBytes(bytes) {
   return mb >= 1024 ? `${(mb / 1024).toFixed(2)} GB` : `${mb.toFixed(1)} MB`;
 }
 
-export default function Sidebar({ models, selectedModels, onToggleModel, onModelsChanged, onTrain, image, onImageUploaded, onRun, running, hasAoi = false, onClearAoi }) {
+// Long scene names (SVN3-20241127_L2A0000211147_03_...Cloud.tiff) have no
+// spaces to wrap at. Keep them on one line inside the box: cut the middle,
+// keep the start and the last characters with the extension; full name on hover.
+function FileName({ name }) {
+  const tail = name.length > 24 ? name.slice(-14) : "";
+  return (
+    <span className="dropzone-name mono" title={name}>
+      <span className="dropzone-name-head">{tail ? name.slice(0, -14) : name}</span>
+      {tail && <span className="dropzone-name-tail">{tail}</span>}
+    </span>
+  );
+}
+
+// Area and expected time for the selected models: the time comes only from
+// runs measured on this computer, so before the first run only the area shows.
+function useRunEstimate(image, selectedModels, aoi) {
+  const [est, setEst] = useState(null);
+  const key = `${image?.image_id}|${selectedModels.join(",")}|${aoi ? JSON.stringify(aoi).length : 0}`;
+  useEffect(() => {
+    if (!image?.image_id || !selectedModels.length) { setEst(null); return; }
+    let live = true;
+    const t = setTimeout(() => {
+      Promise.all(selectedModels.map((m) => api.estimate({ image_id: image.image_id, model_id: m, aoi: aoi || null }).catch(() => null)))
+        .then((rs) => {
+          if (!live) return;
+          const ok = rs.filter(Boolean);
+          if (!ok.length) return setEst(null);
+          const seconds = ok.length === rs.length && ok.every((r) => r.seconds != null) ? ok.reduce((a, r) => a + r.seconds, 0) : null;
+          setEst({ area_km2: ok[0].area_km2, seconds, device: ok[0].device });
+        });
+    }, 300);
+    return () => { live = false; clearTimeout(t); };
+  }, [key]);
+  return est;
+}
+
+export default function Sidebar({ models, selectedModels, onToggleModel, onModelsChanged, onTrain, image, onImageUploaded, onRun, running, hasAoi = false, onClearAoi, aoi = null }) {
+  const optimizing = useOptimizeJob(image, onImageUploaded);
+  const estimate = useRunEstimate(image, selectedModels, aoi);
   const fileInput = useRef(null);
   const batchInput = useRef(null);
-  const [mode, setMode] = useState("single"); // "single" | "batch"
+  const [mode, setMode] = useState("single"); // "single" | "local" | "batch"
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [dragOver, setDragOver] = useState(false);
@@ -105,7 +146,7 @@ export default function Sidebar({ models, selectedModels, onToggleModel, onModel
 
   const batchImages = batchQueue.filter((q) => q.status === "done").map((q) => q.image);
   const canRun =
-    mode === "single"
+    mode !== "batch"
       ? !!image && selectedModels.length > 0 && !running
       : batchImages.length > 0 && selectedModels.length > 0 && !running;
 
@@ -123,14 +164,23 @@ export default function Sidebar({ models, selectedModels, onToggleModel, onModel
 
       <div className="source-mode-tabs">
         <button className={`source-mode-tab ${mode === "single" ? "active" : ""}`} onClick={() => setMode("single")}>
-          Single file
+          Upload
+        </button>
+        <button className={`source-mode-tab ${mode === "local" ? "active" : ""}`} onClick={() => setMode("local")}
+                title="Open a GeoTIFF from this computer's folders, without uploading it">
+          This PC
         </button>
         <button className={`source-mode-tab ${mode === "batch" ? "active" : ""}`} onClick={() => setMode("batch")}>
-          Folder batch
+          Batch
         </button>
       </div>
 
-      {mode === "single" ? (
+      {mode === "local" && (
+        <>
+          <LocalBrowser onImported={(entry) => { onImageUploaded(entry); setMode("single"); }} />
+        </>
+      )}
+      {mode === "local" ? null : mode === "single" ? (
         <>
           <div
             className={`dropzone ${dragOver ? "drag-over" : ""}`}
@@ -144,28 +194,31 @@ export default function Sidebar({ models, selectedModels, onToggleModel, onModel
           >
             <input ref={fileInput} type="file" accept=".tif,.tiff,.xml" multiple hidden onChange={handleFile} />
             <IconUpload className="dropzone-icon" />
-            <span>
-              {uploading
-                ? `Uploading… ${Math.round(uploadProgress * 100)}%`
-                : image
-                ? image.filename
-                : "Drop a GeoTIFF, with its .xml if you have it"}
-            </span>
+            {image && !uploading ? (
+              <>
+                <FileName name={image.filename} />
+                <span className="dropzone-meta mono">
+                  {[image.size_bytes ? formatBytes(image.size_bytes) : null,
+                    image.width ? `${image.width} × ${image.height} px` : null,
+                    image.gsd_x_m && !image.health ? `${(image.gsd_x_m * 100).toFixed(0)} cm GSD` : null]
+                    .filter(Boolean).join(" · ")}
+                </span>
+              </>
+            ) : (
+              <span>
+                {uploading
+                  ? (uploadProgress >= 1 ? "Reading the image…" : `Uploading… ${Math.round(uploadProgress * 100)}%`)
+                  : "Drop a GeoTIFF, with its .xml if you have it"}
+              </span>
+            )}
           </div>
           {uploading && (
             <div className="upload-progress-bar">
               <div className="upload-progress-fill" style={{ width: `${Math.round(uploadProgress * 100)}%` }} />
             </div>
           )}
-          {uploadError && <p className="note" style={{ color: "var(--error)" }}>{uploadError}</p>}
-          {image && (
-            <p className="note">
-              {image.size_bytes ? `${formatBytes(image.size_bytes)} · ` : ""}
-              {image.width ? `${image.width} × ${image.height} px` : ""}
-              {image.gsd_x_m ? ` · ${(image.gsd_x_m * 100).toFixed(0)} cm GSD` : ""}
-            </p>
-          )}
-          {image?.health && <RasterHealth health={image.health} />}
+          {uploadError && <InfoNote level="error" title={splitMessage(uploadError)[0]} detail={splitMessage(uploadError)[1]} />}
+          {image?.health && <RasterHealth health={image.health} optimizing={optimizing} />}
         </>
       ) : (
         <>
@@ -215,7 +268,7 @@ export default function Sidebar({ models, selectedModels, onToggleModel, onModel
                 {item.status === "uploading" && item.progress != null && (
                   <span className="note" style={{ margin: 0 }}>{Math.round(item.progress * 100)}%</span>
                 )}
-                {item.status === "error" && <span className="note" style={{ color: "var(--error)" }}>{item.error}</span>}
+                {item.status === "error" && <InfoNote level="error" title={splitMessage(item.error)[0]} detail={splitMessage(item.error)[1]} />}
                 <button className="batch-queue-remove" onClick={() => removeBatchItem(item.filename)}><IconClose /></button>
               </div>
             ))}
@@ -232,8 +285,10 @@ export default function Sidebar({ models, selectedModels, onToggleModel, onModel
         onToggleModel={onToggleModel}
         onModelsChanged={onModelsChanged}
         onTrain={onTrain}
+        imageGsd={image?.health?.gsd_m ?? null}
       />
 
+      <div className="run-dock">
       {hasAoi && (
         <div className="aoi-chip">
           <span className="aoi-chip-swatch" />
@@ -243,9 +298,16 @@ export default function Sidebar({ models, selectedModels, onToggleModel, onModel
           </button>
         </div>
       )}
+      {mode !== "batch" && estimate && !running && (
+        <p className="run-estimate mono" title={estimate.seconds == null ? "The time shows after this model has run once on this computer" : `Measured on this computer (${estimate.device})`}>
+          {[estimate.area_km2 != null ? `${estimate.area_km2 < 10 ? estimate.area_km2.toFixed(2) : Math.round(estimate.area_km2)} km²` : null,
+            estimate.seconds != null ? `about ${formatDuration(estimate.seconds)}` : null].filter(Boolean).join(" · ")}
+        </p>
+      )}
       <button className="run-button" disabled={!canRun} onClick={handleRunClick}>
         {running ? "Running…" : <><IconPlay /> {hasAoi ? "Run in area" : "Run prediction"}</>}
       </button>
+      </div>
     </div>
   );
 }

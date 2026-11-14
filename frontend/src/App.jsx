@@ -1,9 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import TopBar from "./components/TopBar.jsx";
+import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import Sidebar from "./components/Sidebar.jsx";
 import MapView from "./components/MapView.jsx";
 import AnalysisPanel from "./components/AnalysisPanel.jsx";
-import ModelSetupWizard from "./components/ModelSetupWizard.jsx";
+import TrainPanel from "./components/TrainPanel.jsx";
+import PerformancePanel from "./components/PerformancePanel.jsx";
+import { IconMap, IconSliders } from "./components/Icons.jsx";
 import { api } from "./api/client.js";
 
 const PALETTE = ["#5b8cff", "#b48ead", "#f5a623", "#ff5d6c", "#c678dd", "#56c7d6", "#e8a87c", "#a8e6cf"];
@@ -14,9 +17,11 @@ function jobKey(imageId, modelId) {
   return `${imageId}::${modelId}`;
 }
 
-export default function App() {
-  const [view, setView] = useState("detect"); // "detect" | "models"
-  const [wizardStep, setWizardStep] = useState(null); // open the wizard on a given step
+export const PROJECT_KEY = "syntra_project";
+
+export default function App({ user = null, onSignOut = null }) {
+  // phones show one pane at a time: the setup panel or the map
+  const [mobilePane, setMobilePane] = useState("setup");
   const [models, setModels] = useState([]);
   const [selectedModels, setSelectedModels] = useState([]);
   const [image, setImage] = useState(null);
@@ -27,8 +32,60 @@ export default function App() {
   const [aoi, setAoi] = useState(null);
   const [measurement, setMeasurement] = useState(null);
   const [detectionsVisible, setDetectionsVisible] = useState(true);
-  const [analysisOpen, setAnalysisOpen] = useState(false);
+  const [analysisOpen, setAnalysisOpenRaw] = useState(false);
+  // Train panel: one flyout beside the map toolbar at a time (Analysis or Train)
+  const [trainOpen, setTrainOpenRaw] = useState(false);
+  const [perfOpen, setPerfOpenRaw] = useState(false);
+  const [perfModel, setPerfModel] = useState(null);
+  function setPerfOpen(v) {
+    setPerfOpenRaw((prev) => {
+      const next = typeof v === "function" ? v(prev) : v;
+      if (next) { setAnalysisOpenRaw(false); setTrainOpenRaw(false); setDrawMode(null); setMobilePane("map"); }
+      return next;
+    });
+  }
+  const [trainStep, setTrainStep] = useState(0);
+  const [annotations, setAnnotations] = useState([]);
+  const [extraClasses, setExtraClasses] = useState([]);
+  const [activeClass, setActiveClass] = useState(null);
+  const [drawMode, setDrawMode] = useState(null);
+  const [labelError, setLabelError] = useState(null);
+  function setAnalysisOpen(v) {
+    setAnalysisOpenRaw((prev) => {
+      const next = typeof v === "function" ? v(prev) : v;
+      if (next) { setTrainOpenRaw(false); setPerfOpenRaw(false); }
+      return next;
+    });
+  }
+  function setTrainOpen(v) {
+    setTrainOpenRaw((prev) => {
+      const next = typeof v === "function" ? v(prev) : v;
+      if (next) { setAnalysisOpenRaw(false); setPerfOpenRaw(false); setMobilePane("map"); }
+      if (!next) setDrawMode(null);
+      return next;
+    });
+  }
+  function openTrain(step = 0) { setTrainStep(step); setTrainOpen(true); }
   const pollRef = useRef(null);
+
+  // The working session survives a refresh or a browser crash. Only small
+  // identifiers are kept here (image id, selected models, AOI, filter); the
+  // image, its results and running jobs live on the server and are fetched
+  // back. The same record is what File > Save project downloads.
+  const restoring = useRef(true);
+  useEffect(() => {
+    let saved = null;
+    try { saved = JSON.parse(localStorage.getItem(PROJECT_KEY) || "null"); } catch { saved = null; }
+    if (saved?.selectedModels?.length) setSelectedModels(saved.selectedModels);
+    if (saved?.aoi) setAoi(saved.aoi);
+    if (typeof saved?.minScore === "number") setMinScore(saved.minScore);
+    if (saved?.detectionsVisible === false) setDetectionsVisible(false);
+    if (saved?.image_id) {
+      api.getImage(saved.image_id).then((img) => setImage(img)).catch(() => {}).finally(() => { restoring.current = false; });
+    } else {
+      restoring.current = false;
+    }
+  }, []);
 
   // Restore recent prediction jobs after a page reload or server restart.
   // The server keeps them in its job store; the newest job per
@@ -124,13 +181,14 @@ export default function App() {
     return () => clearInterval(pollRef.current);
   }, [jobs]);
 
-  async function handleRun(images) {
+  async function handleRun(images, modelIds = selectedModels) {
+    setMobilePane("map");
     const validImages = (images || []).filter(Boolean);
-    if (validImages.length === 0 || selectedModels.length === 0) return;
+    if (validImages.length === 0 || modelIds.length === 0) return;
 
     setAnalysisOpen(true);
     for (const img of validImages) {
-      for (const modelId of selectedModels) {
+      for (const modelId of modelIds) {
         const key = jobKey(img.image_id, modelId);
         try {
           const started = await api.startPrediction({
@@ -161,7 +219,7 @@ export default function App() {
         const res = await fetch(url);
         if (!res.ok) continue;
         const blob = await res.blob();
-        const ext = format === "geojson" ? "geojson" : format === "kml" ? "kml" : "zip";
+        const ext = { geojson: "geojson", kml: "kml", gpkg: "gpkg", csv: "csv" }[format] || "zip";
         const a = document.createElement("a");
         a.href = URL.createObjectURL(blob);
         a.download = `${j.model_id}_${j.job_id.slice(0, 8)}.${ext}`;
@@ -172,6 +230,48 @@ export default function App() {
       }
     }
   }
+
+  // An image remembered from an earlier session may predate fields the map needs
+  // (the exact preview bounds): refresh it once from the library.
+  useEffect(() => {
+    if (image?.image_id && !image.preview_bounds_wgs84 && image.bounds_wgs84) {
+      api.getImage(image.image_id).then((fresh) => fresh && setImage((cur) => (cur?.image_id === fresh.image_id ? { ...cur, ...fresh } : cur))).catch(() => {});
+    }
+  }, [image?.image_id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // training labels for the current image
+  useEffect(() => {
+    if (!image?.image_id) { setAnnotations([]); return; }
+    api.listAnnotations(image.image_id).then((r) => setAnnotations(r.annotations || [])).catch(() => setAnnotations([]));
+  }, [image?.image_id]);
+  const trainClasses = [...new Set([...annotations.map((a) => a.class_name), ...extraClasses])].filter((c) => !c.startsWith("__"));
+  useEffect(() => {
+    if (!activeClass && trainClasses.length) setActiveClass(trainClasses[0]);
+  }, [trainClasses.join("|")]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function saveLabel(latlngs) {
+    if (!image?.image_id || !activeClass) return;
+    setLabelError(null);
+    try {
+      const saved = await api.addAnnotation(image.image_id, {
+        class_name: activeClass, points_lonlat: latlngs.map((p) => [p.lng, p.lat]),
+      });
+      setAnnotations((list) => [...list, saved]);
+    } catch (err) {
+      setLabelError(err.detail?.message || err.message);
+    }
+  }
+  async function deleteLabel(id) {
+    try {
+      await api.deleteAnnotation(image.image_id, id);
+      setAnnotations((list) => list.filter((a) => a.id !== id));
+    } catch (err) { setLabelError(err.message); }
+  }
+  async function clearLabels() {
+    if (!image?.image_id || !confirm("Delete every label on this image?")) return;
+    try { await api.clearAnnotations(image.image_id); setAnnotations([]); } catch (err) { setLabelError(err.message); }
+  }
+  const refreshModels = () => api.listModels().then(setModels).catch(() => {});
 
   const running = Object.values(jobs).some((j) => !TERMINAL.has(j.status));
   const hasCompletedJob = Object.values(jobs).some((j) => j.status === "completed");
@@ -185,49 +285,73 @@ export default function App() {
       imageName: job.image_name,
     }));
 
+  // Results filtered by the Analysis panel's score slider (no rerun needed).
+  const [minScore, setMinScore] = useState(0);
+  const [focusFeature, setFocusFeature] = useState(null);    // the result being reviewed, highlighted on the map
+
+  useEffect(() => {
+    if (restoring.current) return;          // don't overwrite the saved session before it is read back
+    const record = { version: 1, image_id: image?.image_id || null, image_name: image?.filename || null,
+                     selectedModels, aoi, minScore, detectionsVisible, saved_at: new Date().toISOString() };
+    try { localStorage.setItem(PROJECT_KEY, JSON.stringify(record)); } catch { /* private window: nothing to keep */ }
+  }, [image?.image_id, selectedModels, aoi, minScore, detectionsVisible]);
+  const filtered = useMemo(() => {
+    const out = {};
+    for (const [key, gj] of Object.entries(geojsonByKey)) {
+      if (!gj?.features) { out[key] = gj; continue; }
+      out[key] = minScore <= 0 ? gj : {
+        ...gj, features: gj.features.filter((f) => f.properties?.score == null || f.properties.score >= minScore),
+      };
+    }
+    return out;
+  }, [geojsonByKey, minScore]);
+  const shownCount = (key) => filtered[key]?.features?.length;
+
   const mapLayers = Object.entries(jobs)
     .filter(([key]) => geojsonByKey[key])
     .map(([key, job]) => ({
       key,
+      version: minScore,
       // Legend shows the model only; the source file is listed once under the legend.
       name: models.find((m) => m.model_id === job.model_id)?.name || job.model_id,
       color: colorFor(job.model_id),
-      geojson: geojsonByKey[key],
+      geojson: filtered[key],
       // what the legend shows beside the name: hectares for area layers, else the feature count
       value: job.result?.summary?.vegetation_area_ha != null
         ? `${job.result.summary.vegetation_area_ha} ha`
-        : String(geojsonByKey[key]?.features?.length ?? 0),
+        : String(filtered[key]?.features?.length ?? 0),
     }));
 
   return (
     <div className="app-shell">
       <TopBar
-        view={view}
-        onViewChange={(v) => { setWizardStep(null); setView(v); }}
         devices={devices}
         enabledGpus={enabledGpus}
         onToggleGpu={toggleGpu}
         hasImage={!!image}
         hasJob={hasCompletedJob}
         onExport={handleExport}
+        user={user}
+        onSignOut={onSignOut}
       />
-      {view === "models" ? (
-        <ModelSetupWizard onViewChange={(v) => { setWizardStep(null); setView(v); }} initialStep={wizardStep} />
-      ) : (
-        <div className="layout">
+      <>
+        <div className={`layout pane-${mobilePane}`}>
+          <ErrorBoundary label="The sidebar">
           <Sidebar
             models={models}
             selectedModels={selectedModels}
             onToggleModel={toggleModel}
-            onModelsChanged={() => api.listModels().then(setModels).catch(() => {})}
-            onTrain={() => { setWizardStep("annotate"); setView("models"); }}
+            onModelsChanged={refreshModels}
+            onTrain={() => openTrain(0)}
             image={image}
             onImageUploaded={setImage}
             onRun={handleRun}
             running={running}
             hasAoi={!!aoi}
+            aoi={aoi}
             onClearAoi={() => setAoi(null)}
           />
+          </ErrorBoundary>
           <MapView
             layers={mapLayers}
             detectionsVisible={detectionsVisible}
@@ -236,19 +360,59 @@ export default function App() {
             onAoiChange={setAoi}
             measurement={measurement}
             onMeasurementChange={setMeasurement}
-            onOpenDatasetManager={() => setView("models")}
+            trainOpen={trainOpen}
+            onToggleTrain={() => setTrainOpen((v) => !v)}
+            onAnnotate={() => openTrain(trainClasses.length ? 1 : 0)}
+            labels={{
+              visible: trainOpen,
+              mode: trainOpen && trainStep === 1 ? drawMode : null,
+              className: activeClass, annotations,
+              onDrawn: saveLabel, onShapeClick: deleteLabel,
+            }}
+            perfOpen={perfOpen}
+            onTogglePerf={() => setPerfOpen((v) => !v)}
+            perfPanel={<PerformancePanel open={perfOpen} onClose={() => setPerfOpen(false)} preferModelId={perfModel}
+              image={image} models={models} checkAreas={annotations.filter((a) => a.class_name === "__check_area__").length}
+              onChecked={refreshModels} />}
+            trainPanel={
+              <TrainPanel
+                open={trainOpen} onClose={() => setTrainOpen(false)}
+                step={trainStep} onStep={(i) => { setDrawMode(null); setTrainStep(Math.max(0, Math.min(4, i))); }}
+                image={image} onImageChange={setImage}
+                annotations={annotations} classes={trainClasses}
+                onAddClass={(c) => { setExtraClasses((l) => (l.includes(c) ? l : [...l, c])); setActiveClass(c); }}
+                activeClass={activeClass} onActiveClass={setActiveClass}
+                mode={drawMode} onMode={setDrawMode}
+                onClearAnnotations={clearLabels} labelError={labelError}
+                device={devices?.gpu_count > 0 ? "cuda:0" : "cpu"}
+                onModelsChanged={refreshModels}
+                onCheckModel={(id) => { refreshModels(); setPerfModel(id); setPerfOpen(true); }}
+                onRunModel={(id) => { refreshModels(); setSelectedModels((s) => (s.includes(id) ? s : [...s, id])); handleRun([image], [id]); }}
+              />
+            }
             onSelectLibraryImage={setImage}
             currentImageId={image?.image_id}
             sourceImage={image}
             analysisOpen={analysisOpen}
             onToggleAnalysis={() => setAnalysisOpen((v) => !v)}
             analysisCount={analysisEntries.length}
+            focusFeature={focusFeature}
             analysisPanel={
-              <AnalysisPanel entries={analysisEntries} colorFor={colorFor} onClose={() => setAnalysisOpen(false)} />
+              <AnalysisPanel entries={analysisEntries} colorFor={colorFor} onClose={() => setAnalysisOpen(false)}
+                minScore={minScore} onMinScore={setMinScore} shownCount={shownCount} onFocus={setFocusFeature} />
             }
           />
         </div>
-      )}
+        <nav className="mobile-switch" aria-label="Panels">
+          <button type="button" className={mobilePane === "setup" ? "active" : ""} onClick={() => setMobilePane("setup")}>
+            <IconSliders /> Setup
+          </button>
+          <button type="button" className={mobilePane === "map" ? "active" : ""} onClick={() => setMobilePane("map")}>
+            <IconMap /> Map
+            {analysisEntries.length > 0 && <span className="mono mobile-switch-count">{analysisEntries.length}</span>}
+          </button>
+        </nav>
+      </>
     </div>
   );
 }

@@ -17,11 +17,40 @@ export function withKey(url) {
   return `${url}${url.includes("?") ? "&" : "?"}api_key=${encodeURIComponent(API_KEY)}`;
 }
 
+// 45 s · 3 min · 1 h 20 min
+export function formatDuration(s) {
+  if (s == null) return "";
+  if (s < 60) return `${Math.max(1, Math.round(s))} s`;
+  if (s < 3600) return `${Math.round(s / 60)} min`;
+  const h = Math.floor(s / 3600), m = Math.round((s % 3600) / 60);
+  return m ? `${h} h ${m} min` : `${h} h`;
+}
+
+// One readable message for every failed request: the server's own explanation
+// when it sent one, otherwise what the status code means and what to do. The
+// code is always shown, so a screenshot says what happened.
+export function failureMessage(status, detail, upload = false) {
+  const said = typeof detail === "string" ? detail : detail?.message;
+  if (said) return said;
+  const tip = upload ? " For files on this computer, use the This PC tab: it opens them without uploading." : "";
+  if (status === 413) return `Too large to upload (HTTP 413).${tip}`;
+  if (status === 507) return `The disk is full (HTTP 507).${tip}`;
+  if (status === 502 || status === 503 || status === 504)
+    return `The engine stopped during the request (HTTP ${status}). Check its window, start it again, then retry.${tip}`;
+  if (status >= 500) return `The engine failed (HTTP ${status}). Its window shows the reason.${tip}`;
+  return `Request failed (HTTP ${status}).${tip}`;
+}
+
+// A 401 from any data route means the session ended (signed out elsewhere,
+// expired): tell the sign-in gate, which swaps the app for the sign-in page.
+export const SIGNED_OUT = "syntra:signed-out";
+
 async function handle(res) {
+  if (res.status === 401 && !res.url.includes("/api/auth/")) window.dispatchEvent(new Event(SIGNED_OUT));
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     const detail = body.detail;
-    const message = typeof detail === "string" ? detail : detail?.message || `Request failed: ${res.status}`;
+    const message = failureMessage(res.status, detail);
     const err = new Error(message);
     err.detail = detail;
     throw err;
@@ -29,7 +58,20 @@ async function handle(res) {
   return res.json();
 }
 
+const json = (body) => ({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+
+export const auth = {
+  status: () => request(`${BASE}/auth/status`).then(handle),
+  signIn: (email, password) => request(`${BASE}/auth/signin`, json({ email, password })).then(handle),
+  signUp: (name, email, password) => request(`${BASE}/auth/signup`, json({ name, email, password })).then(handle),
+  signOut: () => request(`${BASE}/auth/signout`, { method: "POST" }).then(handle),
+  engineUp: () => fetch(`${BASE}/health`).then((r) => r.ok).catch(() => false),
+};
+
 export const api = {
+  estimate: (body) => request(`${BASE}/predict/estimate`, json(body)).then(handle),
+  browseLocal: (path) => request(`${BASE}/images/local/browse${path ? `?path=${encodeURIComponent(path)}` : ""}`).then(handle),
+  importLocal: (path) => request(`${BASE}/images/local`, json({ path })).then(handle),
   listPacks: () => request(`${BASE}/models/packs`).then(handle),
   installPack: (packId) => request(`${BASE}/models/packs/${packId}/install`, { method: "POST" }).then(handle),
   installStatus: (jobId) => request(`${BASE}/models/packs/install/${jobId}`).then(handle),
@@ -39,6 +81,10 @@ export const api = {
     return request(`${BASE}/models/packs/${packId}/file`, { method: "POST", body: form }).then(handle);
   },
   listModels: () => request(`${BASE}/models`).then(handle),
+  listPerformance: () => request(`${BASE}/models/performance`).then(handle),
+  startAccuracy: (payload) => request(`${BASE}/predict/accuracy`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }).then(handle),
+  accuracyStatus: (jobId) => request(`${BASE}/predict/accuracy/${jobId}`).then(handle),
+  modelPerformance: (modelId) => request(`${BASE}/models/${modelId}/performance`).then(handle),
   getModel: (modelId) => request(`${BASE}/models/${modelId}`).then(handle),
   gsdCheck: (modelId, gsd) => request(`${BASE}/models/${modelId}/gsd-check?gsd=${gsd}`).then(handle),
   deleteModel: (modelId) => request(`${BASE}/models/${modelId}`, { method: "DELETE" }).then(handle),
@@ -55,8 +101,11 @@ export const api = {
       const xhr = new XMLHttpRequest();
       xhr.open("POST", `${BASE}/images`);
       if (API_KEY) xhr.setRequestHeader("X-API-Key", API_KEY);
+      let sent = 0;
       xhr.upload.onprogress = (e) => {
-        if (onProgress && e.lengthComputable) onProgress(e.loaded / e.total);
+        if (!e.lengthComputable) return;
+        sent = Math.round((100 * e.loaded) / e.total);
+        onProgress?.(e.loaded / e.total);
       };
       xhr.onload = () => {
         let body = {};
@@ -64,14 +113,20 @@ export const api = {
         if (xhr.status >= 200 && xhr.status < 300) {
           resolve(body);
         } else {
+          if (xhr.status === 401) window.dispatchEvent(new Event(SIGNED_OUT));
           const detail = body.detail;
-          const message = typeof detail === "string" ? detail : detail?.message || `Request failed: ${xhr.status}`;
+          const message = failureMessage(xhr.status, detail, true);
           const err = new Error(message);
           err.detail = detail;
           reject(err);
         }
       };
-      xhr.onerror = () => reject(new Error("Network error during upload."));
+      // The browser can't tell why a connection dropped; ask the server whether it is up.
+      xhr.onerror = () => {
+        fetch(`${BASE}/health`).then((r) => r.ok).catch(() => false).then((up) => reject(new Error(up
+          ? `The upload was cut off at ${sent}%. The server is running: try again, or open the file from the This PC tab, which needs no upload.`
+          : "Couldn't reach the Syntra AI server. Check that the backend window is still open, then try again.")));
+      };
       xhr.send(form);
     }),
   devices: () => request(`${BASE}/compute`).then(handle),
@@ -81,8 +136,13 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     }).then(handle),
+  job: (jobId) => request(`${BASE}/jobs/${jobId}`).then(handle),
   listJobs: (kind, limit = 20) => request(`${BASE}/jobs?kind=${kind}&limit=${limit}`).then(handle),
   jobStatus: (jobId) => request(`${BASE}/predict/${jobId}`).then(handle),
+  getReview: (jobId, modelId) => request(`${BASE}/results/${jobId}/${modelId}/review`).then(handle),
+  putReview: (jobId, modelId, changes) => request(`${BASE}/results/${jobId}/${modelId}/review`,
+    { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ changes }) }).then(handle),
+  applyReview: (jobId, modelId) => request(`${BASE}/results/${jobId}/${modelId}/review/apply`, { method: "POST" }).then(handle),
   getGeojson: (jobId, modelId) => request(`${BASE}/results/${jobId}/${modelId}`).then(handle),
   listDatasetVersions: (modelId) => request(`${BASE}/datasets/${modelId}/versions`).then(handle),
   getDatasetVersion: (modelId, versionId) =>
@@ -105,6 +165,7 @@ export const api = {
   resultDownloadUrl: (jobId, modelId, format) =>
     withKey(format === "geojson" ? `${BASE}/results/${jobId}/${modelId}` : `${BASE}/results/${jobId}/${modelId}/${format}`),
   imagePreviewUrl: (imageId) => withKey(`${BASE}/images/${imageId}/preview.png`),
+  imageTileUrl: (imageId) => withKey(`${BASE}/images/${imageId}/tiles/{z}/{x}/{y}.png`),
   // --- Model Setup wizard: Dataset export + Train steps ---
   exportDataset: (payload) =>
     request(`${BASE}/training/export-dataset`, {

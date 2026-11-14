@@ -1,19 +1,22 @@
-import React, { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { useMap } from "react-leaflet";
 import L from "leaflet";
-import { api } from "../api/client.js";
-import { IconRectangle, IconPencil, IconTrash, IconClose } from "./Icons.jsx";
 
-// The real "Annotate" step: draw a class-labeled box/polygon on the current
-// image and save it — each shape is converted to the raster's pixel grid
-// and persisted via /api/images/{id}/annotations (app.annotations.store),
-// ready for the Dataset export step. Separate from MapDrawTools (which only
-// ever drew an Area-of-Interest / ruler, never a saved, class-labeled
-// object), so none of that existing behavior is touched.
+// Training labels on the map. Lives inside <MapContainer>; it has no UI of
+// its own: the Train panel picks the class and the tool (box / polygon) and
+// owns the saved list. This layer draws the saved shapes and turns mouse
+// gestures into a shape, which it hands back through onDrawn.
 
 const PALETTE = ["#ffcf5c", "#5b8cff", "#5fd98a", "#ff7a7a", "#c792ea", "#4fd1c5", "#f5a623", "#ec6ea0"];
 
-function colorFor(className) {
+export const TRAIN_AREA = "__train_area__";
+export const CHECK_AREA = "__check_area__";
+export const isArea = (name) => name === TRAIN_AREA || name === CHECK_AREA;
+export const AREA_LABEL = { [TRAIN_AREA]: "Training area", [CHECK_AREA]: "Accuracy area" };
+
+export function classColor(className) {
+  if (className === TRAIN_AREA) return "#c8ccd4";
+  if (className === CHECK_AREA) return "#f0b54a";
   let h = 0;
   for (let i = 0; i < className.length; i++) h = (h * 31 + className.charCodeAt(i)) >>> 0;
   return PALETTE[h % PALETTE.length];
@@ -24,179 +27,72 @@ function rectLatLngs(bounds) {
   return [sw, L.latLng(ne.lat, sw.lng), ne, L.latLng(sw.lat, ne.lng)];
 }
 
-export default function AnnotationTool({ active, sourceImage }) {
+export default function AnnotationLayer({ visible, mode, className, annotations = [], onDrawn, onShapeClick }) {
   const map = useMap();
-  const [mode, setMode] = useState(null); // null | "rect" | "polygon"
-  const [className, setClassName] = useState("object");
-  const [annotations, setAnnotations] = useState([]);
-  const [error, setError] = useState(null);
-  const [saving, setSaving] = useState(false);
-  const drawState = useRef({ overlay: null, start: null, points: [] });
-  const savedLayerGroup = useRef(null);
-  const imageId = sourceImage?.image_id;
+  const draw = useRef({ overlay: null, start: null, points: [] });
+  const group = useRef(null);
 
-  // load existing annotations for this image whenever it changes / tool opens
   useEffect(() => {
-    if (!active || !imageId) return;
-    api.listAnnotations(imageId).then((r) => setAnnotations(r.annotations)).catch(() => setAnnotations([]));
-  }, [active, imageId]);
-
-  // render saved annotations as a dedicated layer group, redrawn whenever the list changes
-  useEffect(() => {
-    if (savedLayerGroup.current) {
-      map.removeLayer(savedLayerGroup.current);
-      savedLayerGroup.current = null;
-    }
-    if (!active || !annotations.length) return;
-    const group = L.layerGroup();
+    if (group.current) { map.removeLayer(group.current); group.current = null; }
+    if (!visible || !annotations.length) return;
+    const g = L.layerGroup();
     for (const a of annotations) {
-      const latlngs = a.points_lonlat.map(([lon, lat]) => L.latLng(lat, lon));
-      const color = colorFor(a.class_name);
-      const poly = L.polygon(latlngs, { color, weight: 2, fillOpacity: 0.15 });
-      poly.bindTooltip(a.class_name, { permanent: false, direction: "center" });
-      poly.on("click", () => removeAnnotation(a.id));
-      group.addLayer(poly);
+      const color = classColor(a.class_name);
+      const area = isArea(a.class_name);
+      const poly = L.polygon(a.points_lonlat.map(([lon, lat]) => L.latLng(lat, lon)),
+        area ? { color, weight: 2, dashArray: "8 6", fill: false } : { color, weight: 2, fillOpacity: 0.15 });
+      poly.bindTooltip(AREA_LABEL[a.class_name] || a.class_name, { direction: "center" });
+      poly.on("click", (e) => { L.DomEvent.stopPropagation(e); if (!mode) onShapeClick?.(a.id); });
+      g.addLayer(poly);
     }
-    group.addTo(map);
-    savedLayerGroup.current = group;
-    return () => { if (savedLayerGroup.current) map.removeLayer(savedLayerGroup.current); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, annotations, map]);
-
-  function clearOverlay() {
-    if (drawState.current.overlay) {
-      map.removeLayer(drawState.current.overlay);
-      drawState.current.overlay = null;
-    }
-  }
-
-  async function removeAnnotation(id) {
-    if (!imageId) return;
-    try {
-      await api.deleteAnnotation(imageId, id);
-      setAnnotations((list) => list.filter((a) => a.id !== id));
-    } catch (err) {
-      setError(err.message);
-    }
-  }
-
-  async function clearAllAnnotations() {
-    if (!imageId) return;
-    try {
-      await api.clearAnnotations(imageId);
-      setAnnotations([]);
-    } catch (err) {
-      setError(err.message);
-    }
-  }
-
-  async function saveShape(latlngs) {
-    if (!imageId) {
-      setError("Open an image from the library first.");
-      return;
-    }
-    setSaving(true);
-    setError(null);
-    try {
-      const points_lonlat = latlngs.map((p) => [p.lng, p.lat]);
-      const saved = await api.addAnnotation(imageId, { class_name: className, points_lonlat });
-      setAnnotations((list) => [...list, saved]);
-    } catch (err) {
-      setError(err.detail?.message || err.message);
-    } finally {
-      setSaving(false);
-    }
-  }
+    g.addTo(map);
+    group.current = g;
+    return () => { if (group.current) map.removeLayer(group.current); };
+  }, [visible, annotations, map, mode, onShapeClick]);
 
   useEffect(() => {
-    if (!active || !mode) return;
+    const st = draw.current;
+    function clear() { if (st.overlay) { map.removeLayer(st.overlay); st.overlay = null; } }
+    st.points = []; st.start = null; clear();
+    if (!visible || !mode) return;
+    const color = classColor(className || "object");
     map.dragging.disable();
+    map.doubleClickZoom.disable();
     map.getContainer().style.cursor = "crosshair";
 
-    function onMouseDown(e) {
+    function down(e) {
       if (mode === "rect") {
-        drawState.current.start = e.latlng;
-        clearOverlay();
-        drawState.current.overlay = L.rectangle([e.latlng, e.latlng], { color: colorFor(className), weight: 2, dashArray: "4 3" }).addTo(map);
-      } else if (mode === "polygon") {
-        drawState.current.points.push(e.latlng);
-        clearOverlay();
-        if (drawState.current.points.length > 1) {
-          drawState.current.overlay = L.polygon(drawState.current.points, { color: colorFor(className), weight: 2, fillOpacity: 0.1 }).addTo(map);
-        }
+        st.start = e.latlng; clear();
+        st.overlay = L.rectangle([e.latlng, e.latlng], { color, weight: 2, dashArray: "4 3" }).addTo(map);
+      } else {
+        st.points.push(e.latlng); clear();
+        if (st.points.length > 1) st.overlay = L.polygon(st.points, { color, weight: 2, fillOpacity: 0.1 }).addTo(map);
       }
     }
-
-    function onMouseMove(e) {
-      if (mode === "rect" && drawState.current.start && drawState.current.overlay) {
-        drawState.current.overlay.setBounds([drawState.current.start, e.latlng]);
-      }
+    function move(e) {
+      if (mode === "rect" && st.start && st.overlay) st.overlay.setBounds([st.start, e.latlng]);
     }
-
-    async function onMouseUp(e) {
-      if (mode === "rect" && drawState.current.start) {
-        const bounds = L.latLngBounds(drawState.current.start, e.latlng);
-        drawState.current.start = null;
-        clearOverlay();
-        setMode(null);
-        await saveShape(rectLatLngs(bounds));
-      }
+    function up(e) {
+      if (mode !== "rect" || !st.start) return;
+      const b = L.latLngBounds(st.start, e.latlng);
+      st.start = null; clear();
+      if (map.latLngToContainerPoint(b.getSouthWest()).distanceTo(map.latLngToContainerPoint(b.getNorthEast())) < 6) return;
+      onDrawn?.(rectLatLngs(b));
     }
-
-    async function onDblClick() {
-      if (mode === "polygon" && drawState.current.points.length >= 3) {
-        const pts = drawState.current.points;
-        drawState.current.points = [];
-        clearOverlay();
-        setMode(null);
-        await saveShape(pts);
-      }
+    function dbl() {
+      if (mode !== "polygon" || st.points.length < 3) return;
+      const pts = st.points; st.points = []; clear();
+      onDrawn?.(pts);
     }
-
-    map.on("mousedown", onMouseDown);
-    map.on("mousemove", onMouseMove);
-    map.on("mouseup", onMouseUp);
-    map.on("dblclick", onDblClick);
+    map.on("mousedown", down); map.on("mousemove", move); map.on("mouseup", up); map.on("dblclick", dbl);
     return () => {
-      map.off("mousedown", onMouseDown);
-      map.off("mousemove", onMouseMove);
-      map.off("mouseup", onMouseUp);
-      map.off("dblclick", onDblClick);
+      map.off("mousedown", down); map.off("mousemove", move); map.off("mouseup", up); map.off("dblclick", dbl);
+      clear();
       map.dragging.enable();
+      map.doubleClickZoom.enable();
       map.getContainer().style.cursor = "";
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, mode, map, className]);
+  }, [visible, mode, className, map, onDrawn]);
 
-  if (!active) return null;
-
-  function toggle(next) {
-    drawState.current.points = [];
-    clearOverlay();
-    setMode((m) => (m === next ? null : next));
-  }
-
-  return (
-    <div className="map-toolbar map-toolbar-annotate">
-      <input
-        className="annotate-class-input"
-        value={className}
-        onChange={(e) => setClassName(e.target.value)}
-        placeholder="class name"
-        title="Class name for the next shape you draw"
-      />
-      <button className={`map-tool-btn ${mode === "rect" ? "active" : ""}`} title="Draw a labeled box" onClick={() => toggle("rect")}><IconRectangle /></button>
-      <button className={`map-tool-btn ${mode === "polygon" ? "active" : ""}`} title="Draw a labeled polygon (click points, double-click to finish)" onClick={() => toggle("polygon")}><IconPencil /></button>
-      <div className="map-toolbar-sep" />
-      <span className="annotate-count" title="Saved annotations for this image">{annotations.length}</span>
-      <button className="map-tool-btn" title="Clear all annotations on this image" onClick={clearAllAnnotations}><IconTrash /></button>
-      {saving && <span className="note" style={{ padding: "0 6px" }}>Saving…</span>}
-      {error && (
-        <span className="note annotate-error" title={error}>
-          ⚠ {error.length > 40 ? error.slice(0, 40) + "…" : error}
-          <button className="map-tool-btn" onClick={() => setError(null)}><IconClose /></button>
-        </span>
-      )}
-    </div>
-  );
+  return null;
 }

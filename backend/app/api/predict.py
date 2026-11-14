@@ -59,7 +59,7 @@ def _run_job(job_id: str, req: PredictRequest):
             _run_segmentation_job(job_id, req, pack)
             return
         from app.engine.pipeline import DetectionEngine
-        from app.engine.raster_io import count_tiles, iter_tiles, raster_crs_and_size
+        from app.engine.raster_io import prefetch, count_tiles, iter_tiles, raster_crs_and_size
         from app.engine.raster_prep import plan_rgb
         from app.models.factory import build_model
 
@@ -67,12 +67,17 @@ def _run_job(job_id: str, req: PredictRequest):
         engine = DetectionEngine(model)
 
         processed, skipped = {"n": 0}, {"n": 0}
+        from app.engine.speed import Eta
+        eta = Eta()
+        total_ref = {"n": None}
 
         def progress(done, total):
             # done is None for an empty tile skipped before inference
             if done is not None:
                 processed["n"] = done
-            jobs.update(job_id, tiles_processed=processed["n"] + skipped["n"], tiles_empty=skipped["n"])
+            n = processed["n"] + skipped["n"]
+            jobs.update(job_id, tiles_processed=n, tiles_empty=skipped["n"],
+                        eta_seconds=eta.update(n, total_ref["n"]))
 
         source_crs, width, height = raster_crs_and_size(req.image_path)
         if hasattr(model, "preferred_tile_size"):
@@ -83,11 +88,14 @@ def _run_job(job_id: str, req: PredictRequest):
         aoi = None
         if req.aoi:
             from app.engine.aoi import prepare_aoi
-            aoi = prepare_aoi(req.image_path, req.aoi)
+            aoi = prepare_aoi(req.image_path, req.aoi, grid=(req.tile_size, req.overlap))
             width, height = aoi.window[2], aoi.window[3]
             jobs.update(job_id, aoi_area_m2=aoi.area_m2)
-        tiles_total = count_tiles(width, height, req.tile_size, req.overlap)
+        model.nominal_tile = req.tile_size     # partial edge tiles are scaled like full ones
+        tiles_total = count_tiles(width, height, req.tile_size, req.overlap) if aoi is None else \
+            _count_aoi_tiles(req.image_path, aoi, req.tile_size, req.overlap)
         jobs.update(job_id, tiles_total=tiles_total)
+        total_ref["n"] = tiles_total
         plan = plan_rgb(req.image_path, override=req.rgb_bands)
         jobs.update(job_id, rgb_plan=plan.to_dict())
 
@@ -95,10 +103,11 @@ def _run_job(job_id: str, req: PredictRequest):
             skipped["n"] += 1
             progress(None, None)
 
-        tiles = iter_tiles(req.image_path, tile_size=req.tile_size, overlap=req.overlap,
-                           rgb_plan=plan, on_skip=on_skip,
-                           window=aoi.window if aoi else None,
-                           tile_filter=aoi.tile_intersects if aoi else None)
+        # read the next tiles on a background thread while the model runs
+        tiles = prefetch(iter_tiles(req.image_path, tile_size=req.tile_size, overlap=req.overlap,
+                                    rgb_plan=plan, on_skip=on_skip,
+                                    window=aoi.window if aoi else None,
+                                    tile_filter=aoi.tile_intersects if aoi else None))
         out_dir = settings.RESULTS_DIR / job_id
         result = engine.run(
             tiles, out_dir, device_option=req.device,
@@ -107,7 +116,10 @@ def _run_job(job_id: str, req: PredictRequest):
             source_crs=source_crs, tiles_total=tiles_total,
             keep_detection=(lambda d: aoi.contains_point(*d["centroid_geo"])) if aoi else None,
         )
-        jobs.update(job_id, status="completed", result=result.__dict__)
+        jobs.update(job_id, status="completed", result=result.__dict__, eta_seconds=0)
+        from app.engine.speed import record as record_speed
+        record_speed(settings.DATA_DIR, req.model_id, result.device_used, req.tile_size,
+                     result.tiles_processed, result.duration_seconds)
         record_run(
             settings.DATA_DIR, req.model_id, status="completed",
             tiles_processed=result.tiles_processed, detection_count=result.final_detection_count,
@@ -116,6 +128,17 @@ def _run_job(job_id: str, req: PredictRequest):
     except Exception as exc:
         jobs.update(job_id, status="error", error=str(exc))
         record_run(settings.DATA_DIR, req.model_id, status="error")
+
+
+def _count_aoi_tiles(path: str, aoi, tile: int, overlap: float) -> int:
+    """Tiles of the area's window that touch the area: the ones iter_tiles() reads."""
+    import rasterio
+
+    from app.engine.raster_io import _window_grid
+    wc, wr, ww, wh = aoi.window
+    with rasterio.open(path) as ds:
+        return sum(1 for c, r, w, h in _window_grid(ww, wh, tile, overlap)
+                   if aoi.tile_intersects(ds.transform, c + wc, r + wr, w, h))
 
 
 INDEX_MODELS = {"vegetation_index"}
@@ -186,6 +209,82 @@ def _resolve_image_path(req: PredictRequest) -> str:
     raise HTTPException(status_code=400, detail="Provide image_id (preferred) or image_path.")
 
 
+class EstimateRequest(BaseModel):
+    image_id: str
+    model_id: str
+    aoi: dict | None = None
+
+
+@router.post("/estimate")
+def estimate(req: EstimateRequest):
+    """Area and, once this machine has run the model before, the time a Run will take.
+
+    Same tile count as the job (the model's own tile size, the AOI's tiles);
+    empty tiles are left out of the time since they are skipped before the
+    model. No earlier run = `seconds: null`: the interface shows the area only.
+    """
+    from app.core.compute import DeviceOption, resolve_device
+    from app.engine.raster_io import count_tiles, raster_crs_and_size
+    from app.engine.speed import seconds_per_tile
+    from app.models.factory import build_model
+
+    entry = find_entry_by_image_id(settings.UPLOAD_DIR, req.image_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="Unknown image")
+    path = entry["path"]
+    health = entry.get("health") or {}
+    valid = health.get("valid_fraction")
+    valid = 1.0 if valid is None else float(valid)
+    gsd = health.get("gsd_m") or entry.get("gsd_x_m")
+    _, width, height = raster_crs_and_size(path)
+    tile, overlap = settings.DEFAULT_TILE_SIZE, settings.DEFAULT_TILE_OVERLAP
+    try:
+        model = build_model(req.model_id)
+        if hasattr(model, "preferred_tile_size") and gsd:
+            tile = model.preferred_tile_size(gsd)
+    except Exception:
+        pass
+    if req.aoi:
+        from app.engine.aoi import prepare_aoi
+        aoi = prepare_aoi(path, req.aoi, grid=(tile, overlap))
+        tiles = _count_aoi_tiles(path, aoi, tile, overlap)
+        area_km2 = aoi.area_m2 / 1e6
+    else:
+        tiles = count_tiles(width, height, tile, overlap)
+        area_km2 = width * height * (gsd or 0) ** 2 * valid / 1e6 if gsd else None
+    device = resolve_device(DeviceOption.AUTO).resolved
+    spt = seconds_per_tile(settings.DATA_DIR, req.model_id, device, tile)
+    model_tiles = max(1, round(tiles * valid))
+    return {"tiles": tiles, "area_km2": round(area_km2, 2) if area_km2 is not None else None,
+            "device": device, "seconds": round(model_tiles * spt) if spt else None}
+
+
+def _refuse_no_data(req: PredictRequest) -> None:
+    """An all-empty file (typically the scene's cloud mask uploaded by mistake) would
+    'complete' with zero detections, which reads like a model failure. Say what it is."""
+    entry = find_entry_by_image_id(settings.UPLOAD_DIR, req.image_id) if req.image_id else None
+    health = (entry or {}).get("health") or {}
+    for fnd in health.get("findings", []):
+        if fnd.get("code") == "no_data":
+            raise HTTPException(status_code=409, detail=f"{fnd['title']}. {fnd.get('fix') or ''}".strip())
+
+
+def _refuse_wrong_scale(meta, image_path: str) -> None:
+    """Drone-only models are refused on imagery far coarser than they were trained on
+    (a 4 cm model on a 50 cm satellite scene would see every object as a few pixels)."""
+    if meta.supported_image_sources != ["drone"]:
+        return
+    try:
+        from app.engine.segmentation_run import ground_gsd_m
+        gsd = ground_gsd_m(image_path)
+    except Exception:
+        return
+    if gsd and gsd > 1.5 * meta.supported_gsd.max_m:
+        raise HTTPException(status_code=409, detail=(
+            f"'{meta.name}' is a drone model ({meta.supported_gsd.min_m * 100:g}-{meta.supported_gsd.max_m * 100:g} cm per pixel); "
+            f"this image is {gsd * 100:.0f} cm per pixel. Use the satellite models for it."))
+
+
 @router.post("")
 def start_prediction(req: PredictRequest, background_tasks: BackgroundTasks):
     meta = get_metadata(req.model_id)
@@ -209,6 +308,8 @@ def start_prediction(req: PredictRequest, background_tasks: BackgroundTasks):
         raise HTTPException(status_code=409, detail=(
             "This image has no coordinate system, so results can't be placed on the map. "
             "Assign one (QGIS: Raster > Projections > Assign Projection) and upload it again."))
+    _refuse_no_data(req)
+    _refuse_wrong_scale(meta, req.image_path)
     if req.aoi is not None:
         # Fail fast with a clear message instead of a background error.
         try:
@@ -230,6 +331,83 @@ def start_prediction(req: PredictRequest, background_tasks: BackgroundTasks):
 @router.get("/{job_id}")
 def job_status(job_id: str):
     job = get_store().get(job_id, KIND)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Unknown job_id")
+    return job
+
+
+# ------------------------------------------------------------------ accuracy
+ACCURACY_KIND = "accuracy"
+
+
+class AccuracyRequest(BaseModel):
+    image_id: str
+    model_id: str
+    iou: float = 0.5
+    confidence_threshold: float | None = None
+
+
+def _run_accuracy(job_id: str, pred_id: str, req: PredictRequest, iou: float):
+    """Run the model inside the accuracy areas, then score it against the labels there."""
+    import json as _json
+
+    from app.annotations import store
+    from app.engine import accuracy
+
+    jobs = get_store()
+    jobs.update(job_id, status="processing", predict_job_id=pred_id)
+    _run_job(pred_id, req)
+    pj = jobs.get(pred_id, KIND) or {}
+    if pj.get("status") != "completed":
+        jobs.update(job_id, status="error", error=pj.get("error") or "The model run did not complete.")
+        return
+    try:
+        gj = _json.loads((settings.RESULTS_DIR / pred_id / f"{req.model_id}.geojson").read_text())
+        anns = store.load_annotations(req.image_path)
+        meta = get_metadata(req.model_id)
+        res = accuracy.evaluate(gj, anns, store.areas(anns, store.CHECK_AREA), list(meta.class_names.values()), iou)
+        record = {"checked_at": accuracy.now(), "image_id": req.image_id, "image_name": _display_name(req.image_path),
+                  "iou": iou, "areas": len(store.areas(anns, store.CHECK_AREA)), **res}
+        accuracy.save_check(settings.DATA_DIR, req.model_id, record)
+        jobs.update(job_id, status="completed", result=record)
+    except Exception as exc:
+        jobs.update(job_id, status="error", error=str(exc))
+
+
+@router.post("/accuracy")
+def start_accuracy(req: AccuracyRequest, background_tasks: BackgroundTasks):
+    """Score a model on the accuracy areas drawn on one image."""
+    from shapely.geometry import mapping
+    from shapely.ops import unary_union
+
+    from app.annotations import store
+    from app.engine.accuracy import _poly
+
+    meta = get_metadata(req.model_id)
+    if meta.status in (ModelStatus.NOT_INSTALLED, ModelStatus.NOT_PRODUCTION_READY):
+        raise HTTPException(status_code=409, detail=f"'{meta.name}' can't run yet.")
+    pr = PredictRequest(image_id=req.image_id, model_id=req.model_id, confidence_threshold=req.confidence_threshold)
+    pr = pr.model_copy(update={"image_path": _resolve_image_path(pr)})
+    anns = store.load_annotations(pr.image_path)
+    areas = store.areas(anns, store.CHECK_AREA)
+    if not areas:
+        raise HTTPException(status_code=409, detail="Draw an accuracy area and label every object inside it first.")
+    if not [a for a in anns if not store.is_area(a)]:
+        raise HTTPException(status_code=409, detail="The accuracy areas have no labelled objects yet.")
+    _refuse_wrong_scale(meta, pr.image_path)
+    zone = unary_union([_poly(a["points_lonlat"]) for a in areas])
+    pr = pr.model_copy(update={"aoi": {"type": "Feature", "properties": {}, "geometry": mapping(zone)}})
+    jobs = get_store()
+    pred_id = jobs.create(KIND, model_id=req.model_id, image_id=req.image_id, image_name=_display_name(pr.image_path),
+                          tiles_processed=0, has_aoi=True, purpose="accuracy")
+    job_id = jobs.create(ACCURACY_KIND, model_id=req.model_id, image_id=req.image_id)
+    background_tasks.add_task(_run_accuracy, job_id, pred_id, pr, req.iou)
+    return {"job_id": job_id, "predict_job_id": pred_id, "status": "queued"}
+
+
+@router.get("/accuracy/{job_id}")
+def accuracy_status(job_id: str):
+    job = get_store().get(job_id, ACCURACY_KIND)
     if job is None:
         raise HTTPException(status_code=404, detail="Unknown job_id")
     return job

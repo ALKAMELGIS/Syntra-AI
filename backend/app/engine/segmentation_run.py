@@ -58,7 +58,7 @@ def run_segmentation(
     from shapely.geometry import mapping, shape
     from shapely.ops import transform as shp_transform
 
-    from app.engine.raster_io import count_tiles, iter_tiles
+    from app.engine.raster_io import count_tiles, iter_tiles, prefetch
     from app.engine.raster_prep import plan_rgb
     from app.models.geodeep_onnx import load_session, segment_tile, tile_px_for_gsd
 
@@ -88,10 +88,10 @@ def run_segmentation(
         if progress_cb:
             progress_cb(done, total)
 
-    for t in iter_tiles(path, tile_size=tile, overlap=0.1, rgb_plan=plan, on_skip=skip,
-                        window=aoi.window if aoi else None,
-                        tile_filter=aoi.tile_intersects if aoi else None):
-        m = segment_tile(t.data, sess, cfg)
+    for t in prefetch(iter_tiles(path, tile_size=tile, overlap=0.1, rgb_plan=plan, on_skip=skip,
+                                 window=aoi.window if aoi else None,
+                                 tile_filter=aoi.tile_intersects if aoi else None)):
+        m = segment_tile(t.data, sess, cfg, nominal_tile=tile)
         r, c = t.row_off - r0, t.col_off - c0
         region = mask[r:r + t.height, c:c + t.width]
         np.maximum(region, m[: region.shape[0], : region.shape[1]], out=region)
@@ -120,7 +120,8 @@ def run_segmentation(
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     gj = out_dir / f"{model_id}.geojson"
-    gj.write_text(json.dumps({"type": "FeatureCollection", "features": features}))
+    from app.engine.measure import measure_features
+    gj.write_text(json.dumps(measure_features({"type": "FeatureCollection", "features": features})))
     total_area = sum(f["properties"]["area_m2"] for f in features)
     summary = {"count": len(features), "total_area_ha": round(total_area / 10_000, 3),
                "image_gsd_m": round(gsd, 3) if gsd else None, "model_gsd_m": cfg["resolution"] / 100,

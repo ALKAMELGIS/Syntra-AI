@@ -173,7 +173,7 @@ def test_aerial_detector_uses_onnx_model_when_given(monkeypatch):
             self.names = DOTA_NAMES
             self.imgsz = 1024
 
-        def predict(self, image_bgr, conf=0.25, iou=0.45, classes=None, max_det=1000):
+        def predict(self, image_bgr, conf=0.25, iou=0.45, classes=None, max_det=1000, nominal_tile=None):
             assert classes == [2]                       # only 'storage tank' requested
             quad = np.array([[10, 10], [30, 10], [30, 30], [10, 30]], dtype=float)
             return [ObbDetection(corners=quad, cls=2, score=0.8)]

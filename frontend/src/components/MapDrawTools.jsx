@@ -52,17 +52,22 @@ function polylineToPolygon(latlngs) {
   return { type: "Feature", properties: { shape: "freehand" }, geometry: { type: "Polygon", coordinates: [coords] } };
 }
 
+// Keys pressed while typing, or inside a panel with its own shortcuts
+// (data-own-keys, e.g. the review list's A / R), are not map shortcuts.
 function isTypingTarget(el) {
-  return el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable);
+  return el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable
+    || !!el.closest?.("[data-own-keys]"));
 }
 
 export default function MapDrawTools({
   aoi, onAoiChange, measurement, onMeasurementChange,
-  annotateOpen = false, onToggleAnnotate, canAnnotate = false,
+  annotateOpen = false, onToggleAnnotate, canAnnotate = false, otherPanelOpen = false, onMenuOpen,
 }) {
   const map = useMap();
   const [mode, setMode] = useState(null); // null | "rect" | "circle" | "pencil" | "ruler"
   const [menuOpen, setMenuOpen] = useState(false);
+  // another panel opened beside the toolbar: fold the Edit menu
+  useEffect(() => { if (otherPanelOpen) setMenuOpen(false); }, [otherPanelOpen]);
   const drawState = useRef({ overlay: null, start: null, points: [] });
   const wrapRef = useRef(null);
 
@@ -242,7 +247,7 @@ export default function MapDrawTools({
         title="Edit: draw and measure"
         aria-haspopup="menu"
         aria-expanded={menuOpen}
-        onClick={() => setMenuOpen((o) => !o)}
+        onClick={() => setMenuOpen((o) => { if (!o) onMenuOpen?.(); return !o; })}
       >
         <ButtonIcon />
       </button>

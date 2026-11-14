@@ -1,12 +1,12 @@
 import React, { useEffect, useRef, useState } from "react";
 import L from "leaflet";
 import { api } from "../api/client";
-import { MapContainer, TileLayer, GeoJSON, ImageOverlay, useMap } from "react-leaflet";
+import { MapContainer, TileLayer, GeoJSON, ImageOverlay, Rectangle, Tooltip, useMap, useMapEvents } from "react-leaflet";
 import MapDrawTools from "./MapDrawTools.jsx";
-import AnnotationTool from "./AnnotationTool.jsx";
+import AnnotationLayer from "./AnnotationTool.jsx";
 import ImageLibrary from "./ImageLibrary.jsx";
 import SettingsPanel from "./SettingsPanel.jsx";
-import { IconExpand, IconBasemap, IconLegend, IconGallery, IconGear, IconAnalysis, IconDatabase, IconEye, IconEyeOff } from "./Icons.jsx";
+import { IconExpand, IconBasemap, IconLegend, IconGallery, IconGear, IconAnalysis, IconTrain, IconPerformance, IconEye, IconEyeOff } from "./Icons.jsx";
 
 const BASEMAPS = {
   satellite: {
@@ -49,7 +49,7 @@ const MAX_ZOOM = 24;
 function MapToolbar({
   layers, sourceImage, basemap, onBasemapChange, legendOpen, onLegendToggle,
   onOpenLibrary, onOpenSettings, analysisOpen, onToggleAnalysis, analysisCount,
-  detectionsVisible, onToggleDetections, onOpenDatasetManager, editMenu,
+  detectionsVisible, onToggleDetections, trainOpen, onToggleTrain, perfOpen, onTogglePerf, editMenu,
 }) {
   const map = useMap();
   const toolbarRef = useRef(null);
@@ -111,8 +111,9 @@ function MapToolbar({
       <button className="map-tool-btn" data-tool="library" title="Image library" onClick={onOpenLibrary}>
         <IconGallery />
       </button>
-      <button className="map-tool-btn" data-tool="dataset" title="Dataset and model manager" onClick={onOpenDatasetManager}>
-        <IconDatabase />
+      <button className={`map-tool-btn ${trainOpen ? "active" : ""}`} data-tool="train" title="Train a model"
+              aria-expanded={trainOpen} onClick={onToggleTrain}>
+        <IconTrain />
       </button>
       <button className="map-tool-btn" data-tool="settings" title="Settings" onClick={onOpenSettings}>
         <IconGear />
@@ -126,21 +127,156 @@ function MapToolbar({
         <IconAnalysis />
         {analysisCount > 0 && <span className="map-tool-badge">{analysisCount}</span>}
       </button>
+      <button className={`map-tool-btn ${perfOpen ? "active" : ""}`} data-tool="performance" title="Model performance"
+              aria-expanded={perfOpen} onClick={onTogglePerf}>
+        <IconPerformance />
+      </button>
     </div>
+  );
+}
+
+// The GeoTIFF on the map. Zoomed out: one preview picture (at most 2048 px,
+// in Web Mercator, exact corners). Zoomed in past the preview's own detail:
+// full-resolution tiles cut from the file (/tiles/{z}/{x}/{y}.png), so a
+// 20 000 px orthomosaic is as sharp on screen as it is on disk.
+const PREVIEW_MAX_PX = 2048;
+const EARTH = 2 * Math.PI * 6378137;
+
+function SourceImage({ image, bounds, opacity = 1 }) {
+  const map = useMap();
+  const [zoom, setZoom] = useState(map.getZoom());
+  useMapEvents({ zoomend: () => setZoom(map.getZoom()) });
+  const lat = (bounds.north + bounds.south) / 2;
+  const cosLat = Math.cos((lat * Math.PI) / 180);
+  const gsd = image.health?.gsd_m || image.gsd_x_m;
+  const sidePx = Math.max(image.width || 0, image.height || 0);
+  // ground metres per preview pixel; tiles take over when the map shows finer than that
+  const previewRes = gsd && sidePx ? (gsd * sidePx) / Math.min(PREVIEW_MAX_PX, sidePx) : null;
+  const tileZoom = previewRes && sidePx > PREVIEW_MAX_PX
+    ? Math.ceil(Math.log2((EARTH * cosLat) / 256 / previewRes)) : null;
+  const nativeZoom = gsd ? Math.ceil(Math.log2((EARTH * cosLat) / 256 / gsd)) : null;
+  // While the background optimise job runs, the file has no overviews yet and a
+  // zoomed-in tile can take seconds: stay on the preview until it finishes.
+  const useTiles = tileZoom != null && zoom >= tileZoom && !image.optimize_job_id;
+  const ll = [[bounds.south, bounds.west], [bounds.north, bounds.east]];
+  return useTiles ? (
+    <TileLayer
+      key={`tiles-${image.image_id}`}
+      url={api.imageTileUrl(image.image_id)}
+      bounds={ll}
+      zIndex={10}
+      maxZoom={MAX_ZOOM}
+      maxNativeZoom={Math.min(MAX_ZOOM, nativeZoom ?? MAX_ZOOM)}
+      keepBuffer={1}
+      opacity={opacity}
+    />
+  ) : (
+    <ImageOverlay key={image.image_id} url={api.imagePreviewUrl(image.image_id)} bounds={ll} opacity={opacity} />
+  );
+}
+
+// The result under review: the map flies to it, close enough to judge it,
+// centred in the part of the map the review panel does not cover, and draws
+// one light outline around it (the detection layers already carry colour).
+function FocusFeature({ feature }) {
+  const map = useMap();
+  useEffect(() => {
+    if (!feature?.geometry) return;
+    const halo = L.geoJSON(feature, { interactive: false, style: { className: "focus-halo", weight: 5, fill: false } });
+    const line = L.geoJSON(feature, { interactive: false, style: { className: "focus-outline", weight: 2, fill: false } });
+    const b = line.getBounds();
+    if (b.isValid()) {
+      const panel = document.querySelector(".analysis-flyout");
+      const right = panel ? panel.offsetWidth + 86 : 16;          // panel + toolbar + gutters
+      map.flyToBounds(b.pad(2.5), { paddingTopLeft: [16, 16], paddingBottomRight: [right, 16], maxZoom: 20, duration: 0.3 });
+    }
+    halo.addTo(map);
+    line.addTo(map);
+    return () => { map.removeLayer(halo); map.removeLayer(line); };
+  }, [feature, map]);
+  return null;
+}
+
+// The source image as a layer: show or hide, opacity, and its ground resolution.
+function ImageLayerRow({ image, layer, onChange }) {
+  const gsd = image.health?.gsd_m || image.gsd_x_m;
+  const res = gsd ? (gsd < 1 ? `${Math.round(gsd * 100)} cm` : `${+gsd.toFixed(2)} m`) : null;
+  const pct = Math.round(layer.opacity * 100);
+  return (
+    <div className="legend-image">
+      <div className="legend-row">
+        <button type="button" className="legend-eye" aria-pressed={layer.visible}
+                aria-label={layer.visible ? "Hide image" : "Show image"} title={layer.visible ? "Hide image" : "Show image"}
+                onClick={() => onChange({ ...layer, visible: !layer.visible })}>
+          {layer.visible ? <IconEye /> : <IconEyeOff />}
+        </button>
+        <span className={`legend-name ${layer.visible ? "" : "dim"}`} title={image.filename}>{image.filename}</span>
+        {res && <span className="legend-value mono" title="Ground size of one pixel">{res}</span>}
+      </div>
+      <label className="legend-opacity">
+        <span className="legend-opacity-label">Opacity</span>
+        <input type="range" min="0" max="100" step="5" value={pct} disabled={!layer.visible}
+               onChange={(e) => onChange({ ...layer, opacity: Number(e.target.value) / 100 })} aria-label="Image opacity" />
+        <span className="mono legend-value">{pct}%</span>
+      </label>
+    </div>
+  );
+}
+
+// Where the file sits on the ground, drawn whatever its pixels hold: a hairline
+// frame on the image's WGS84 extent. A file with no image data (a cloud mask
+// uploaded by mistake) gets the frame in the error colour and says so, so an
+// empty overlay never looks like a placement failure.
+function ImageFootprint({ image }) {
+  const b = image?.bounds_wgs84;
+  if (!b) return null;
+  const empty = image.health?.findings?.some((f) => f.code === "no_data");
+  const isMask = image.health?.findings?.some((f) => f.code === "no_data" && /mask/.test(f.title));
+  return (
+    <Rectangle
+      key={`fp-${image.image_id}-${empty}`}
+      bounds={[[b.south, b.west], [b.north, b.east]]}
+      interactive={false}
+      pathOptions={{ className: `image-footprint ${empty ? "empty" : ""}`, weight: 1, fill: false, dashArray: "6 4" }}
+    >
+      {empty && (
+        <Tooltip permanent direction="center" className="footprint-label">
+          {isMask ? "No image data · this file is a mask" : "No image data"}
+        </Tooltip>
+      )}
+    </Rectangle>
   );
 }
 
 // Frames the newly loaded source image automatically, the same way the
 // reference app snaps to a freshly imported scene — real geographic bounds
 // from the backend (app.engine.raster_io.compute_wgs84_bounds), not a guess.
+const VIEW_KEY = "syntra_view";
+const LAYER_KEY = "syntra_image_layer";
+
 function AutoFitSourceImage({ sourceImage }) {
   const map = useMap();
   useEffect(() => {
     const b = sourceImage?.bounds_wgs84;
-    if (b) {
+    if (!b) return;
+    // after a refresh, go back to where the user was on this image
+    let saved = null;
+    try { saved = JSON.parse(localStorage.getItem(VIEW_KEY) || "null"); } catch { saved = null; }
+    if (saved?.image_id === sourceImage.image_id && Array.isArray(saved.center)) {
+      map.setView(saved.center, saved.zoom, { animate: false });
+    } else {
       map.fitBounds([[b.south, b.west], [b.north, b.east]], { padding: [40, 40] });
     }
   }, [sourceImage?.image_id, map]);
+  useMapEvents({
+    moveend: () => {
+      if (!sourceImage?.image_id) return;
+      const c = map.getCenter();
+      try {
+        localStorage.setItem(VIEW_KEY, JSON.stringify({ image_id: sourceImage.image_id, center: [+c.lat.toFixed(6), +c.lng.toFixed(6)], zoom: map.getZoom() }));
+      } catch { /* storage unavailable */ }
+    },
+  });
   return null;
 }
 
@@ -171,17 +307,25 @@ function L_boundsFromGeojson(geojson) {
 
 export default function MapView({
   layers, detectionsVisible = true, onToggleDetections,
-  aoi, onAoiChange, measurement, onMeasurementChange, onOpenDatasetManager,
+  aoi, onAoiChange, measurement, onMeasurementChange,
+  trainOpen, onToggleTrain, onAnnotate, labels, trainPanel, perfOpen, onTogglePerf, perfPanel,
   onSelectLibraryImage, currentImageId, sourceImage,
-  analysisOpen, onToggleAnalysis, analysisCount, analysisPanel,
+  analysisOpen, onToggleAnalysis, analysisCount, analysisPanel, focusFeature = null,
 }) {
   const [basemap, setBasemap] = useState("satellite");
   const [legendOpen, setLegendOpen] = useState(false);
+  const [imageLayer, setImageLayerRaw] = useState(() => {
+    try { return { visible: true, opacity: 1, ...JSON.parse(localStorage.getItem(LAYER_KEY) || "{}") }; } catch { return { visible: true, opacity: 1 }; }
+  });
+  const setImageLayer = (v) => {
+    setImageLayerRaw(v);
+    try { localStorage.setItem(LAYER_KEY, JSON.stringify(v)); } catch { /* storage unavailable */ }
+  };
 
   // Legend and Analysis both open beside the toolbar: show one at a time.
   useEffect(() => {
-    if (analysisOpen) setLegendOpen(false);
-  }, [analysisOpen]);
+    if (analysisOpen || trainOpen || perfOpen) setLegendOpen(false);
+  }, [analysisOpen, trainOpen, perfOpen]);
 
   useEffect(() => {
     if (!legendOpen) return;
@@ -193,14 +337,26 @@ export default function MapView({
   function toggleLegend() {
     setLegendOpen((open) => {
       if (!open && analysisOpen) onToggleAnalysis?.();
+      if (!open && trainOpen) onToggleTrain?.();
+      if (!open && perfOpen) onTogglePerf?.();
       return !open;
     });
   }
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [annotateOpen, setAnnotateOpen] = useState(false);
+  // one panel beside the toolbar at a time
+  useEffect(() => {
+    if (analysisOpen || trainOpen || perfOpen || legendOpen) setSettingsOpen(false);
+  }, [analysisOpen, trainOpen, perfOpen, legendOpen]);
   const [iconStyle, setIconStyle] = useState(() => localStorage.getItem("syntra_icon_style") || "mono");
   const bm = BASEMAPS[basemap];
+  // Basemap health: tiles that never load (offline, firewall) leave the map
+  // black with no explanation; say so in one line.
+  const [tiles, setTiles] = useState({ ok: false, failed: 0 });
+  useEffect(() => setTiles({ ok: false, failed: 0 }), [basemap]);
+  // The preview is drawn in Web Mercator; only its own corners place it exactly.
+  // (Without them the overlay is not drawn: the old lat/lon box misplaced it.)
+  const overlayBounds = sourceImage?.preview_bounds_wgs84 || null;
 
   function changeIconStyle(style) {
     setIconStyle(style);
@@ -211,27 +367,25 @@ export default function MapView({
     <div className={`map-area icon-style-${iconStyle} ${libraryOpen ? "library-open" : ""}`}>
       <MapContainer center={[24.7, 46.7]} zoom={5} maxZoom={MAX_ZOOM} scrollWheelZoom>
         <TileLayer
+          key={basemap}
           attribution={bm.attribution}
           url={bm.url}
           maxZoom={MAX_ZOOM}
           maxNativeZoom={bm.maxNativeZoom}
+          eventHandlers={{
+            tileload: () => setTiles((t) => (t.ok ? t : { ...t, ok: true })),
+            tileerror: () => setTiles((t) => ({ ...t, failed: t.failed + 1 })),
+          }}
         />
-        {sourceImage?.bounds_wgs84 && sourceImage?.image_id && (
-          <ImageOverlay
-            key={sourceImage.image_id}
-            url={api.imagePreviewUrl(sourceImage.image_id)}
-            bounds={[
-              [sourceImage.bounds_wgs84.south, sourceImage.bounds_wgs84.west],
-              [sourceImage.bounds_wgs84.north, sourceImage.bounds_wgs84.east],
-            ]}
-          />
-        )}
+        {overlayBounds && sourceImage?.image_id && imageLayer.visible && <SourceImage image={sourceImage} bounds={overlayBounds} opacity={imageLayer.opacity} />}
+        <ImageFootprint image={sourceImage} />
+        <FocusFeature feature={focusFeature} />
         <AutoFitSourceImage sourceImage={sourceImage} />
         {detectionsVisible &&
           layers.map((l) =>
             l.geojson ? (
               <GeoJSON
-                key={l.key}
+                key={`${l.key}-${l.version ?? 0}`}
                 data={l.geojson}
                 style={() => ({
                   color: l.color, weight: 1, fillColor: l.color,
@@ -256,28 +410,53 @@ export default function MapView({
           legendOpen={legendOpen}
           onLegendToggle={toggleLegend}
           onOpenLibrary={() => setLibraryOpen(true)}
-          onOpenSettings={() => setSettingsOpen(true)}
+          onOpenSettings={() => setSettingsOpen((o) => {
+            if (!o) {
+              setLegendOpen(false);
+              if (analysisOpen) onToggleAnalysis?.();
+              if (trainOpen) onToggleTrain?.();
+              if (perfOpen) onTogglePerf?.();
+            }
+            return !o;
+          })}
           analysisOpen={analysisOpen}
           onToggleAnalysis={onToggleAnalysis}
           analysisCount={analysisCount}
           detectionsVisible={detectionsVisible}
           onToggleDetections={onToggleDetections}
-          onOpenDatasetManager={onOpenDatasetManager}
+          trainOpen={trainOpen}
+          onToggleTrain={onToggleTrain}
+          perfOpen={perfOpen}
+          onTogglePerf={onTogglePerf}
           editMenu={
             <MapDrawTools
               aoi={aoi}
               onAoiChange={onAoiChange}
               measurement={measurement}
               onMeasurementChange={onMeasurementChange}
-              annotateOpen={annotateOpen}
-              onToggleAnnotate={() => setAnnotateOpen((o) => !o)}
+              annotateOpen={false}
+              onToggleAnnotate={onAnnotate}
               canAnnotate={Boolean(sourceImage?.image_id)}
+              otherPanelOpen={analysisOpen || trainOpen || perfOpen || legendOpen || settingsOpen}
+              onMenuOpen={() => {
+                setLegendOpen(false); setSettingsOpen(false);
+                if (analysisOpen) onToggleAnalysis?.();
+                if (trainOpen) onToggleTrain?.();
+                if (perfOpen) onTogglePerf?.();
+              }}
             />
           }
         />
-        <AnnotationTool active={annotateOpen} sourceImage={sourceImage} />
+        <AnnotationLayer {...labels} />
       </MapContainer>
+      {!tiles.ok && tiles.failed >= 4 && (
+        <p className="basemap-note" role="status">
+          {bm.label} base map can't load: this computer can't reach its tile server
+        </p>
+      )}
       {analysisOpen && analysisPanel}
+      {trainPanel}
+      {perfPanel}
       <ImageLibrary
         open={libraryOpen}
         onClose={() => setLibraryOpen(false)}
@@ -297,9 +476,13 @@ export default function MapView({
         <section className="legend-popover" aria-label="Legend">
           <header className="legend-head">
             <span className="legend-title">Legend</span>
-            <span className="legend-total mono">{layers.length + (aoi ? 1 : 0) || ""}</span>
+            <span className="legend-total mono">{layers.length + (aoi ? 1 : 0) + (sourceImage?.image_id ? 1 : 0) || ""}</span>
           </header>
+          {sourceImage?.image_id && (
+            <ImageLayerRow image={sourceImage} layer={imageLayer} onChange={setImageLayer} />
+          )}
           {layers.length === 0 && !aoi ? (
+            sourceImage?.image_id ? null :
             <p className="legend-empty">No layers yet</p>
           ) : (
             <ul className="legend-list">
@@ -325,11 +508,6 @@ export default function MapView({
                 </li>
               )}
             </ul>
-          )}
-          {sourceImage?.filename && (
-            <footer className="legend-foot mono" title={sourceImage.filename}>
-              {sourceImage.filename}{!sourceImage.bounds_wgs84 ? " · no CRS" : ""}
-            </footer>
           )}
         </section>
       )}

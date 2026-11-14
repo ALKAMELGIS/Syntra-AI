@@ -20,3 +20,5 @@ build/
 runs/
 weights/*.pt
 weights/*.onnx
+**/weights/**/*.onnx
+**/weights/**/*.pt

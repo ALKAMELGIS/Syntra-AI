@@ -47,19 +47,24 @@ class OnnxObbModel:
 
     # ------------------------------------------------------------------ api
     def predict(self, image_bgr: np.ndarray, conf: float = 0.25, iou: float = 0.45,
-                classes: list[int] | None = None, max_det: int = 1000) -> list[ObbDetection]:
-        blob, ratio, (pad_x, pad_y) = self._letterbox(image_bgr)
+                classes: list[int] | None = None, max_det: int = 1000,
+                nominal_tile: int | None = None) -> list[ObbDetection]:
+        blob, ratio, (pad_x, pad_y) = self._letterbox(image_bgr, nominal_tile)
         out = self.session.run(None, {self.input_name: blob})[0][0]   # (4+nc+1, N)
         return decode_obb(out, len(self.names) or out.shape[0] - 5, ratio, pad_x, pad_y,
                           conf=conf, iou=iou, classes=classes, max_det=max_det)
 
     # ------------------------------------------------------------- helpers
-    def _letterbox(self, img: np.ndarray):
+    def _letterbox(self, img: np.ndarray, nominal_tile: int | None = None):
+        """Scale = what a FULL tile gets (imgsz / nominal tile). A partial edge
+        tile keeps that scale and is padded; it is never enlarged to fill the
+        input, which would show the model objects bigger than they are."""
         import cv2
 
         h, w = img.shape[:2]
         s = self.imgsz
-        r = min(s / h, s / w)
+        r = s / nominal_tile if nominal_tile else min(1.0, s / h, s / w)
+        r = min(r, s / h, s / w)
         nh, nw = int(round(h * r)), int(round(w * r))
         if (nh, nw) != (h, w):
             img = cv2.resize(img, (nw, nh), interpolation=cv2.INTER_LINEAR)
