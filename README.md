@@ -314,7 +314,7 @@ for when it is exposed to a network (all in `backend/.env.example`):
   `test_auth_offline.py` (9 tests) and a live browser run at four screen sizes.
 - `SYNTRA_API_KEY` turns on a shared key for every `/api/*` route except
   `/api/health`; set `VITE_API_KEY` in `frontend/.env` to match. This is a
-  LAN gate, not per-user login, which is the next step.
+  shared key for scripts and QGIS; people sign in with accounts (above).
 
 Verified by `backend/tests/test_security_offline.py` (19 tests).
 
