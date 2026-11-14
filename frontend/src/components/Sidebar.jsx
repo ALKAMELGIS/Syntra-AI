@@ -1,7 +1,7 @@
 import RasterHealth from "./RasterHealth.jsx";
 import ModelList from "./ModelList.jsx";
 import InfoNote, { splitMessage } from "./InfoNote.jsx";
-import OptimizeNote from "./OptimizeNote.jsx";
+import { useOptimizeJob } from "./OptimizeNote.jsx";
 import React, { useRef, useState } from "react";
 import { api } from "../api/client.js";
 import { IconUpload, IconFolder, IconPlay, IconClose, IconDashboard } from "./Icons.jsx";
@@ -12,6 +12,7 @@ function formatBytes(bytes) {
 }
 
 export default function Sidebar({ models, selectedModels, onToggleModel, onModelsChanged, onTrain, image, onImageUploaded, onRun, running, hasAoi = false, onClearAoi }) {
+  const optimizing = useOptimizeJob(image, onImageUploaded);
   const fileInput = useRef(null);
   const batchInput = useRef(null);
   const [mode, setMode] = useState("single"); // "single" | "batch"
@@ -164,11 +165,10 @@ export default function Sidebar({ models, selectedModels, onToggleModel, onModel
             <p className="note">
               {image.size_bytes ? `${formatBytes(image.size_bytes)} · ` : ""}
               {image.width ? `${image.width} × ${image.height} px` : ""}
-              {image.gsd_x_m ? ` · ${(image.gsd_x_m * 100).toFixed(0)} cm GSD` : ""}
+              {image.gsd_x_m && !image.health ? ` · ${(image.gsd_x_m * 100).toFixed(0)} cm GSD` : ""}
             </p>
           )}
-          {image?.health && <RasterHealth health={image.health} />}
-          <OptimizeNote image={image} onRefreshed={onImageUploaded} />
+          {image?.health && <RasterHealth health={image.health} optimizing={optimizing} />}
         </>
       ) : (
         <>

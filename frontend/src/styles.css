@@ -1330,3 +1330,4 @@ html, body, #root { height: 100%; overflow: hidden; }
 
 .panel > .info-note + .info-note, .raster-health + .info-note { margin-top: 8px; }
 .info-note-info .info-note-dot { background: var(--accent); }
+.raster-health-busy { color: var(--accent); }
