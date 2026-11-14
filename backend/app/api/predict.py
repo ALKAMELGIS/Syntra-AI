@@ -200,6 +200,15 @@ def start_prediction(req: PredictRequest, background_tasks: BackgroundTasks):
             ),
         )
     req = req.model_copy(update={"image_path": _resolve_image_path(req)})
+    try:
+        from app.engine.raster_io import raster_crs_and_size
+        no_crs = raster_crs_and_size(req.image_path)[0] is None
+    except Exception:
+        no_crs = False   # unreadable or rasterio missing: the job itself records the error
+    if no_crs:
+        raise HTTPException(status_code=409, detail=(
+            "This image has no coordinate system, so results can't be placed on the map. "
+            "Assign one (QGIS: Raster > Projections > Assign Projection) and upload it again."))
     if req.aoi is not None:
         # Fail fast with a clear message instead of a background error.
         try:

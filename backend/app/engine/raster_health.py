@@ -74,7 +74,10 @@ class RasterHealth:
         return "error" if "error" in levels else "warning" if "warning" in levels else "ok"
 
     def to_dict(self) -> dict:
+        from app.engine.raster_prep import json_safe
+
         d = asdict(self)
+        d["nodata"] = json_safe(d["nodata"])
         d["status"] = self.status
         return d
 
@@ -126,9 +129,9 @@ def check_raster(path: str | Path, sample_dim: int = 1024) -> RasterHealth:
 
         scale = min(1.0, sample_dim / max(ds.width, ds.height))
         sample = ds.read(out_shape=(ds.count, max(1, round(ds.height * scale)), max(1, round(ds.width * scale))),
-                         resampling=Resampling.nearest)
-        nd = 0 if ds.nodata is None else ds.nodata
-        valid_fraction = round(float(np.mean(~np.all(sample == nd, axis=0))), 4)
+                         resampling=Resampling.nearest, masked=True)
+        from app.engine.raster_prep import valid_pixels
+        valid_fraction = round(float(np.mean(valid_pixels(sample, ds.nodata))), 4)
 
         rgb, rgb_source = choose_rgb_bands(ds.count, [c.name for c in ds.colorinterp], list(ds.descriptions), detect_sensor(path))
         h = RasterHealth(

@@ -171,7 +171,7 @@ def run_vegetation(
     from shapely.geometry import mapping, shape
     from shapely.ops import transform as shp_transform
 
-    from app.engine.raster_prep import detect_sensor
+    from app.engine.raster_prep import detect_sensor, valid_pixels
 
     t0 = time.time()
     out_dir = Path(out_dir)
@@ -182,6 +182,8 @@ def run_vegetation(
     with rasterio.open(path) as ds:
         if ds.crs is None:
             raise VegetationError("This image has no CRS; vegetation areas can't be measured or mapped.")
+        if ds.colorinterp and ds.colorinterp[0].name == "palette":
+            raise VegetationError("This is a classified (palette) image, not imagery: it has no spectral bands for a vegetation index.")
         index_name, roles = choose_index_bands(ds.count, detect_sensor(path), [c.name for c in ds.colorinterp], index_bands)
         thr = DEFAULT_THRESHOLD[index_name] if threshold is None else float(threshold)
 
@@ -190,14 +192,16 @@ def run_vegetation(
         out_h, out_w = max(1, h // f), max(1, w // f)
         win = Window(c0, r0, w, h)
         order = sorted(set(roles.values()))
-        raw = ds.read(indexes=order, window=win, out_shape=(len(order), out_h, out_w),
-                      resampling=Resampling.average if f > 1 else Resampling.nearest).astype(np.float32)
+        raw_m = ds.read(indexes=order, window=win, out_shape=(len(order), out_h, out_w), masked=True,
+                        resampling=Resampling.average if f > 1 else Resampling.nearest)
+        nodata = ds.nodata
+        valid = valid_pixels(raw_m, nodata)
+        raw = np.ma.getdata(raw_m).astype(np.float32)
         wt = window_transform(win, ds.transform)
         sx, sy = w / out_w, h / out_h
         tr = rasterio.Affine(wt.a * sx, wt.b * sy, wt.c, wt.d * sx, wt.e * sy, wt.f)   # scale pixels, keep origin
         crs = ds.crs
         units_m = float(crs.linear_units_factor[1]) if crs.is_projected else None
-        nodata = ds.nodata
 
     gains = read_calibration_gains(path)
     sensor = detect_sensor(path)
@@ -211,8 +215,6 @@ def run_vegetation(
                 arr = arr / esun[role]
         bands[role] = arr
     radiometry = "toa_reflectance_ratio" if esun else ("radiance" if gains else "dn")
-    nd = 0 if nodata is None else nodata
-    valid = ~np.all(raw == nd, axis=0)
     if aoi is not None:
         valid &= ~geometry_mask([mapping(aoi.geom)], out_shape=(out_h, out_w), transform=tr)
 
