@@ -729,6 +729,47 @@ button, input, select, textarea { font-family: inherit; }
 }
 .aoi-chip-clear:hover { background: var(--hover-bg); color: var(--text); }
 
+/* --- Model list: ready / available to add / needs training --- */
+.model-list { display: flex; flex-direction: column; }
+.model-group { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.model-list label.model-row { display: flex; align-items: center; gap: 8px; }
+.model-unchecked {
+  display: inline-block; width: 6px; height: 6px; border-radius: 50%; flex: none;
+  background: var(--warn); margin-left: auto;
+}
+.model-key { display: flex; align-items: center; gap: 8px; margin: 4px 0 0; padding: 0 8px; font-size: 11px; color: var(--text-muted); }
+.model-key .model-unchecked { margin-left: 0; }
+.model-group-title { margin: 16px 0 4px; padding: 0 8px; font-size: 12px; font-weight: 500; color: var(--text-dim); }
+.pack-row { padding: 8px; border-radius: var(--radius-control); }
+.pack-row:hover { background: var(--hover-bg); }
+.pack-row-main { display: flex; align-items: center; gap: 8px; }
+.pack-name { flex: 1 1 auto; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pack-install {
+  height: 24px; padding: 0 10px; border: none; border-radius: 6px; cursor: pointer;
+  background: var(--primary-bg); color: var(--primary-fg); font-size: 12px; font-weight: 500;
+  transition: background-color 0.12s var(--ease);
+}
+.pack-install:hover { background: var(--primary-hover); }
+.pack-progress { font-size: 12px; color: var(--accent); }
+.pack-meta { display: flex; align-items: center; gap: 8px; margin-top: 2px; font-size: 11px; color: var(--text-muted); }
+.pack-nc { color: var(--warn); }
+.pack-file {
+  margin-left: auto; padding: 0; background: transparent; border: none; cursor: pointer;
+  font-size: 11px; color: var(--text-dim); text-decoration: underline; text-underline-offset: 2px;
+}
+.pack-file:hover { color: var(--text); }
+.pack-error { margin-top: 4px; font-size: 11px; line-height: 1.4; color: var(--error); }
+.pack-error a { color: var(--text); }
+.model-group-toggle {
+  display: flex; align-items: center; gap: 8px; margin-top: 16px; height: 32px; padding: 0 8px;
+  background: transparent; border: none; border-radius: var(--radius-control); cursor: pointer;
+  color: var(--text-dim); font-size: 12px; font-weight: 500; text-align: left;
+}
+.model-group-toggle:hover { background: var(--hover-bg); color: var(--text); }
+.model-group-count { margin-left: auto; color: var(--text-muted); font-weight: 400; }
+.model-group-muted { padding-left: 24px; }
+.model-row-muted { height: 28px; display: flex; align-items: center; font-size: 13px; color: var(--text-muted); cursor: default; }
+
 /* --- Raster check (sidebar) --- */
 .raster-health {
   margin-top: 12px; border: 1px solid var(--panel-border); border-radius: var(--radius-control);

@@ -21,6 +21,17 @@ def build_model(model_id: str) -> DetectionModel:
 
     metadata = get_metadata(model_id)
 
+    from app.models.packs import is_installed, pack_for_model, pack_path
+    pack = pack_for_model(model_id)
+    if pack is not None:
+        if not is_installed(pack):
+            from app.models.segmentation import NotProductionReadyError
+            raise NotProductionReadyError(f"{metadata.name}: model pack '{pack.pack_id}' is not installed.")
+        if pack.runtime == "geodeep_detector":
+            from app.models.geodeep_onnx import GeoDeepDetector
+            return GeoDeepDetector(metadata, str(pack_path(pack)))
+        raise KeyError(f"{model_id} is a segmentation pack; it runs through app.engine.segmentation_run.")
+
     from app.models.aerial_obb_detector import DOTA_CLASS_MAP
     if model_id in DOTA_CLASS_MAP:
         from app.models.aerial_obb_detector import AerialObbDetector

@@ -218,6 +218,7 @@ export default function App() {
             models={models}
             selectedModels={selectedModels}
             onToggleModel={toggleModel}
+            onModelsChanged={() => api.listModels().then(setModels).catch(() => {})}
             image={image}
             onImageUploaded={setImage}
             onRun={handleRun}

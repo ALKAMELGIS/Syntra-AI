@@ -1,4 +1,5 @@
 import RasterHealth from "./RasterHealth.jsx";
+import ModelList from "./ModelList.jsx";
 import React, { useRef, useState } from "react";
 import { api } from "../api/client.js";
 import { IconUpload, IconFolder, IconPlay, IconClose, IconDashboard } from "./Icons.jsx";
@@ -8,18 +9,7 @@ function formatBytes(bytes) {
   return mb >= 1024 ? `${(mb / 1024).toFixed(2)} GB` : `${mb.toFixed(1)} MB`;
 }
 
-const STATUS_LABEL = {
-  ready: "Ready",
-  validation: "Unvalidated",
-  not_production_ready: "Not ready",
-  loading: "Loading",
-  processing: "Processing",
-  training: "Training",
-  error: "Error",
-  disabled: "Disabled",
-};
-
-export default function Sidebar({ models, selectedModels, onToggleModel, image, onImageUploaded, onRun, running, hasAoi = false, onClearAoi }) {
+export default function Sidebar({ models, selectedModels, onToggleModel, onModelsChanged, image, onImageUploaded, onRun, running, hasAoi = false, onClearAoi }) {
   const fileInput = useRef(null);
   const batchInput = useRef(null);
   const [mode, setMode] = useState("single"); // "single" | "batch"
@@ -236,22 +226,12 @@ export default function Sidebar({ models, selectedModels, onToggleModel, image, 
       <p className="section-title section-title-icon" style={{ marginTop: 20 }}>
         <IconDashboard /> Detection models
       </p>
-      <div className="detection-model-list">
-        {models.map((m) => (
-          <div
-            key={m.model_id}
-            className={`model-row ${selectedModels.includes(m.model_id) ? "selected" : ""}`}
-            onClick={() => onToggleModel(m.model_id)}
-            title={m.notes}
-          >
-            <span className="model-name">
-              <input type="checkbox" readOnly checked={selectedModels.includes(m.model_id)} />
-              <span className="model-name-text">{m.name}</span>
-            </span>
-            <span className={`status-pill status-${m.status}`}>{STATUS_LABEL[m.status] || m.status}</span>
-          </div>
-        ))}
-      </div>
+      <ModelList
+        models={models}
+        selectedModels={selectedModels}
+        onToggleModel={onToggleModel}
+        onModelsChanged={onModelsChanged}
+      />
 
       {hasAoi && (
         <div className="aoi-chip">

@@ -53,6 +53,11 @@ def _run_job(job_id: str, req: PredictRequest):
         if req.model_id in INDEX_MODELS:
             _run_index_job(job_id, req)
             return
+        from app.models.packs import pack_for_model
+        pack = pack_for_model(req.model_id)
+        if pack is not None and pack.runtime == "geodeep_segmentor":
+            _run_segmentation_job(job_id, req, pack)
+            return
         from app.engine.pipeline import DetectionEngine
         from app.engine.raster_io import count_tiles, iter_tiles, raster_crs_and_size
         from app.engine.raster_prep import plan_rgb
@@ -70,6 +75,11 @@ def _run_job(job_id: str, req: PredictRequest):
             jobs.update(job_id, tiles_processed=processed["n"] + skipped["n"], tiles_empty=skipped["n"])
 
         source_crs, width, height = raster_crs_and_size(req.image_path)
+        if hasattr(model, "preferred_tile_size"):
+            # read tiles at the scale the model was trained at
+            from app.engine.segmentation_run import ground_gsd_m
+            req = req.model_copy(update={"tile_size": model.preferred_tile_size(ground_gsd_m(req.image_path))})
+            jobs.update(job_id, tile_size=req.tile_size)
         aoi = None
         if req.aoi:
             from app.engine.aoi import prepare_aoi
@@ -136,6 +146,30 @@ def _run_index_job(job_id: str, req: PredictRequest) -> None:
     )
 
 
+def _run_segmentation_job(job_id: str, req: PredictRequest, pack) -> None:
+    from app.engine.segmentation_run import run_segmentation
+    from app.models.packs import pack_path
+
+    jobs = get_store()
+    aoi = None
+    if req.aoi:
+        from app.engine.aoi import prepare_aoi
+        aoi = prepare_aoi(req.image_path, req.aoi)
+        jobs.update(job_id, aoi_area_m2=aoi.area_m2)
+
+    def progress(done, total):
+        jobs.update(job_id, tiles_processed=done, tiles_total=total)
+
+    meta = get_metadata(req.model_id)
+    result = run_segmentation(
+        req.image_path, settings.RESULTS_DIR / job_id, req.model_id, str(pack_path(pack)),
+        class_names=meta.class_names, aoi=aoi, rgb_bands=req.rgb_bands, progress_cb=progress,
+    )
+    jobs.update(job_id, status="completed", result=result)
+    record_run(settings.DATA_DIR, req.model_id, status="completed", tiles_processed=result["tiles_processed"],
+               detection_count=result["final_detection_count"], duration_seconds=result["duration_seconds"], device="cpu")
+
+
 def _display_name(path: str) -> str:
     # Uploads are stored as "<uuid>_<original name>"; show the original.
     return re.sub(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}_", "", Path(path).name)
@@ -155,6 +189,8 @@ def _resolve_image_path(req: PredictRequest) -> str:
 @router.post("")
 def start_prediction(req: PredictRequest, background_tasks: BackgroundTasks):
     meta = get_metadata(req.model_id)
+    if meta.status == ModelStatus.NOT_INSTALLED:
+        raise HTTPException(status_code=409, detail=f"'{meta.name}' is not installed yet. Install its model first.")
     if meta.status == ModelStatus.NOT_PRODUCTION_READY:
         raise HTTPException(
             status_code=409,

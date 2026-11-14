@@ -410,13 +410,31 @@ def _custom_catalog() -> dict[str, ModelMetadata]:
     return out
 
 
+def _with_pack(meta: ModelMetadata) -> ModelMetadata:
+    """Categories backed by an installable pack (app.models.packs) report
+    whether the weights are on disk instead of a fixed status."""
+    from dataclasses import replace
+
+    from app.models.packs import is_installed, pack_for_model
+
+    pack = pack_for_model(meta.model_id)
+    if pack is None:
+        return meta
+    caveats = " ".join(pack.caveats)
+    if is_installed(pack):
+        return replace(meta, status=ModelStatus.VALIDATION, version=f"pack:{pack.pack_id}",
+                       notes=f"{pack.source} Licence: {pack.licence}. {caveats}".strip())
+    return replace(meta, status=ModelStatus.NOT_INSTALLED, version="not-installed",
+                   notes=f"Open weights available: {pack.title} ({pack.licence}). Install to run. {pack.source}")
+
+
 def list_catalog() -> list[ModelMetadata]:
-    return list(CATALOG.values()) + list(_custom_catalog().values())
+    return [_with_pack(m) for m in CATALOG.values()] + list(_custom_catalog().values())
 
 
 def get_metadata(model_id: str) -> ModelMetadata:
     if model_id in CATALOG:
-        return CATALOG[model_id]
+        return _with_pack(CATALOG[model_id])
     custom = _custom_catalog()
     if model_id in custom:
         return custom[model_id]

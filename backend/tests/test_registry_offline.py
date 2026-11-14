@@ -54,7 +54,7 @@ def test_not_production_ready_models_refuse_to_build():
         m.model_id for m in list_catalog()
         if m.status == ModelStatus.NOT_PRODUCTION_READY and m.model_id != "field_boundary_segmentation"
     ]
-    assert len(not_ready) >= 12
+    assert len(not_ready) >= 10
     for model_id in not_ready:
         try:
             build_model(model_id)
