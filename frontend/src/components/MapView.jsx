@@ -3,10 +3,10 @@ import L from "leaflet";
 import { api } from "../api/client";
 import { MapContainer, TileLayer, GeoJSON, ImageOverlay, useMap } from "react-leaflet";
 import MapDrawTools from "./MapDrawTools.jsx";
-import AnnotationTool from "./AnnotationTool.jsx";
+import AnnotationLayer from "./AnnotationTool.jsx";
 import ImageLibrary from "./ImageLibrary.jsx";
 import SettingsPanel from "./SettingsPanel.jsx";
-import { IconExpand, IconBasemap, IconLegend, IconGallery, IconGear, IconAnalysis, IconDatabase, IconEye, IconEyeOff } from "./Icons.jsx";
+import { IconExpand, IconBasemap, IconLegend, IconGallery, IconGear, IconAnalysis, IconTrain, IconEye, IconEyeOff } from "./Icons.jsx";
 
 const BASEMAPS = {
   satellite: {
@@ -49,7 +49,7 @@ const MAX_ZOOM = 24;
 function MapToolbar({
   layers, sourceImage, basemap, onBasemapChange, legendOpen, onLegendToggle,
   onOpenLibrary, onOpenSettings, analysisOpen, onToggleAnalysis, analysisCount,
-  detectionsVisible, onToggleDetections, onOpenDatasetManager, editMenu,
+  detectionsVisible, onToggleDetections, trainOpen, onToggleTrain, editMenu,
 }) {
   const map = useMap();
   const toolbarRef = useRef(null);
@@ -111,8 +111,9 @@ function MapToolbar({
       <button className="map-tool-btn" data-tool="library" title="Image library" onClick={onOpenLibrary}>
         <IconGallery />
       </button>
-      <button className="map-tool-btn" data-tool="dataset" title="Dataset and model manager" onClick={onOpenDatasetManager}>
-        <IconDatabase />
+      <button className={`map-tool-btn ${trainOpen ? "active" : ""}`} data-tool="train" title="Train a model"
+              aria-expanded={trainOpen} onClick={onToggleTrain}>
+        <IconTrain />
       </button>
       <button className="map-tool-btn" data-tool="settings" title="Settings" onClick={onOpenSettings}>
         <IconGear />
@@ -171,7 +172,8 @@ function L_boundsFromGeojson(geojson) {
 
 export default function MapView({
   layers, detectionsVisible = true, onToggleDetections,
-  aoi, onAoiChange, measurement, onMeasurementChange, onOpenDatasetManager,
+  aoi, onAoiChange, measurement, onMeasurementChange,
+  trainOpen, onToggleTrain, onAnnotate, labels, trainPanel,
   onSelectLibraryImage, currentImageId, sourceImage,
   analysisOpen, onToggleAnalysis, analysisCount, analysisPanel,
 }) {
@@ -180,8 +182,8 @@ export default function MapView({
 
   // Legend and Analysis both open beside the toolbar: show one at a time.
   useEffect(() => {
-    if (analysisOpen) setLegendOpen(false);
-  }, [analysisOpen]);
+    if (analysisOpen || trainOpen) setLegendOpen(false);
+  }, [analysisOpen, trainOpen]);
 
   useEffect(() => {
     if (!legendOpen) return;
@@ -193,12 +195,12 @@ export default function MapView({
   function toggleLegend() {
     setLegendOpen((open) => {
       if (!open && analysisOpen) onToggleAnalysis?.();
+      if (!open && trainOpen) onToggleTrain?.();
       return !open;
     });
   }
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [annotateOpen, setAnnotateOpen] = useState(false);
   const [iconStyle, setIconStyle] = useState(() => localStorage.getItem("syntra_icon_style") || "mono");
   const bm = BASEMAPS[basemap];
 
@@ -262,22 +264,24 @@ export default function MapView({
           analysisCount={analysisCount}
           detectionsVisible={detectionsVisible}
           onToggleDetections={onToggleDetections}
-          onOpenDatasetManager={onOpenDatasetManager}
+          trainOpen={trainOpen}
+          onToggleTrain={onToggleTrain}
           editMenu={
             <MapDrawTools
               aoi={aoi}
               onAoiChange={onAoiChange}
               measurement={measurement}
               onMeasurementChange={onMeasurementChange}
-              annotateOpen={annotateOpen}
-              onToggleAnnotate={() => setAnnotateOpen((o) => !o)}
+              annotateOpen={false}
+              onToggleAnnotate={onAnnotate}
               canAnnotate={Boolean(sourceImage?.image_id)}
             />
           }
         />
-        <AnnotationTool active={annotateOpen} sourceImage={sourceImage} />
+        <AnnotationLayer {...labels} />
       </MapContainer>
       {analysisOpen && analysisPanel}
+      {trainPanel}
       <ImageLibrary
         open={libraryOpen}
         onClose={() => setLibraryOpen(false)}

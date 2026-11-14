@@ -3,7 +3,7 @@ import TopBar from "./components/TopBar.jsx";
 import Sidebar from "./components/Sidebar.jsx";
 import MapView from "./components/MapView.jsx";
 import AnalysisPanel from "./components/AnalysisPanel.jsx";
-import ModelSetupWizard from "./components/ModelSetupWizard.jsx";
+import TrainPanel from "./components/TrainPanel.jsx";
 import { IconMap, IconSliders } from "./components/Icons.jsx";
 import { api } from "./api/client.js";
 
@@ -16,10 +16,8 @@ function jobKey(imageId, modelId) {
 }
 
 export default function App() {
-  const [view, setView] = useState("detect"); // "detect" | "models"
   // phones show one pane at a time: the setup panel or the map
   const [mobilePane, setMobilePane] = useState("setup");
-  const [wizardStep, setWizardStep] = useState(null); // open the wizard on a given step
   const [models, setModels] = useState([]);
   const [selectedModels, setSelectedModels] = useState([]);
   const [image, setImage] = useState(null);
@@ -30,7 +28,31 @@ export default function App() {
   const [aoi, setAoi] = useState(null);
   const [measurement, setMeasurement] = useState(null);
   const [detectionsVisible, setDetectionsVisible] = useState(true);
-  const [analysisOpen, setAnalysisOpen] = useState(false);
+  const [analysisOpen, setAnalysisOpenRaw] = useState(false);
+  // Train panel: one flyout beside the map toolbar at a time (Analysis or Train)
+  const [trainOpen, setTrainOpenRaw] = useState(false);
+  const [trainStep, setTrainStep] = useState(0);
+  const [annotations, setAnnotations] = useState([]);
+  const [extraClasses, setExtraClasses] = useState([]);
+  const [activeClass, setActiveClass] = useState(null);
+  const [drawMode, setDrawMode] = useState(null);
+  const [labelError, setLabelError] = useState(null);
+  function setAnalysisOpen(v) {
+    setAnalysisOpenRaw((prev) => {
+      const next = typeof v === "function" ? v(prev) : v;
+      if (next) setTrainOpenRaw(false);
+      return next;
+    });
+  }
+  function setTrainOpen(v) {
+    setTrainOpenRaw((prev) => {
+      const next = typeof v === "function" ? v(prev) : v;
+      if (next) { setAnalysisOpenRaw(false); setMobilePane("map"); }
+      if (!next) setDrawMode(null);
+      return next;
+    });
+  }
+  function openTrain(step = 0) { setTrainStep(step); setTrainOpen(true); }
   const pollRef = useRef(null);
 
   // Restore recent prediction jobs after a page reload or server restart.
@@ -127,14 +149,14 @@ export default function App() {
     return () => clearInterval(pollRef.current);
   }, [jobs]);
 
-  async function handleRun(images) {
+  async function handleRun(images, modelIds = selectedModels) {
     setMobilePane("map");
     const validImages = (images || []).filter(Boolean);
-    if (validImages.length === 0 || selectedModels.length === 0) return;
+    if (validImages.length === 0 || modelIds.length === 0) return;
 
     setAnalysisOpen(true);
     for (const img of validImages) {
-      for (const modelId of selectedModels) {
+      for (const modelId of modelIds) {
         const key = jobKey(img.image_id, modelId);
         try {
           const started = await api.startPrediction({
@@ -177,6 +199,40 @@ export default function App() {
     }
   }
 
+  // training labels for the current image
+  useEffect(() => {
+    if (!image?.image_id) { setAnnotations([]); return; }
+    api.listAnnotations(image.image_id).then((r) => setAnnotations(r.annotations || [])).catch(() => setAnnotations([]));
+  }, [image?.image_id]);
+  const trainClasses = [...new Set([...annotations.map((a) => a.class_name), ...extraClasses])];
+  useEffect(() => {
+    if (!activeClass && trainClasses.length) setActiveClass(trainClasses[0]);
+  }, [trainClasses.join("|")]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function saveLabel(latlngs) {
+    if (!image?.image_id || !activeClass) return;
+    setLabelError(null);
+    try {
+      const saved = await api.addAnnotation(image.image_id, {
+        class_name: activeClass, points_lonlat: latlngs.map((p) => [p.lng, p.lat]),
+      });
+      setAnnotations((list) => [...list, saved]);
+    } catch (err) {
+      setLabelError(err.detail?.message || err.message);
+    }
+  }
+  async function deleteLabel(id) {
+    try {
+      await api.deleteAnnotation(image.image_id, id);
+      setAnnotations((list) => list.filter((a) => a.id !== id));
+    } catch (err) { setLabelError(err.message); }
+  }
+  async function clearLabels() {
+    if (!image?.image_id || !confirm("Delete every label on this image?")) return;
+    try { await api.clearAnnotations(image.image_id); setAnnotations([]); } catch (err) { setLabelError(err.message); }
+  }
+  const refreshModels = () => api.listModels().then(setModels).catch(() => {});
+
   const running = Object.values(jobs).some((j) => !TERMINAL.has(j.status));
   const hasCompletedJob = Object.values(jobs).some((j) => j.status === "completed");
 
@@ -206,8 +262,6 @@ export default function App() {
   return (
     <div className="app-shell">
       <TopBar
-        view={view}
-        onViewChange={(v) => { setWizardStep(null); setView(v); }}
         devices={devices}
         enabledGpus={enabledGpus}
         onToggleGpu={toggleGpu}
@@ -215,17 +269,14 @@ export default function App() {
         hasJob={hasCompletedJob}
         onExport={handleExport}
       />
-      {view === "models" ? (
-        <ModelSetupWizard onViewChange={(v) => { setWizardStep(null); setView(v); }} initialStep={wizardStep} />
-      ) : (
-        <>
+      <>
         <div className={`layout pane-${mobilePane}`}>
           <Sidebar
             models={models}
             selectedModels={selectedModels}
             onToggleModel={toggleModel}
-            onModelsChanged={() => api.listModels().then(setModels).catch(() => {})}
-            onTrain={() => { setWizardStep("annotate"); setView("models"); }}
+            onModelsChanged={refreshModels}
+            onTrain={() => openTrain(0)}
             image={image}
             onImageUploaded={setImage}
             onRun={handleRun}
@@ -241,7 +292,30 @@ export default function App() {
             onAoiChange={setAoi}
             measurement={measurement}
             onMeasurementChange={setMeasurement}
-            onOpenDatasetManager={() => setView("models")}
+            trainOpen={trainOpen}
+            onToggleTrain={() => setTrainOpen((v) => !v)}
+            onAnnotate={() => openTrain(trainClasses.length ? 1 : 0)}
+            labels={{
+              visible: trainOpen,
+              mode: trainOpen && trainStep === 1 ? drawMode : null,
+              className: activeClass, annotations,
+              onDrawn: saveLabel, onShapeClick: deleteLabel,
+            }}
+            trainPanel={
+              <TrainPanel
+                open={trainOpen} onClose={() => setTrainOpen(false)}
+                step={trainStep} onStep={(i) => { setDrawMode(null); setTrainStep(Math.max(0, Math.min(4, i))); }}
+                image={image} onImageChange={setImage}
+                annotations={annotations} classes={trainClasses}
+                onAddClass={(c) => { setExtraClasses((l) => (l.includes(c) ? l : [...l, c])); setActiveClass(c); }}
+                activeClass={activeClass} onActiveClass={setActiveClass}
+                mode={drawMode} onMode={setDrawMode}
+                onClearAnnotations={clearLabels} labelError={labelError}
+                device={devices?.gpu_count > 0 ? "cuda:0" : "cpu"}
+                onModelsChanged={refreshModels}
+                onRunModel={(id) => { refreshModels(); setSelectedModels((s) => (s.includes(id) ? s : [...s, id])); handleRun([image], [id]); }}
+              />
+            }
             onSelectLibraryImage={setImage}
             currentImageId={image?.image_id}
             sourceImage={image}
@@ -262,8 +336,7 @@ export default function App() {
             {analysisEntries.length > 0 && <span className="mono mobile-switch-count">{analysisEntries.length}</span>}
           </button>
         </nav>
-        </>
-      )}
+      </>
     </div>
   );
 }

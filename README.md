@@ -133,6 +133,39 @@ an 8-band uint16 UTM GeoTIFF with RGB in bands 3/2/1 and an empty strip:
 health ok, bands 3·2·1 picked from the sensor name, 2 empty tiles skipped,
 181 ships, ONNX only.
 
+## Train your own model, on the map
+
+The Train icon in the map toolbar opens a five-step panel beside the map
+(it replaced the separate Model setup page; the environment check is now in
+Settings):
+
+1. **Data**: upload a drone or satellite GeoTIFF (or pick one from the library) and name the classes.
+2. **Label**: draw boxes or polygons on the map, over the base map and the image. Click a saved shape to delete it.
+3. **Dataset**: tiles the image and labels into a YOLO dataset (boxes, rotated boxes or outlines), 20% held out.
+4. **Train**: fine-tunes YOLO11 as a background job; the panel can be closed while it runs.
+5. **Use**: adds the model to the sidebar list (Unvalidated) and runs it on the current image.
+
+Verified end to end in the browser (Playwright): 3 labels → 20 tiles → 2 epochs → registered → run →
+the result appears under Analysis. Training needs `ultralytics` + `torch` on the machine.
+
+## Drone objects (trained here, non-commercial)
+
+`syntra-drone-objects` is YOLO11n-seg fine-tuned on the TU Graz Semantic Drone Dataset (340 photos,
+60 held out, about 4 cm per pixel as the model sees them). Mask mAP50 on the held-out photos:
+
+| Class | mAP50 |
+|---|---|
+| Vehicles | 0.99 |
+| People | 0.65 |
+| Roofs | 0.55 |
+| Trees | 0.44 |
+| Fences, bicycles | < 0.2 (trained, not returned) |
+
+It runs through onnxruntime (`models/onnx_seg.py`, no torch), reads tiles at its training scale, and is
+refused with a 409 on imagery coarser than 22 cm. Checked on a 2 cm GeoTIFF: 6 outlines, WGS84, correct
+place. One suburban Austrian site: check it on Gulf imagery before relying on counts. Dataset terms are
+non-commercial.
+
 ## Works with any GeoTIFF: the 21-file matrix
 
 `backend/tests/geotiff_matrix/variants.py` writes 21 GeoTIFFs that differ the

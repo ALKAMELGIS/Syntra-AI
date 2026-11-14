@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { api } from "../api/client.js";
-import { IconMap, IconDashboard, IconFolder, IconClose, IconUpload, IconSun, IconMoon } from "./Icons.jsx";
+import { IconFolder, IconClose, IconUpload, IconSun, IconMoon } from "./Icons.jsx";
 
 function useOutsideClose(ref, close) {
   useEffect(() => {
@@ -150,7 +150,7 @@ function GpuMenu({ devices, enabledGpus, onToggleGpu }) {
   );
 }
 
-export default function TopBar({ view, onViewChange, devices, enabledGpus, onToggleGpu, hasImage, hasJob, onExport }) {
+export default function TopBar({ devices, enabledGpus, onToggleGpu, hasImage, hasJob, onExport }) {
   const [theme, setTheme] = useState(() => localStorage.getItem("syntra_theme") || "dark");
   const [usage, setUsage] = useState(null);
 
@@ -172,15 +172,6 @@ export default function TopBar({ view, onViewChange, devices, enabledGpus, onTog
           <span className="brand-sub">Detection Engine</span>
         </div>
         <FileMenu hasImage={hasImage} hasJob={hasJob} onExport={onExport} />
-      </div>
-
-      <div className="topbar-tabs">
-        <button className={`tab-button ${view === "detect" ? "active" : ""}`} onClick={() => onViewChange("detect")}>
-          <IconMap /> <span className="tab-label">Full map</span>
-        </button>
-        <button className={`tab-button ${view === "models" ? "active" : ""}`} onClick={() => onViewChange("models")}>
-          <IconDashboard /> <span className="tab-label">Model setup</span>
-        </button>
       </div>
 
       <div className="topbar-right">

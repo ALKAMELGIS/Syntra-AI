@@ -196,7 +196,7 @@ def _refuse_wrong_scale(meta, image_path: str) -> None:
         gsd = ground_gsd_m(image_path)
     except Exception:
         return
-    if gsd and gsd > 3 * meta.supported_gsd.max_m:
+    if gsd and gsd > 1.5 * meta.supported_gsd.max_m:
         raise HTTPException(status_code=409, detail=(
             f"'{meta.name}' is a drone model ({meta.supported_gsd.min_m * 100:g}-{meta.supported_gsd.max_m * 100:g} cm per pixel); "
             f"this image is {gsd * 100:.0f} cm per pixel. Use the satellite models for it."))

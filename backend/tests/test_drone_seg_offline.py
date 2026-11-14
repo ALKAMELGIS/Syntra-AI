@@ -71,3 +71,24 @@ def test_drone_model_refused_on_satellite_scale(monkeypatch):
     monkeypatch.setattr(seg, "ground_gsd_m", lambda p: 0.03)
     _refuse_wrong_scale(meta, "x.tif")                # drone scale: allowed
     _refuse_wrong_scale(get_metadata("ship_detection"), "x.tif")
+
+
+def test_weak_classes_in_the_file_are_not_returned(monkeypatch):
+    """The ONNX file has six classes; the catalog keeps four (fence, bicycle scored mAP50 < 0.2)."""
+    import app.models.drone_seg_detector as mod
+    from app.models.onnx_seg import SegDetection
+    from app.models.registry import get_metadata
+
+    class Fake:
+        imgsz = 640
+        names = {0: "tree", 1: "building", 2: "vehicle", 3: "person", 4: "fence", 5: "bicycle"}
+
+        def predict(self, img, conf=0.25):
+            sq = [(0, 0), (10, 0), (10, 10)]
+            return [SegDetection((0, 0, 10, 10), sq, c, 0.9) for c in range(6)]
+
+    monkeypatch.setattr(mod, "_load", lambda path, device: Fake())
+    d = mod.DroneSegDetector(get_metadata("drone_objects"), "x.onnx")
+    d.load_model("cpu")
+    got = sorted(r.class_id for r in d.predict(np.zeros((64, 64, 3), np.uint8)))
+    assert got == [0, 1, 2, 3]

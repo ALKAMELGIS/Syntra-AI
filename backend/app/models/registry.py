@@ -135,8 +135,8 @@ CATALOG: dict[str, ModelMetadata] = {
         status=ModelStatus.VALIDATION,
         hardware_compatibility=["cpu", "cuda"],
         default_confidence_threshold=0.30,
-        class_names={0: "tree", 1: "building", 2: "vehicle", 3: "person", 4: "fence", 5: "bicycle"},
-        notes="Outlines of trees, roofs, vehicles, people, fences and bicycles in drone orthomosaics.",
+        class_names={0: "tree", 1: "building", 2: "vehicle", 3: "person"},
+        notes="Outlines of trees, roofs, vehicles and people in drone orthomosaics.",
     ),
     "field_boundary_segmentation": ModelMetadata(
         model_id="field_boundary_segmentation",

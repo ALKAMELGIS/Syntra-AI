@@ -29,7 +29,7 @@ from pathlib import Path
 
 import numpy as np
 
-MODEL_GSD_RANGE_M = (0.10, 2.00)   # widest range any catalog detector supports
+MODEL_GSD_RANGE_M = (0.01, 2.00)   # widest range any catalog detector supports (drone 1-15 cm, satellite up to 2 m)
 
 
 @dataclass
@@ -177,7 +177,7 @@ def _findings(h: RasterHealth) -> list[Finding]:
             f.append(Finding("warning", "gsd_range", f"Ground resolution {h.gsd_m:g} m",
                              f"The detection models work best between {lo:g} and {hi:g} m per pixel. "
                              "Objects may be too small or too large for reliable detection at this resolution.",
-                             "Resample to about 0.3–0.5 m, or pansharpen a coarser multispectral image."))
+                             "Drone models need 1-15 cm, satellite models 0.3-0.5 m: resample, or pansharpen a coarser image."))
         else:
             f.append(Finding("ok", "gsd", f"Ground resolution {h.gsd_m:g} m", "Within the range the detection models support."))
 

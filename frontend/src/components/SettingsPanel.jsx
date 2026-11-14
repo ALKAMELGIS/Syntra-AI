@@ -1,4 +1,6 @@
 import React from "react";
+import EnvironmentPanel from "./EnvironmentPanel.jsx";
+import { IconClose } from "./Icons.jsx";
 
 // Applies immediately (no "Save" button, matching the reference) and is
 // persisted per-browser via localStorage, read by MapView to add/remove
@@ -10,8 +12,8 @@ export default function SettingsPanel({ open, onClose, iconStyle, onChangeIconSt
     <div className="settings-modal-backdrop" onClick={onClose}>
       <div className="settings-modal" onClick={(e) => e.stopPropagation()}>
         <div className="settings-modal-header">
-          <span>⚙ Settings</span>
-          <button className="settings-modal-close" onClick={onClose}>✕</button>
+          <span>Settings</span>
+          <button className="settings-modal-close" onClick={onClose} aria-label="Close"><IconClose /></button>
         </div>
         <div className="settings-modal-body">
           <p className="settings-section-title">Icon style</p>
@@ -36,6 +38,10 @@ export default function SettingsPanel({ open, onClose, iconStyle, onChangeIconSt
             <div className="settings-option-desc">A hue per tool — basemap, results, visibility, catalogue.</div>
             {iconStyle === "colour" && <span className="settings-option-check">✓</span>}
           </div>
+
+          <p className="settings-section-title" style={{ marginTop: 24 }}>Environment</p>
+          <p className="note">Python libraries the analysis and training steps need on this computer.</p>
+          <EnvironmentPanel />
         </div>
       </div>
     </div>

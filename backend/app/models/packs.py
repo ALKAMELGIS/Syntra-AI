@@ -93,8 +93,9 @@ PACKS: dict[str, ModelPack] = {
         commercial_use=False,
         source=(
             "YOLO11n-seg fine-tuned by Syntra on the TU Graz Semantic Drone Dataset (non-commercial terms): 340 nadir drone photos "
-            "(5-30 m flights, about 4 cm per pixel as the model sees them), validated on 60 held-out photos. "
-            "Outlines trees, roofs, vehicles, people, fences and bicycles."
+            "(5-30 m flights, about 4 cm per pixel as the model sees them). Mask mAP50 on 60 held-out photos: "
+            "vehicles 0.99, people 0.65, roofs 0.55, trees 0.44. Fences and bicycles were trained but are not "
+            "returned (mAP50 below 0.2)."
         ),
         training_gsd_m=0.04,
         approx_size_mb=11,
