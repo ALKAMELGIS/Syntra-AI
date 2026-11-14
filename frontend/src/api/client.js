@@ -17,7 +17,12 @@ export function withKey(url) {
   return `${url}${url.includes("?") ? "&" : "?"}api_key=${encodeURIComponent(API_KEY)}`;
 }
 
+// A 401 from any data route means the session ended (signed out elsewhere,
+// expired): tell the sign-in gate, which swaps the app for the sign-in page.
+export const SIGNED_OUT = "syntra:signed-out";
+
 async function handle(res) {
+  if (res.status === 401 && !res.url.includes("/api/auth/")) window.dispatchEvent(new Event(SIGNED_OUT));
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     const detail = body.detail;
@@ -28,6 +33,16 @@ async function handle(res) {
   }
   return res.json();
 }
+
+const json = (body) => ({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+
+export const auth = {
+  status: () => request(`${BASE}/auth/status`).then(handle),
+  signIn: (email, password) => request(`${BASE}/auth/signin`, json({ email, password })).then(handle),
+  signUp: (name, email, password) => request(`${BASE}/auth/signup`, json({ name, email, password })).then(handle),
+  signOut: () => request(`${BASE}/auth/signout`, { method: "POST" }).then(handle),
+  engineUp: () => fetch(`${BASE}/health`).then((r) => r.ok).catch(() => false),
+};
 
 export const api = {
   listPacks: () => request(`${BASE}/models/packs`).then(handle),
@@ -71,6 +86,7 @@ export const api = {
         if (xhr.status >= 200 && xhr.status < 300) {
           resolve(body);
         } else {
+          if (xhr.status === 401) window.dispatchEvent(new Event(SIGNED_OUT));
           const detail = body.detail;
           const message = typeof detail === "string" ? detail : detail?.message || `Request failed: ${xhr.status}`;
           const err = new Error(message);

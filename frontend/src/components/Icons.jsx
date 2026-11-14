@@ -114,3 +114,7 @@ export const IconInfo = (p) => (
 export const IconPerformance = (p) => (
   <svg {...base} {...p}><path d="M3 3v18h18" /><path d="M7 15l4-5 3 3 5-7" /></svg>
 );
+
+export const IconSignOut = (p) => (
+  <svg {...base} {...p}><path d="M15 4h4a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-4M10 17l-5-5 5-5M5 12h11" /></svg>
+);

@@ -13,10 +13,10 @@ from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import annotations, benchmark, compute, datasets, environment, images, jobs, models, predict, results, training, usage
+from app.api import annotations, auth, benchmark, compute, datasets, environment, images, jobs, models, predict, results, training, usage
 from app.core.config import settings
 from app.core.jobs import get_store
-from app.core.security import require_api_key
+from app.core.auth import require_access
 
 
 @asynccontextmanager
@@ -38,7 +38,9 @@ app.add_middleware(
     allow_headers=["Content-Type", "X-API-Key"],
 )
 
-_protected = [Depends(require_api_key)]
+_protected = [Depends(require_access)]
+
+app.include_router(auth.router)
 
 app.include_router(models.router, dependencies=_protected)
 app.include_router(images.router, dependencies=_protected)

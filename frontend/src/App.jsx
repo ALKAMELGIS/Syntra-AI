@@ -16,7 +16,7 @@ function jobKey(imageId, modelId) {
   return `${imageId}::${modelId}`;
 }
 
-export default function App() {
+export default function App({ user = null, onSignOut = null }) {
   // phones show one pane at a time: the setup panel or the map
   const [mobilePane, setMobilePane] = useState("setup");
   const [models, setModels] = useState([]);
@@ -301,6 +301,8 @@ export default function App() {
         hasImage={!!image}
         hasJob={hasCompletedJob}
         onExport={handleExport}
+        user={user}
+        onSignOut={onSignOut}
       />
       <>
         <div className={`layout pane-${mobilePane}`}>

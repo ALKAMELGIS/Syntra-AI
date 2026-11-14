@@ -304,6 +304,14 @@ for when it is exposed to a network (all in `backend/.env.example`):
 - Upload filenames are sanitised and capped by `SYNTRA_MAX_UPLOAD_MB`.
 - Library Status install/repair/update (which runs `pip`) only works from
   the server itself unless `SYNTRA_ALLOW_ENV_ACTIONS=1`.
+- **Accounts.** The app opens on Sign in / Create account. The first account
+  is the admin and can only be made from the computer running Syntra; after
+  that anyone with the address can create an account unless
+  `SYNTRA_ALLOW_SIGNUP=0`. Passwords are scrypt-hashed with a per-user salt;
+  the session is an HttpOnly cookie whose token is stored only as a SHA-256
+  hash in `syntra.db`. Five wrong passwords lock an email or address for ten
+  minutes. `SYNTRA_AUTH=off` restores open access. Verified by
+  `test_auth_offline.py` (9 tests) and a live browser run at four screen sizes.
 - `SYNTRA_API_KEY` turns on a shared key for every `/api/*` route except
   `/api/health`; set `VITE_API_KEY` in `frontend/.env` to match. This is a
   LAN gate, not per-user login, which is the next step.

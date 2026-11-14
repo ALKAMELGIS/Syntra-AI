@@ -146,7 +146,7 @@ def check_raster(path: str | Path, sample_dim: int = 1024) -> RasterHealth:
             tiled=bool(ds.profile.get("tiled", False)),
             block_shape=list(ds.block_shapes[0]),
             overviews=ds.overviews(1),
-            compression=ds.compression.value if ds.compression else None,
+            compression=getattr(ds.compression, "value", ds.compression) if ds.compression else None,  # a str for YCbCr JPEG on some GDAL builds
             has_rpc=ds.rpcs is not None,
             file_size_bytes=path.stat().st_size,
             rgb_bands=list(rgb), rgb_source=rgb_source, sensor=detect_sensor(path),
