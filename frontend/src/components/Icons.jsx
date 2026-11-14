@@ -118,3 +118,11 @@ export const IconPerformance = (p) => (
 export const IconSignOut = (p) => (
   <svg {...base} {...p}><path d="M15 4h4a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-4M10 17l-5-5 5-5M5 12h11" /></svg>
 );
+
+export const IconChevronLeft = (p) => (
+  <svg {...base} {...p}><path d="M15 18l-6-6 6-6" /></svg>
+);
+
+export const IconRaster = (p) => (
+  <svg {...base} {...p}><rect x="4" y="4" width="16" height="16" rx="2" /><path d="M4 15l4.5-4.5 4 4 3-3L20 16" /></svg>
+);

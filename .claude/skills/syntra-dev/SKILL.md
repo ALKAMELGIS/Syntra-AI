@@ -46,6 +46,17 @@ real, what is written but unrun, and how it was verified.
   listed in `hidden_classes` and left out of the catalog entry, not returned.
 - A raster-check rule change bumps `HEALTH_VERSION` in `raster_health.py`
   so saved checks in the library are redone.
+- Never write into a user's original file. Images opened from disk are
+  hard-linked into the library; call `detach_if_linked(path)` before any
+  in-place write (`rasterio.open(path, "r+")`, overviews). Writes that go
+  through a temp file and `os.replace` are already safe.
+- Work must survive a browser refresh. Keep small identifiers in the
+  browser (`PROJECT_KEY` in App.jsx, the map view and layer settings in
+  MapView) and fetch everything heavy back from the server. Anything
+  expensive to render (previews) is cached on disk keyed by file size and
+  mtime, with an ETag.
+- Caches shared by parallel requests (one map view asks for ~30 tiles at
+  once) need a lock: `lru_cache` alone lets every request miss together.
 - An image that "doesn't show on the map" is first a content question,
   not a placement one. Satellite products ship side files (cloud, quality,
   UDM masks) next to the scene; an all-zero mask reads 0% data and draws

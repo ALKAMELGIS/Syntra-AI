@@ -146,3 +146,27 @@ def find_entry_by_image_id(upload_dir: Path, image_id: str) -> dict[str, Any] | 
         if entry.get("image_id") == image_id:
             return entry
     return None
+
+
+def detach_if_linked(path: str | Path) -> bool:
+    """Make the library's file its own before writing into it.
+
+    Images opened from the user's folders are hard-linked into the library
+    (instant, no extra space). A hard link shares its bytes with the original,
+    so an in-place write (overviews, a GCP transform) would change the user's
+    file. Call this first: a linked file is copied and swapped in, and the
+    original is never touched. Returns True when a copy was made.
+    """
+    import os
+    import shutil
+
+    path = Path(path)
+    try:
+        if os.stat(path).st_nlink <= 1:
+            return False
+    except OSError:
+        return False
+    tmp = path.with_name(path.name + ".own")
+    shutil.copyfile(path, tmp)
+    os.replace(tmp, path)
+    return True

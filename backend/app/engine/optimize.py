@@ -90,6 +90,8 @@ def optimize(path: str | Path, progress=lambda pct: None) -> dict:
                     raise RuntimeError("The image was in use by a running analysis; it will be optimised next time.")
                 time.sleep(0.5)
 
+    from app.core.image_library import detach_if_linked
+    detach_if_linked(path)   # never write into a user's original through a hard link
     with rasterio.open(path, "r+") as ds:
         factors = _overview_factors(ds.width, ds.height)
         if factors and not ds.overviews(1):

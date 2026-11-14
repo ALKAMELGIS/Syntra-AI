@@ -5,14 +5,133 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Response, UploadFile
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, Response, UploadFile
+from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
 
 from app.core.config import settings
-from app.core.security import safe_filename
+from app.core.security import is_loopback, safe_filename
 from app.core.image_library import build_entry, find_entry_by_image_id, list_library, write_entry
 
 router = APIRouter(prefix="/api/images", tags=["images"])
+
+_RASTER_EXT = (".tif", ".tiff")
+
+
+# ---------------------------------------------------------------------------
+# Open from this computer: the engine runs on the user's own machine, so a
+# multi-GB scene does not need to travel through the browser at all. The file
+# is hard-linked into the library (instant, no extra space) or, across disks,
+# copied by the file system. The original is never modified: anything that
+# writes into a library file detaches the link first (detach_if_linked).
+# ---------------------------------------------------------------------------
+def import_roots() -> list[Path]:
+    import os
+
+    extra = [p for p in os.getenv("SYNTRA_IMPORT_ROOTS", "").split(os.pathsep) if p.strip()]
+    roots = [Path(p).expanduser() for p in extra] or [Path.home()]
+    return [r.resolve() for r in roots if r.exists()]
+
+
+def _local_only(request: Request) -> None:
+    if not is_loopback(request):
+        raise HTTPException(403, detail="Opening files from disk works only on the computer running Syntra. Upload instead")
+
+
+def _inside_roots(raw: str) -> Path:
+    try:
+        p = Path(raw).expanduser().resolve()
+    except (OSError, RuntimeError):
+        raise HTTPException(400, detail="Not a valid path")
+    for root in import_roots():
+        if p == root or root in p.parents:
+            return p
+    raise HTTPException(403, detail="Outside the folders Syntra may open. Add the folder to SYNTRA_IMPORT_ROOTS")
+
+
+@router.get("/local/browse")
+def browse_local(request: Request, path: str | None = None):
+    """Folders and GeoTIFFs in one folder under the import roots."""
+    _local_only(request)
+    roots = import_roots()
+    if not path:
+        if len(roots) == 1:
+            path = str(roots[0])
+        else:
+            return {"path": None, "parent": None, "roots": [str(r) for r in roots],
+                    "entries": [{"name": str(r), "path": str(r), "kind": "dir"} for r in roots]}
+    folder = _inside_roots(path)
+    if not folder.is_dir():
+        raise HTTPException(404, detail="Folder not found")
+    entries = []
+    try:
+        items = sorted(folder.iterdir(), key=lambda q: q.name.lower())
+    except PermissionError:
+        raise HTTPException(403, detail="Windows did not allow reading this folder")
+    for q in items:
+        if q.name.startswith((".", "$")) or q.name in ("AppData", "node_modules"):
+            continue
+        try:
+            if q.is_dir():
+                entries.append({"name": q.name, "path": str(q), "kind": "dir"})
+            elif q.suffix.lower() in _RASTER_EXT:
+                st = q.stat()
+                entries.append({"name": q.name, "path": str(q), "kind": "file", "size_bytes": st.st_size,
+                                "has_xml": q.with_suffix(".xml").exists()})
+        except OSError:
+            continue
+        if len(entries) >= 1000:
+            break
+    entries.sort(key=lambda e: (e["kind"] != "dir", e["name"].lower()))
+    parent = folder.parent if any(folder != r and r in folder.parents for r in roots) else None
+    return {"path": str(folder), "parent": str(parent) if parent else None,
+            "roots": [str(r) for r in roots], "entries": entries}
+
+
+class LocalImport(BaseModel):
+    path: str
+
+
+@router.post("/local")
+async def import_local(body: LocalImport, request: Request, background_tasks: BackgroundTasks):
+    """Add a GeoTIFF from this computer to the library without uploading it."""
+    import os
+    import shutil
+
+    _local_only(request)
+    settings.ensure_dirs()
+    src = _inside_roots(body.path)
+    if not src.is_file() or src.suffix.lower() not in _RASTER_EXT:
+        raise HTTPException(400, detail="Choose a GeoTIFF (.tif or .tiff)")
+    st = src.stat()
+    if st.st_size > settings.MAX_UPLOAD_MB * 1024 * 1024:
+        raise HTTPException(413, detail=f"File exceeds the {settings.MAX_UPLOAD_MB} MB limit (SYNTRA_MAX_UPLOAD_MB)")
+
+    # the same file opened again (a refresh, a second click): reuse its entry
+    for e in list_library(settings.UPLOAD_DIR):
+        if e.get("source_path") == str(src) and e.get("source_mtime") == st.st_mtime and e.get("size_bytes") == st.st_size:
+            return {**_fresh(e), "reused": True}
+
+    filename = safe_filename(src.name)
+    image_id = str(uuid.uuid4())
+    dest = settings.UPLOAD_DIR / f"{image_id}_{filename}"
+
+    def _bring(a: Path, b: Path) -> str:
+        try:
+            os.link(a, b)
+            return "linked"
+        except OSError:                       # another disk, or a file system without hard links
+            shutil.copyfile(a, b)
+            return "copied"
+
+    how = await run_in_threadpool(_bring, src, dest)
+    xml = src.with_suffix(".xml")
+    if xml.is_file() and xml.stat().st_size <= 2 * 1024 * 1024:
+        await run_in_threadpool(_bring, xml, dest.with_suffix(".xml"))
+    entry = await _register(dest, filename, image_id, background_tasks)
+    entry.update(source_path=str(src), source_mtime=st.st_mtime, imported=how)
+    _save_dict(dest, entry)
+    return entry
 
 
 @router.post("")
@@ -67,6 +186,12 @@ async def upload_image(file: UploadFile, background_tasks: BackgroundTasks, meta
         # and read_calibration_gains() look for it
         dest.with_suffix(".xml").write_bytes(xml_bytes)
 
+    return await _register(dest, filename, image_id, background_tasks)
+
+
+async def _register(dest: Path, filename: str, image_id: str, background_tasks: BackgroundTasks) -> dict:
+    """Everything after the file is in the library folder: georeference, read
+    metadata, check, save the entry, start the background optimise."""
     raster_meta = None
     raster_meta_note = None
     preview_bounds = None
@@ -272,18 +397,48 @@ def get_image_tile(image_id: str, z: int, x: int, y: int):
 
 
 @router.get("/{image_id}/preview.png")
-def get_image_preview(image_id: str):
+def get_image_preview(image_id: str, request: Request):
     """A real, decimated true-color PNG of the raster for the map overlay —
-    not a placeholder box. See app.engine.raster_io.read_preview_png."""
+    not a placeholder box. See app.engine.raster_io.read_preview_png.
+
+    Cached on disk beside the library file and keyed by the file's size and
+    modification time, so a page refresh shows the image at once instead of
+    reading the scene again (7.6 s on a 1.8 GB scene), and a file that changed
+    (after the background optimise) gets a fresh one."""
+    import os
+
     settings.ensure_dirs()
     entry = find_entry_by_image_id(settings.UPLOAD_DIR, image_id)
     if entry is None:
         raise HTTPException(status_code=404, detail=f"No library image with id '{image_id}'.")
+    path = Path(entry["path"])
+    try:
+        st = path.stat()
+    except OSError:
+        raise HTTPException(status_code=404, detail="The image file is missing from the library folder.")
+    etag = f'"{st.st_size:x}-{st.st_mtime_ns:x}"'
+    headers = {"ETag": etag, "Cache-Control": "private, no-cache"}      # revalidate: 304 when unchanged
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=304, headers=headers)
+    cache = path.with_name(path.name + ".preview.png")
+    tag = cache.with_name(cache.name + ".etag")
+    try:
+        if cache.exists() and tag.exists() and tag.read_text() == etag:
+            return Response(content=cache.read_bytes(), media_type="image/png", headers=headers)
+    except OSError:
+        pass
     try:
         from app.engine.raster_io import read_preview_png
-        png_bytes = read_preview_png(entry["path"])
+        png_bytes = read_preview_png(path)
     except ImportError:
         raise HTTPException(status_code=503, detail="rasterio/Pillow not installed — preview unavailable in this environment.")
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"Could not render preview: {exc}")
-    return Response(content=png_bytes, media_type="image/png")
+    try:
+        tmp = cache.with_name(cache.name + f".{os.getpid()}.tmp")
+        tmp.write_bytes(png_bytes)
+        os.replace(tmp, cache)
+        tag.write_text(etag)
+    except OSError:
+        pass                                    # read-only data folder: serve without caching
+    return Response(content=png_bytes, media_type="image/png", headers=headers)

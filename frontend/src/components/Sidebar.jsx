@@ -1,5 +1,6 @@
 import RasterHealth from "./RasterHealth.jsx";
 import ModelList from "./ModelList.jsx";
+import LocalBrowser from "./LocalBrowser.jsx";
 import InfoNote, { splitMessage } from "./InfoNote.jsx";
 import { useOptimizeJob } from "./OptimizeNote.jsx";
 import React, { useRef, useState } from "react";
@@ -28,7 +29,7 @@ export default function Sidebar({ models, selectedModels, onToggleModel, onModel
   const optimizing = useOptimizeJob(image, onImageUploaded);
   const fileInput = useRef(null);
   const batchInput = useRef(null);
-  const [mode, setMode] = useState("single"); // "single" | "batch"
+  const [mode, setMode] = useState("single"); // "single" | "local" | "batch"
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [dragOver, setDragOver] = useState(false);
@@ -121,7 +122,7 @@ export default function Sidebar({ models, selectedModels, onToggleModel, onModel
 
   const batchImages = batchQueue.filter((q) => q.status === "done").map((q) => q.image);
   const canRun =
-    mode === "single"
+    mode !== "batch"
       ? !!image && selectedModels.length > 0 && !running
       : batchImages.length > 0 && selectedModels.length > 0 && !running;
 
@@ -139,14 +140,23 @@ export default function Sidebar({ models, selectedModels, onToggleModel, onModel
 
       <div className="source-mode-tabs">
         <button className={`source-mode-tab ${mode === "single" ? "active" : ""}`} onClick={() => setMode("single")}>
-          Single file
+          Upload
+        </button>
+        <button className={`source-mode-tab ${mode === "local" ? "active" : ""}`} onClick={() => setMode("local")}
+                title="Open a GeoTIFF from this computer's folders, without uploading it">
+          This PC
         </button>
         <button className={`source-mode-tab ${mode === "batch" ? "active" : ""}`} onClick={() => setMode("batch")}>
-          Folder batch
+          Batch
         </button>
       </div>
 
-      {mode === "single" ? (
+      {mode === "local" && (
+        <>
+          <LocalBrowser onImported={(entry) => { onImageUploaded(entry); setMode("single"); }} />
+        </>
+      )}
+      {mode === "local" ? null : mode === "single" ? (
         <>
           <div
             className={`dropzone ${dragOver ? "drag-over" : ""}`}

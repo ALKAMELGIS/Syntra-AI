@@ -304,6 +304,22 @@ for when it is exposed to a network (all in `backend/.env.example`):
 - Upload filenames are sanitised and capped by `SYNTRA_MAX_UPLOAD_MB`.
 - Library Status install/repair/update (which runs `pip`) only works from
   the server itself unless `SYNTRA_ALLOW_ENV_ACTIONS=1`.
+- **Open from this computer (This PC tab).** The engine runs on the same
+  machine, so a multi-GB scene is not uploaded: the file is hard-linked into
+  the library (instant, no extra disk space) or, across disks, copied by the
+  file system. The original is never modified: anything that writes into a
+  library file (overviews, a GCP transform) first breaks the link
+  (`detach_if_linked`). Opening the same file again reuses its entry. Only
+  requests from this computer can use it, inside `SYNTRA_IMPORT_ROOTS`
+  (default: the home folder). Verified by `test_local_import_offline.py`
+  (8 tests; the original-unchanged test fails when the detach is removed) and
+  live: a 486 MB scene on the map 2.8 s after the click.
+- **A refresh keeps your work.** The session (image, selected models, AOI,
+  score filter), the map view per image and the image layer's opacity are
+  kept in the browser; results and running jobs come back from the server.
+  The preview is cached on disk with an ETag, so after a refresh the image is
+  back in 0.4 s instead of being read again. File > Save project now saves
+  this record (it used to save an empty `{}`).
 - **Large scenes on the map.** Measured on a real SuperView Neo-3 MUX scene
   (10,806 x 10,395 px, 8 bands, uint16, 1.8 GB, stripped, no overviews) on a
   2-core VM: raster check 1.5 s; preview 7.6 s (was 118 s: it is now read

@@ -16,6 +16,8 @@ function jobKey(imageId, modelId) {
   return `${imageId}::${modelId}`;
 }
 
+export const PROJECT_KEY = "syntra_project";
+
 export default function App({ user = null, onSignOut = null }) {
   // phones show one pane at a time: the setup panel or the map
   const [mobilePane, setMobilePane] = useState("setup");
@@ -64,6 +66,25 @@ export default function App({ user = null, onSignOut = null }) {
   }
   function openTrain(step = 0) { setTrainStep(step); setTrainOpen(true); }
   const pollRef = useRef(null);
+
+  // The working session survives a refresh or a browser crash. Only small
+  // identifiers are kept here (image id, selected models, AOI, filter); the
+  // image, its results and running jobs live on the server and are fetched
+  // back. The same record is what File > Save project downloads.
+  const restoring = useRef(true);
+  useEffect(() => {
+    let saved = null;
+    try { saved = JSON.parse(localStorage.getItem(PROJECT_KEY) || "null"); } catch { saved = null; }
+    if (saved?.selectedModels?.length) setSelectedModels(saved.selectedModels);
+    if (saved?.aoi) setAoi(saved.aoi);
+    if (typeof saved?.minScore === "number") setMinScore(saved.minScore);
+    if (saved?.detectionsVisible === false) setDetectionsVisible(false);
+    if (saved?.image_id) {
+      api.getImage(saved.image_id).then((img) => setImage(img)).catch(() => {}).finally(() => { restoring.current = false; });
+    } else {
+      restoring.current = false;
+    }
+  }, []);
 
   // Restore recent prediction jobs after a page reload or server restart.
   // The server keeps them in its job store; the newest job per
@@ -265,6 +286,13 @@ export default function App({ user = null, onSignOut = null }) {
 
   // Results filtered by the Analysis panel's score slider (no rerun needed).
   const [minScore, setMinScore] = useState(0);
+
+  useEffect(() => {
+    if (restoring.current) return;          // don't overwrite the saved session before it is read back
+    const record = { version: 1, image_id: image?.image_id || null, image_name: image?.filename || null,
+                     selectedModels, aoi, minScore, detectionsVisible, saved_at: new Date().toISOString() };
+    try { localStorage.setItem(PROJECT_KEY, JSON.stringify(record)); } catch { /* private window: nothing to keep */ }
+  }, [image?.image_id, selectedModels, aoi, minScore, detectionsVisible]);
   const filtered = useMemo(() => {
     const out = {};
     for (const [key, gj] of Object.entries(geojsonByKey)) {

@@ -1457,3 +1457,31 @@ path.image-footprint.empty { stroke: var(--error); stroke-opacity: 1; }
   font-family: var(--font-mono); font-size: 12px; line-height: 16px;
 }
 .leaflet-tooltip.footprint-label::before { display: none; }
+
+/* --- Open from this computer (sidebar, "This PC" tab) --- */
+.local-browser { display: flex; flex-direction: column; gap: 8px; }
+.local-path { display: flex; align-items: center; gap: 4px; height: 32px; padding: 0 8px 0 4px;
+  border: 1px solid var(--panel-border); border-radius: var(--radius-control); background: var(--bg); }
+.local-up { width: 24px; height: 24px; flex: none; display: grid; place-items: center; border-radius: 6px;
+  background: transparent; border: none; color: var(--text-dim); cursor: pointer; font-size: 14px;
+  transition: background-color 0.12s var(--ease), color 0.12s var(--ease); }
+.local-up:hover:not(:disabled) { background: var(--hover-bg); color: var(--text); }
+.local-up:disabled { opacity: 0.35; cursor: default; }
+.local-path-text { flex: 1 1 auto; min-width: 0; font-size: 12px; color: var(--text-dim);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.local-list { list-style: none; margin: 0; padding: 4px; max-height: 288px; overflow-y: auto;
+  border: 1px solid var(--panel-border); border-radius: var(--radius-control); }
+.local-row { display: flex; align-items: center; gap: 8px; width: 100%; height: 32px; padding: 0 8px;
+  background: transparent; border: none; border-radius: 6px; color: var(--text); font-size: 13px;
+  text-align: left; cursor: pointer; transition: background-color 0.12s var(--ease); }
+.local-row:hover:not(:disabled) { background: var(--hover-bg); }
+.local-row:disabled { cursor: progress; }
+.local-row svg { flex: none; font-size: 14px; color: var(--text-muted); }
+.local-row.file svg { color: var(--text-dim); }
+.local-name { flex: 1 1 auto; min-width: 0; display: flex; white-space: nowrap; }
+.local-name-head { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.local-name-tail { flex: none; }
+.local-row.mask .local-name, .local-row.mask svg { color: var(--text-muted); }
+.local-row.dir .local-name { color: var(--text-dim); }
+.local-meta { flex: none; font-size: 12px; color: var(--text-muted); }
+.local-empty { padding: 8px; font-size: 12px; color: var(--text-muted); }

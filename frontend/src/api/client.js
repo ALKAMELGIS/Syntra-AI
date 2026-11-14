@@ -45,6 +45,8 @@ export const auth = {
 };
 
 export const api = {
+  browseLocal: (path) => request(`${BASE}/images/local/browse${path ? `?path=${encodeURIComponent(path)}` : ""}`).then(handle),
+  importLocal: (path) => request(`${BASE}/images/local`, json({ path })).then(handle),
   listPacks: () => request(`${BASE}/models/packs`).then(handle),
   installPack: (packId) => request(`${BASE}/models/packs/${packId}/install`, { method: "POST" }).then(handle),
   installStatus: (jobId) => request(`${BASE}/models/packs/install/${jobId}`).then(handle),

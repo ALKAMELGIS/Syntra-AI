@@ -229,14 +229,32 @@ function ImageFootprint({ image }) {
 // Frames the newly loaded source image automatically, the same way the
 // reference app snaps to a freshly imported scene — real geographic bounds
 // from the backend (app.engine.raster_io.compute_wgs84_bounds), not a guess.
+const VIEW_KEY = "syntra_view";
+const LAYER_KEY = "syntra_image_layer";
+
 function AutoFitSourceImage({ sourceImage }) {
   const map = useMap();
   useEffect(() => {
     const b = sourceImage?.bounds_wgs84;
-    if (b) {
+    if (!b) return;
+    // after a refresh, go back to where the user was on this image
+    let saved = null;
+    try { saved = JSON.parse(localStorage.getItem(VIEW_KEY) || "null"); } catch { saved = null; }
+    if (saved?.image_id === sourceImage.image_id && Array.isArray(saved.center)) {
+      map.setView(saved.center, saved.zoom, { animate: false });
+    } else {
       map.fitBounds([[b.south, b.west], [b.north, b.east]], { padding: [40, 40] });
     }
   }, [sourceImage?.image_id, map]);
+  useMapEvents({
+    moveend: () => {
+      if (!sourceImage?.image_id) return;
+      const c = map.getCenter();
+      try {
+        localStorage.setItem(VIEW_KEY, JSON.stringify({ image_id: sourceImage.image_id, center: [+c.lat.toFixed(6), +c.lng.toFixed(6)], zoom: map.getZoom() }));
+      } catch { /* storage unavailable */ }
+    },
+  });
   return null;
 }
 
@@ -274,7 +292,13 @@ export default function MapView({
 }) {
   const [basemap, setBasemap] = useState("satellite");
   const [legendOpen, setLegendOpen] = useState(false);
-  const [imageLayer, setImageLayer] = useState({ visible: true, opacity: 1 });
+  const [imageLayer, setImageLayerRaw] = useState(() => {
+    try { return { visible: true, opacity: 1, ...JSON.parse(localStorage.getItem(LAYER_KEY) || "{}") }; } catch { return { visible: true, opacity: 1 }; }
+  });
+  const setImageLayer = (v) => {
+    setImageLayerRaw(v);
+    try { localStorage.setItem(LAYER_KEY, JSON.stringify(v)); } catch { /* storage unavailable */ }
+  };
 
   // Legend and Analysis both open beside the toolbar: show one at a time.
   useEffect(() => {
