@@ -116,13 +116,44 @@ def packs_dir() -> Path:
     return d
 
 
+def model_dirs() -> list[Path]:
+    """Every folder a model file is looked for in, install folder first.
+
+    A file put in any of these once is found on every start: nothing has to
+    be installed again after an update, a re-clone or a new data folder.
+      - WEIGHTS_DIR/packs            where Install and From file write
+      - ~/.syntra/models             per-user, survives a fresh clone
+      - SYNTRA_MODEL_DIRS            extra folders (os.pathsep separated)
+    """
+    import os
+
+    dirs = [packs_dir(), Path.home() / ".syntra" / "models"]
+    dirs += [Path(p).expanduser() for p in os.getenv("SYNTRA_MODEL_DIRS", "").split(os.pathsep) if p.strip()]
+    seen, out = set(), []
+    for d in dirs:
+        k = str(d.resolve()) if d.exists() else str(d)
+        if k not in seen:
+            seen.add(k)
+            out.append(d)
+    return out
+
+
+def find_model_file(*names: str) -> Path | None:
+    for d in model_dirs():
+        for n in names:
+            p = d / n
+            if p.is_file() and p.stat().st_size > 0:
+                return p
+    return None
+
+
 def pack_path(pack: ModelPack) -> Path:
-    return packs_dir() / pack.filename
+    """Where the pack's file is: the first folder that has it, else the install folder."""
+    return find_model_file(pack.filename) or packs_dir() / pack.filename
 
 
 def is_installed(pack: ModelPack) -> bool:
-    p = pack_path(pack)
-    return p.is_file() and p.stat().st_size > 0
+    return find_model_file(pack.filename) is not None
 
 
 def pack_for_model(model_id: str) -> ModelPack | None:

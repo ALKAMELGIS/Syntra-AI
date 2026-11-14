@@ -137,7 +137,12 @@ async def install_pack_from_file(pack_id: str, file: UploadFile):
 @router.delete("/packs/{pack_id}")
 def uninstall_pack(pack_id: str):
     pack = _get_pack(pack_id)
-    pack_path(pack).unlink(missing_ok=True)
+    path = pack_path(pack)
+    from app.models.packs import packs_dir
+    if path.exists() and path.parent.resolve() != packs_dir().resolve():
+        # found in one of the user's own model folders: never delete their file
+        raise HTTPException(status_code=409, detail=f"This model is loaded from {path.parent}. Remove the file there to uninstall it.")
+    path.unlink(missing_ok=True)
     return {"pack_id": pack_id, "installed": False}
 
 

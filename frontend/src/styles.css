@@ -1159,3 +1159,34 @@ button, input, select, textarea { font-family: inherit; }
 }
 .train-flyout .analysis-head .panel-close-btn { margin-left: auto; }
 .train-flyout .analysis-count { color: var(--text-muted); }
+
+/* --- Info notes: one line, details open in place from a small (i) --- */
+.raster-health-head { cursor: default; }
+.raster-health-head:hover { background: transparent; }
+.raster-health-notes { border-top: 1px solid var(--panel-border); padding: 4px 0; }
+.info-note-line {
+  display: grid; grid-template-columns: 6px 1fr 24px; align-items: center; gap: 8px;
+  min-height: 28px; padding: 0 8px 0 12px;
+}
+.info-note-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-muted); }
+.info-note-ok .info-note-dot { background: var(--ready); }
+.info-note-warning .info-note-dot { background: var(--warn); }
+.info-note-error .info-note-dot { background: var(--error); }
+.info-note-title { font-size: 12px; color: var(--text); min-width: 0; }
+.info-note-error .info-note-title { color: var(--error); }
+.info-note-btn {
+  width: 24px; height: 24px; display: grid; place-items: center; padding: 0;
+  background: transparent; border: none; border-radius: 6px; color: var(--text-muted); font-size: 14px; cursor: pointer;
+  transition: background-color 0.12s var(--ease), color 0.12s var(--ease);
+}
+.info-note-btn:hover, .info-note-btn.open { background: var(--hover-bg); color: var(--text); }
+.info-note-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.info-note-body { padding: 0 12px 8px 26px; }
+.info-note-body p { margin: 0; font-size: 12px; line-height: 1.5; color: var(--text-dim); }
+.info-note-body code {
+  display: block; margin-top: 6px; padding: 6px 8px; border-radius: 4px;
+  background: var(--panel); border: 1px solid var(--panel-border);
+  font-family: var(--font-mono); font-size: 11px; color: var(--text); white-space: pre-wrap; word-break: break-all;
+}
+.panel > .info-note { margin-top: 8px; border: 1px solid var(--panel-border); border-radius: var(--radius-control); background: var(--bg); }
+.panel > .info-note .info-note-line { min-height: 32px; }

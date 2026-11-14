@@ -1,5 +1,6 @@
 import RasterHealth from "./RasterHealth.jsx";
 import ModelList from "./ModelList.jsx";
+import InfoNote, { splitMessage } from "./InfoNote.jsx";
 import React, { useRef, useState } from "react";
 import { api } from "../api/client.js";
 import { IconUpload, IconFolder, IconPlay, IconClose, IconDashboard } from "./Icons.jsx";
@@ -157,7 +158,7 @@ export default function Sidebar({ models, selectedModels, onToggleModel, onModel
               <div className="upload-progress-fill" style={{ width: `${Math.round(uploadProgress * 100)}%` }} />
             </div>
           )}
-          {uploadError && <p className="note" style={{ color: "var(--error)" }}>{uploadError}</p>}
+          {uploadError && <InfoNote level="error" title={splitMessage(uploadError)[0]} detail={splitMessage(uploadError)[1]} />}
           {image && (
             <p className="note">
               {image.size_bytes ? `${formatBytes(image.size_bytes)} · ` : ""}
@@ -215,7 +216,7 @@ export default function Sidebar({ models, selectedModels, onToggleModel, onModel
                 {item.status === "uploading" && item.progress != null && (
                   <span className="note" style={{ margin: 0 }}>{Math.round(item.progress * 100)}%</span>
                 )}
-                {item.status === "error" && <span className="note" style={{ color: "var(--error)" }}>{item.error}</span>}
+                {item.status === "error" && <InfoNote level="error" title={splitMessage(item.error)[0]} detail={splitMessage(item.error)[1]} />}
                 <button className="batch-queue-remove" onClick={() => removeBatchItem(item.filename)}><IconClose /></button>
               </div>
             ))}

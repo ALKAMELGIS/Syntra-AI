@@ -87,8 +87,14 @@ if ($missing) {
 $ApiPort = Get-FreePort $ApiPort
 $WebPort = Get-FreePort $WebPort
 
-$weights = "$env:USERPROFILE\Downloads\IMG-VHR\models\yolo11n-obb.onnx"
-$setW = if (Test-Path $weights) { "`$env:SYNTRA_AERIAL_OBB_WEIGHTS='$weights'; " } else { "" }
+# Model files are found automatically in ~/.syntra/models and in these folders,
+# so a model copied or installed once is never installed again.
+$modelDirs = @("$env:USERPROFILE\.syntra\models", "$env:USERPROFILE\Downloads\IMG-VHR\models") | Where-Object { Test-Path $_ }
+New-Item -ItemType Directory -Force "$env:USERPROFILE\.syntra\models" | Out-Null
+$setW = "`$env:SYNTRA_MODEL_DIRS='" + ($modelDirs -join ";") + "'; "
+# PostGIS / QGIS installers set PROJ_LIB system-wide to an incompatible proj.db; the
+# backend also guards against this (app/core/proj_env.py).
+$setW += "Remove-Item Env:PROJ_LIB, Env:PROJ_DATA, Env:GDAL_DATA -ErrorAction SilentlyContinue; "
 
 Start-Process powershell -ArgumentList "-NoExit", "-Command",
     "Set-Location '$root\backend'; $setW& '$py' -m uvicorn app.main:app --port $ApiPort"

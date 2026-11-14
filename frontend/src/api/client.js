@@ -71,7 +71,7 @@ export const api = {
           reject(err);
         }
       };
-      xhr.onerror = () => reject(new Error("Network error during upload."));
+      xhr.onerror = () => reject(new Error("Couldn't reach the Syntra AI server. Check that the backend window is still open, then try again."));
       xhr.send(form);
     }),
   devices: () => request(`${BASE}/compute`).then(handle),

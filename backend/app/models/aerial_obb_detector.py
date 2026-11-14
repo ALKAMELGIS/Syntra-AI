@@ -64,6 +64,21 @@ def _load_yolo(weights: str, device: str):
         return model
 
 
+def resolve_obb_weights(configured: str) -> str:
+    """The configured path when it exists; otherwise the same model found in a
+    model folder (ONNX preferred: it needs no torch). Falls back to the
+    configured name, which ultralytics downloads on first use."""
+    from pathlib import Path
+
+    if configured and Path(configured).is_file():
+        return configured
+    from app.models.packs import find_model_file
+
+    stem = Path(configured or "yolo11n-obb.pt").stem
+    found = find_model_file(f"{stem}.onnx", f"{stem}.pt", Path(configured).name if configured else "")
+    return str(found) if found else configured
+
+
 def _names_dict(names) -> dict[int, str]:
     if isinstance(names, dict):
         return {int(k): str(v) for k, v in names.items()}
@@ -77,7 +92,7 @@ class AerialObbDetector(DetectionModel):
         if metadata.model_id not in DOTA_CLASS_MAP:
             raise ValueError(f"No DOTA class mapping configured for '{metadata.model_id}'.")
         self.metadata = metadata
-        self.weights = weights or settings.AERIAL_OBB_WEIGHTS
+        self.weights = weights or resolve_obb_weights(settings.AERIAL_OBB_WEIGHTS)
         self.wanted = DOTA_CLASS_MAP[metadata.model_id]
         self._model = None
         self._device = "cpu"
