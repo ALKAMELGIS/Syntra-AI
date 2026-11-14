@@ -89,10 +89,10 @@ PACKS: dict[str, ModelPack] = {
         filename="syntra_drone_objects_yolo11n_seg.onnx",
         url="https://github.com/ALKAMELGIS/Syntra-AI/releases/download/models-v1/syntra_drone_objects_yolo11n_seg.onnx",
         runtime="yolo_seg",
-        licence="Non-commercial (TU Graz dataset terms)",
+        licence="Non-commercial",
         commercial_use=False,
         source=(
-            "YOLO11n-seg fine-tuned by Syntra on the TU Graz Semantic Drone Dataset: 340 nadir drone photos "
+            "YOLO11n-seg fine-tuned by Syntra on the TU Graz Semantic Drone Dataset (non-commercial terms): 340 nadir drone photos "
             "(5-30 m flights, about 4 cm per pixel as the model sees them), validated on 60 held-out photos. "
             "Outlines trees, roofs, vehicles, people, fences and bicycles."
         ),

@@ -13,6 +13,7 @@ const RUNNABLE = new Set(["ready", "validation"]);
 
 // Short in the row (CC BY-NC 4.0 -> CC BY-NC), full wording in the tooltip.
 function licenceShort(pack) {
+  if (/^non-commercial$/i.test(pack.licence)) return "NC";
   return pack.licence.replace(/\s+\d+(\.\d+)*$/, "");
 }
 function licenceTitle(pack) {
