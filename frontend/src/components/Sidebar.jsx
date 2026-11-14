@@ -147,7 +147,7 @@ export default function Sidebar({ models, selectedModels, onToggleModel, onModel
             <IconUpload className="dropzone-icon" />
             <span>
               {uploading
-                ? `Uploading… ${Math.round(uploadProgress * 100)}%`
+                ? (uploadProgress >= 1 ? "Reading the image…" : `Uploading… ${Math.round(uploadProgress * 100)}%`)
                 : image
                 ? image.filename
                 : "Drop a GeoTIFF, with its .xml if you have it"}

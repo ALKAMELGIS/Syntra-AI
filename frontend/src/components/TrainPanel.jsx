@@ -75,7 +75,7 @@ export default function TrainPanel({
     if (!file) return;
     setUpload({ pct: 0 });
     try {
-      const img = await api.uploadImage(file, (p) => setUpload({ pct: Math.round(p) }));
+      const img = await api.uploadImage(file, (p) => setUpload({ pct: Math.round(p * 100) }));
       setUpload(null);
       onImageChange(img);
     } catch (error) {
@@ -159,7 +159,7 @@ export default function TrainPanel({
             )}
             <div className="train-row">
               <button type="button" className="quiet-button" onClick={() => fileRef.current?.click()} disabled={upload?.pct != null}>
-                <IconUpload /> {upload?.pct != null ? `${upload.pct}%` : "Upload GeoTIFF"}
+                <IconUpload /> {upload?.pct != null ? (upload.pct >= 100 ? "Reading…" : `${upload.pct}%`) : "Upload GeoTIFF"}
               </button>
               <select className="train-select" value="" onChange={(e) => {
                 const img = images.find((i) => i.image_id === e.target.value);

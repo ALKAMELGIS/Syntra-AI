@@ -57,8 +57,11 @@ export const api = {
       const xhr = new XMLHttpRequest();
       xhr.open("POST", `${BASE}/images`);
       if (API_KEY) xhr.setRequestHeader("X-API-Key", API_KEY);
+      let sent = 0;
       xhr.upload.onprogress = (e) => {
-        if (onProgress && e.lengthComputable) onProgress(e.loaded / e.total);
+        if (!e.lengthComputable) return;
+        sent = Math.round((100 * e.loaded) / e.total);
+        onProgress?.(e.loaded / e.total);
       };
       xhr.onload = () => {
         let body = {};
@@ -73,7 +76,12 @@ export const api = {
           reject(err);
         }
       };
-      xhr.onerror = () => reject(new Error("Couldn't reach the Syntra AI server. Check that the backend window is still open, then try again."));
+      // The browser can't tell why a connection dropped; ask the server whether it is up.
+      xhr.onerror = () => {
+        fetch(`${BASE}/health`).then((r) => r.ok).catch(() => false).then((up) => reject(new Error(up
+          ? `The upload was cut off at ${sent}%. The server is running: try again, and for very large files restart with the latest start script (it removes the 5-minute limit).`
+          : "Couldn't reach the Syntra AI server. Check that the backend window is still open, then try again.")));
+      };
       xhr.send(form);
     }),
   devices: () => request(`${BASE}/compute`).then(handle),
