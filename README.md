@@ -304,6 +304,18 @@ for when it is exposed to a network (all in `backend/.env.example`):
 - Upload filenames are sanitised and capped by `SYNTRA_MAX_UPLOAD_MB`.
 - Library Status install/repair/update (which runs `pip`) only works from
   the server itself unless `SYNTRA_ALLOW_ENV_ACTIONS=1`.
+- **Review results, then train on the review (plan stage 2).** Analysis >
+  Review on a finished run lists its objects least sure first. Accept (A) or
+  reject (R) each one; the map flies to it, outlined, clear of the panel; the
+  list moves on by itself. Decisions are saved beside the result
+  (`<model>.review.json`) and survive a refresh. Add to training turns them
+  into the image's training data: an accepted object becomes a label inside a
+  small training area, a rejected one an empty small area (a hard negative,
+  "not a ship"). Training tiles are masked to their areas, so the unreviewed
+  objects around them are never taught as background. Applying again replaces
+  what the last apply wrote. Verified by `test_review_offline.py` (4 tests)
+  and live on 175 ships detected in Dubai harbour (3 accepted, 1 rejected by
+  keyboard -> 3 labels + 4 areas). Missed objects are still drawn in Train.
 - **Faster Run, with honest timing (plan stage 1).**
   - Tiles are read on a background thread while the model runs
     (`prefetch`); reading was 28% of a run when done in line.

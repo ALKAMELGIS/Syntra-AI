@@ -55,6 +55,9 @@ real, what is written but unrun, and how it was verified.
   MapView) and fetch everything heavy back from the server. Anything
   expensive to render (previews) is cached on disk keyed by file size and
   mtime, with an ETag.
+- Single-letter map shortcuts (MapDrawTools) are global; a panel with its
+  own keys puts `data-own-keys` on its root so they are not taken by the map
+  (the review list's A / R once opened the Train panel instead).
 - Hardware for a model comes from `app/core/onnx_runtime.py`
   (`session_providers(device)`), never a hand-written provider list, and a
   GPU is found by what onnxruntime can use, not by torch.

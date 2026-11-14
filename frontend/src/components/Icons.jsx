@@ -126,3 +126,7 @@ export const IconChevronLeft = (p) => (
 export const IconRaster = (p) => (
   <svg {...base} {...p}><rect x="4" y="4" width="16" height="16" rx="2" /><path d="M4 15l4.5-4.5 4 4 3-3L20 16" /></svg>
 );
+
+export const IconCheck = (p) => (
+  <svg {...base} {...p}><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
+);

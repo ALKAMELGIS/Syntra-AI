@@ -175,6 +175,28 @@ function SourceImage({ image, bounds, opacity = 1 }) {
   );
 }
 
+// The result under review: the map flies to it, close enough to judge it,
+// centred in the part of the map the review panel does not cover, and draws
+// one light outline around it (the detection layers already carry colour).
+function FocusFeature({ feature }) {
+  const map = useMap();
+  useEffect(() => {
+    if (!feature?.geometry) return;
+    const halo = L.geoJSON(feature, { interactive: false, style: { className: "focus-halo", weight: 5, fill: false } });
+    const line = L.geoJSON(feature, { interactive: false, style: { className: "focus-outline", weight: 2, fill: false } });
+    const b = line.getBounds();
+    if (b.isValid()) {
+      const panel = document.querySelector(".analysis-flyout");
+      const right = panel ? panel.offsetWidth + 86 : 16;          // panel + toolbar + gutters
+      map.flyToBounds(b.pad(2.5), { paddingTopLeft: [16, 16], paddingBottomRight: [right, 16], maxZoom: 20, duration: 0.3 });
+    }
+    halo.addTo(map);
+    line.addTo(map);
+    return () => { map.removeLayer(halo); map.removeLayer(line); };
+  }, [feature, map]);
+  return null;
+}
+
 // The source image as a layer: show or hide, opacity, and its ground resolution.
 function ImageLayerRow({ image, layer, onChange }) {
   const gsd = image.health?.gsd_m || image.gsd_x_m;
@@ -288,7 +310,7 @@ export default function MapView({
   aoi, onAoiChange, measurement, onMeasurementChange,
   trainOpen, onToggleTrain, onAnnotate, labels, trainPanel, perfOpen, onTogglePerf, perfPanel,
   onSelectLibraryImage, currentImageId, sourceImage,
-  analysisOpen, onToggleAnalysis, analysisCount, analysisPanel,
+  analysisOpen, onToggleAnalysis, analysisCount, analysisPanel, focusFeature = null,
 }) {
   const [basemap, setBasemap] = useState("satellite");
   const [legendOpen, setLegendOpen] = useState(false);
@@ -357,6 +379,7 @@ export default function MapView({
         />
         {overlayBounds && sourceImage?.image_id && imageLayer.visible && <SourceImage image={sourceImage} bounds={overlayBounds} opacity={imageLayer.opacity} />}
         <ImageFootprint image={sourceImage} />
+        <FocusFeature feature={focusFeature} />
         <AutoFitSourceImage sourceImage={sourceImage} />
         {detectionsVisible &&
           layers.map((l) =>

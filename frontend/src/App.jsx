@@ -287,6 +287,7 @@ export default function App({ user = null, onSignOut = null }) {
 
   // Results filtered by the Analysis panel's score slider (no rerun needed).
   const [minScore, setMinScore] = useState(0);
+  const [focusFeature, setFocusFeature] = useState(null);    // the result being reviewed, highlighted on the map
 
   useEffect(() => {
     if (restoring.current) return;          // don't overwrite the saved session before it is read back
@@ -395,9 +396,10 @@ export default function App({ user = null, onSignOut = null }) {
             analysisOpen={analysisOpen}
             onToggleAnalysis={() => setAnalysisOpen((v) => !v)}
             analysisCount={analysisEntries.length}
+            focusFeature={focusFeature}
             analysisPanel={
               <AnalysisPanel entries={analysisEntries} colorFor={colorFor} onClose={() => setAnalysisOpen(false)}
-                minScore={minScore} onMinScore={setMinScore} shownCount={shownCount} />
+                minScore={minScore} onMinScore={setMinScore} shownCount={shownCount} onFocus={setFocusFeature} />
             }
           />
         </div>

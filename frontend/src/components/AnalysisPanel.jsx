@@ -1,5 +1,6 @@
 import { formatDuration } from "../api/client.js";
-import React from "react";
+import React, { useState } from "react";
+import ReviewList from "./ReviewList.jsx";
 import { IconClose } from "./Icons.jsx";
 
 // Floating results panel that opens over the map, to the left of the map
@@ -19,7 +20,7 @@ function stripUuid(name) {
   return (name || "").replace(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}_/, "");
 }
 
-function JobRow({ entry, color, shown }) {
+function JobRow({ entry, color, shown, onReview }) {
   const { job, modelMeta, imageName } = entry;
   const running = !TERMINAL.has(job.status);
   const pct = running ? progressPct(job) : null;
@@ -57,6 +58,9 @@ function JobRow({ entry, color, shown }) {
         <span className="analysis-meta mono">{meta}</span>
         {f1 != null && job.status === "completed" && <span className="analysis-meta mono" title="F1 on your accuracy areas">F1 {f1.toFixed(2)}</span>}
         {unvalidated && <span className="model-unchecked" title="Not yet checked on your imagery" aria-label="Not yet checked on your imagery" />}
+        {onReview && job.status === "completed" && !job.result?.summary && job.result?.final_detection_count > 0 && (
+          <button type="button" className="link-button analysis-review" onClick={onReview}>Review</button>
+        )}
       </div>
       {running && (
         <div className="progress-bar analysis-progress">
@@ -70,8 +74,18 @@ function JobRow({ entry, color, shown }) {
   );
 }
 
-export default function AnalysisPanel({ entries, colorFor, onClose, minScore = 0, onMinScore, shownCount }) {
+export default function AnalysisPanel({ entries, colorFor, onClose, minScore = 0, onMinScore, shownCount, onFocus }) {
   const hasScores = entries?.some((e) => e.job.status === "completed" && !e.job.result?.summary);
+  const [reviewing, setReviewing] = useState(null);           // entry key
+  const reviewEntry = reviewing && entries?.find((e) => e.key === reviewing);
+  if (reviewEntry) {
+    return (
+      <section className="analysis-flyout review-flyout" aria-label="Review results">
+        <ReviewList entry={reviewEntry} color={colorFor(reviewEntry.job.model_id)}
+                    onBack={() => setReviewing(null)} onFocus={onFocus} onClose={onClose} />
+      </section>
+    );
+  }
   return (
     <section className="analysis-flyout" aria-label="Analysis results">
       <header className="analysis-head">
@@ -94,7 +108,8 @@ export default function AnalysisPanel({ entries, colorFor, onClose, minScore = 0
       ) : (
         <ul className="analysis-list">
           {entries.map((entry) => (
-            <JobRow key={entry.key} entry={entry} shown={shownCount?.(entry.key)} color={colorFor(entry.job.model_id)} />
+            <JobRow key={entry.key} entry={entry} shown={shownCount?.(entry.key)} color={colorFor(entry.job.model_id)}
+                    onReview={() => setReviewing(entry.key)} />
           ))}
         </ul>
       )}

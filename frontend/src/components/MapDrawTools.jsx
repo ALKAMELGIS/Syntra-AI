@@ -52,8 +52,11 @@ function polylineToPolygon(latlngs) {
   return { type: "Feature", properties: { shape: "freehand" }, geometry: { type: "Polygon", coordinates: [coords] } };
 }
 
+// Keys pressed while typing, or inside a panel with its own shortcuts
+// (data-own-keys, e.g. the review list's A / R), are not map shortcuts.
 function isTypingTarget(el) {
-  return el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable);
+  return el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable
+    || !!el.closest?.("[data-own-keys]"));
 }
 
 export default function MapDrawTools({
