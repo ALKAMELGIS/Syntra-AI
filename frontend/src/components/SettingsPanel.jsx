@@ -19,7 +19,7 @@ export default function SettingsPanel({ open, onClose, iconStyle, onChangeIconSt
       <div className="settings-body">
         <p className="perf-label">Toolbar icons</p>
         <div className="train-seg">
-          <button type="button" className={iconStyle === "mono" ? "selected" : ""} onClick={() => onChangeIconStyle("mono")}>Monochrome</button>
+          <button type="button" className={iconStyle === "mono" ? "selected" : ""} onClick={() => onChangeIconStyle("mono")}>Grey</button>
           <button type="button" className={iconStyle === "colour" ? "selected" : ""} onClick={() => onChangeIconStyle("colour")}>Colour</button>
         </div>
 
