@@ -1443,12 +1443,13 @@ html, body, #root { height: 100%; overflow: hidden; }
 }
 /* Sign in with the globe: Earth on the left, the form on the right, no card */
 .auth-screen.auth-split {
+  overflow-x: hidden;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); place-items: center start; padding: 0;
   background-image: radial-gradient(circle at 28% 50%, var(--panel) 0, var(--bg) 55%);
   background-size: auto;
 }
 .auth-split::before { content: none; }
-.auth-split .auth-stack { max-width: 400px; padding: 48px 64px; box-sizing: content-box; }
+.auth-split .auth-stack { width: 100%; max-width: 528px; padding: 48px clamp(16px, 5vw, 64px); box-sizing: border-box; }
 .auth-split .auth-card { background: transparent; border: none; padding: 0; }
 .auth-split .auth-readout { justify-content: flex-start; margin-top: 24px; }
 .auth-headline { margin: 0; font-size: 32px; line-height: 40px; font-weight: 500; letter-spacing: -0.01em; text-wrap: balance; }
