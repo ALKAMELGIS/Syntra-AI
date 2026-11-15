@@ -59,6 +59,26 @@ def add_annotation(image_id: str, req: AddAnnotationRequest):
     return entry_ann
 
 
+class UpdateAnnotationRequest(BaseModel):
+    points_lonlat: list[list[float]] | None = None
+    class_name: str | None = None
+
+
+@router.patch("/{annotation_id}")
+def update_annotation(image_id: str, annotation_id: str, req: UpdateAnnotationRequest):
+    entry = _entry_or_404(image_id)
+    if req.points_lonlat is None and req.class_name is None:
+        raise HTTPException(status_code=400, detail="Send points_lonlat, class_name or both.")
+    try:
+        a = store.update_annotation(entry["path"], annotation_id, entry["bounds_wgs84"], entry["width"], entry["height"],
+                                    points_lonlat=req.points_lonlat, class_name=req.class_name)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    if a is None:
+        raise HTTPException(status_code=404, detail=f"No annotation '{annotation_id}' on this image.")
+    return a
+
+
 @router.delete("/{annotation_id}")
 def delete_annotation(image_id: str, annotation_id: str):
     entry = _entry_or_404(image_id)

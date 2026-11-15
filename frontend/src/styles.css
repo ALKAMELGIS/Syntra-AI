@@ -1999,3 +1999,15 @@ input[type=range].gauge::-moz-range-thumb { width: 3px; height: 14px; border: no
 input[type=range].gauge:focus { outline: none; }
 input[type=range].gauge:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px var(--accent); }
 input[type=range].gauge:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px var(--accent); }
+
+/* editing a saved label: square corners, small midpoints, a round rotate handle */
+.edit-vx { background: #0d0f12; border: 2px solid #ffffff; border-radius: 2px; box-sizing: border-box; cursor: move; }
+.edit-mid { background: #ffffff; border: 1px solid #0d0f12; border-radius: 1px; opacity: 0.7; box-sizing: border-box; cursor: copy; }
+.edit-mid:hover { opacity: 1; }
+.edit-rot { background: #0d0f12; border: 2px solid #ffffff; border-radius: 50%; box-sizing: border-box; cursor: grab; }
+.leaflet-interactive.edit-body { cursor: move; }
+.label-edit { display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: var(--radius-control); background: var(--hover-bg); }
+.label-edit-head { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.label-edit-head b { font-weight: 500; }
+.label-edit-head .mono { margin-left: auto; }
+.link-button.danger { color: var(--error); }

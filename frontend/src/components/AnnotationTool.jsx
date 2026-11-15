@@ -62,14 +62,20 @@ function ringArea(map, latlngs) {
 
 export const fmtArea = (m2) => (m2 >= 1e6 ? `${(m2 / 1e6).toFixed(2)} km²` : `${Math.round(m2).toLocaleString()} m²`);
 
+// Vertex, midpoint and rotate handles for editing a saved label
+const VX = L.divIcon({ className: "edit-vx", iconSize: [10, 10] });
+const MID = L.divIcon({ className: "edit-mid", iconSize: [8, 8] });
+const ROT = L.divIcon({ className: "edit-rot", iconSize: [14, 14] });
+
 export default function AnnotationLayer({
   visible, mode, className, annotations = [], onDrawn, onShapeClick, onSegment, exact, onPreview,
+  editable = false, editId = null, onEdit, onUpdate, onDeleteSelected,
 }) {
   const map = useMap();
   const st = useRef({});
   const group = useRef(null);
   const live = useRef({ onDrawn, onSegment, onPreview, exact });
-  live.current = { onDrawn, onSegment, onPreview, exact };
+  live.current = { onDrawn, onSegment, onPreview, exact, onEdit, onUpdate, onDeleteSelected };
 
   // saved labels
   useEffect(() => {
@@ -77,6 +83,7 @@ export default function AnnotationLayer({
     if (!visible || !annotations.length) return;
     const g = L.layerGroup();
     for (const a of annotations) {
+      if (a.id === editId && editable && !mode) continue;      // drawn by the editor below
       const color = classColor(a.class_name);
       const area = isArea(a.class_name);
       // while a tool is on, saved shapes let clicks through: you often label next to (or inside) one
@@ -84,14 +91,129 @@ export default function AnnotationLayer({
         { ...(area ? { color, weight: 2, dashArray: "8 6", fill: false } : { color, weight: 2, fillOpacity: 0.18 }), interactive: !mode });
       if (!mode) {
         poly.bindTooltip(AREA_LABEL[a.class_name] || a.class_name, { direction: "center" });
-        poly.on("click", (e) => { L.DomEvent.stopPropagation(e); onShapeClick?.(a.id); });
+        poly.on("click", (e) => { L.DomEvent.stopPropagation(e); (editable ? onEdit : onShapeClick)?.(a.id); });
       }
       g.addLayer(poly);
     }
     g.addTo(map);
     group.current = g;
     return () => { if (group.current) map.removeLayer(group.current); };
-  }, [visible, annotations, map, mode, onShapeClick]);
+  }, [visible, annotations, map, mode, onShapeClick, editable, editId, onEdit]);
+
+  // editing the selected label: drag vertices, add one from a midpoint, Alt+click
+  // or right-click a vertex to remove it, drag the shape to move it, the round
+  // handle above it to rotate. Every finished change is saved at once.
+  useEffect(() => {
+    if (!visible || mode || !editable || !editId) return;
+    const a = annotations.find((x) => x.id === editId);
+    if (!a) return;
+    let pts = a.points_lonlat.map(([lon, lat]) => L.latLng(lat, lon));
+    if (pts.length > 3 && pts[0].equals(pts[pts.length - 1])) pts = pts.slice(0, -1);
+    const color = classColor(a.class_name);
+    const g = L.layerGroup().addTo(map);
+    const halo = L.polygon(pts, { ...HALO }).addTo(g);
+    const body = L.polygon(pts, { color: "#ffffff", weight: 2, fillColor: color, fillOpacity: 0.22, bubblingMouseEvents: false, className: "edit-body" }).addTo(g);
+    const tip = L.tooltip({ permanent: true, direction: "top", offset: [0, -12], className: "draw-readout" });
+    const px = (q) => map.latLngToContainerPoint(q);
+    const ll = (q) => map.containerPointToLatLng(q);
+    let vx = [], mids = [], rot = null;
+    const commit = () => live.current.onUpdate?.(editId, pts);
+    const centre = () => { const p = pts.map(px); return L.point(p.reduce((s2, q) => s2 + q.x, 0) / p.length, p.reduce((s2, q) => s2 + q.y, 0) / p.length); };
+    const rotAt = () => { const c = centre(); const r = Math.max(...pts.map((q) => px(q).distanceTo(c))); return ll(L.point(c.x, c.y - r - 24)); };
+    function redraw() {
+      halo.setLatLngs(pts); body.setLatLngs(pts);
+      vx.forEach((m, i) => pts[i] && m.setLatLng(pts[i]));
+      if (mids.length === pts.length) mids.forEach((m, i) => m.setLatLng(L.latLngBounds(pts[i], pts[(i + 1) % pts.length]).getCenter()));
+      if (rot) rot.setLatLng(rotAt());
+    }
+    function removeAt(i) {
+      if (pts.length <= 3) return;
+      pts.splice(i, 1); build(); commit();
+    }
+    function build() {
+      [...vx, ...mids].forEach((m) => g.removeLayer(m));
+      if (rot) g.removeLayer(rot);
+      redraw();
+      const many = pts.length > 40;                       // a traced outline: corners only every few points
+      vx = pts.map((q, i) => {
+        const m = L.marker(q, { icon: VX, draggable: true, keyboard: false, opacity: many && i % 4 ? 0 : 1 }).addTo(g);
+        m.on("drag", (e) => { pts[i] = e.target.getLatLng(); redraw(); });
+        m.on("dragend", commit);
+        m.on("click", (e) => { if (e.originalEvent.altKey) removeAt(i); });
+        m.on("contextmenu", (e) => { L.DomEvent.preventDefault(e.originalEvent); removeAt(i); });
+        return m;
+      });
+      mids = many ? [] : pts.map((q, i) => {
+        const m = L.marker(L.latLngBounds(q, pts[(i + 1) % pts.length]).getCenter(), { icon: MID, draggable: true, keyboard: false }).addTo(g);
+        let at = -1;
+        m.on("dragstart", () => { at = i + 1; pts.splice(at, 0, m.getLatLng()); });
+        m.on("drag", (e) => { pts[at] = e.target.getLatLng(); halo.setLatLngs(pts); body.setLatLngs(pts); });
+        m.on("dragend", () => { build(); commit(); });
+        return m;
+      });
+      rot = L.marker(rotAt(), { icon: ROT, draggable: true, keyboard: false, title: "Rotate" }).addTo(g);
+      let c0, a0, orig;
+      rot.on("dragstart", () => { c0 = centre(); a0 = null; orig = pts.map(px); });
+      rot.on("drag", (e) => {
+        const p = px(e.target.getLatLng());
+        const ang = Math.atan2(p.y - c0.y, p.x - c0.x);
+        if (a0 == null) a0 = ang;
+        let d = ang - a0;
+        if (e.originalEvent?.shiftKey) d = Math.round(d / (Math.PI / 12)) * (Math.PI / 12);   // 15° steps
+        const cs = Math.cos(d), sn = Math.sin(d);
+        pts = orig.map((q) => ll(L.point(c0.x + (q.x - c0.x) * cs - (q.y - c0.y) * sn, c0.y + (q.x - c0.x) * sn + (q.y - c0.y) * cs)));
+        halo.setLatLngs(pts); body.setLatLngs(pts);
+        vx.forEach((m, i) => m.setLatLng(pts[i]));
+        tip.setLatLng(e.target.getLatLng()).setContent(`${Math.round((d * 180) / Math.PI)}°`);
+        if (!map.hasLayer(tip)) tip.addTo(map);
+      });
+      rot.on("dragend", () => { map.removeLayer(tip); build(); commit(); });
+    }
+    build();
+
+    // drag the whole shape
+    let start = null, orig = null, moved = false;
+    function bodyDown(e) {
+      if (e.originalEvent.button !== 0) return;
+      L.DomEvent.stop(e);
+      start = px(e.latlng); orig = pts.map(px); moved = false;
+      map.dragging.disable();
+      map.on("mousemove", bodyMove);
+      map.once("mouseup", bodyUp);
+    }
+    function bodyMove(e) {
+      const d = px(e.latlng).subtract(start);
+      if (!moved && Math.hypot(d.x, d.y) < 3) return;
+      moved = true;
+      pts = orig.map((q) => ll(q.add(d)));
+      redraw();
+    }
+    function bodyUp() {
+      map.off("mousemove", bodyMove);
+      map.dragging.enable();
+      if (moved) commit();
+      start = null;
+    }
+    body.on("mousedown", bodyDown);
+    const deselect = () => live.current.onEdit?.(null);
+    map.on("click", deselect);
+    function key(e) {
+      const t = e.target;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT")) return;
+      if (e.key === "Escape") { e.preventDefault(); deselect(); }
+      else if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); live.current.onDeleteSelected?.(editId); }
+    }
+    window.addEventListener("keydown", key);
+    return () => {
+      body.off("mousedown", bodyDown);
+      map.off("mousemove", bodyMove);
+      map.off("click", deselect);
+      window.removeEventListener("keydown", key);
+      map.dragging.enable();
+      map.removeLayer(tip);
+      map.removeLayer(g);
+    };
+  }, [visible, mode, editable, editId, annotations, map]);
 
   // drawing
   useEffect(() => {

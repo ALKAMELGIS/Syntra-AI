@@ -236,6 +236,10 @@ export const api = {
     request(`${BASE}/images/${imageId}/segment`, {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
     }).then(handle),
+  updateAnnotation: (imageId, annotationId, patch) =>
+    request(`${BASE}/images/${imageId}/annotations/${annotationId}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch),
+    }).then(handle),
   deleteAnnotation: (imageId, annotationId) =>
     request(`${BASE}/images/${imageId}/annotations/${annotationId}`, { method: "DELETE" }).then(handle),
   clearAnnotations: (imageId) =>

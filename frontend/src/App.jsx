@@ -69,6 +69,7 @@ export default function App({ user = null, onSignOut = null }) {
   const [exactSize, setExactSize] = useState(null);       // {w, h} | {s} | {r} in metres: one click places it
   const [segPreview, setSegPreview] = useState(null);
   const [drawMode, setDrawMode] = useState(null);
+  const [editId, setEditId] = useState(null);           // the saved label being edited
   const [labelError, setLabelError] = useState(null);
   function setAnalysisOpen(v) {
     setAnalysisOpenRaw((prev) => {
@@ -298,7 +299,24 @@ export default function App({ user = null, onSignOut = null }) {
     try {
       await api.deleteAnnotation(image.image_id, id);
       setAnnotations((list) => list.filter((a) => a.id !== id));
+      setEditId((e) => (e === id ? null : e));
     } catch (err) { setLabelError(err.message); }
+  }
+  // an edited outline or class, saved at once; the old one comes back if the server refuses
+  async function updateLabel(id, patch) {
+    if (!image?.image_id) return;
+    const before = annotations.find((a) => a.id === id);
+    const body = patch.latlngs ? { points_lonlat: patch.latlngs.map((p) => [p.lng, p.lat]) } : {};
+    if (patch.class_name) body.class_name = patch.class_name;
+    setLabelError(null);
+    setAnnotations((list) => list.map((a) => (a.id === id ? { ...a, ...(body.points_lonlat ? { points_lonlat: body.points_lonlat } : {}), ...(body.class_name ? { class_name: body.class_name } : {}) } : a)));
+    try {
+      const saved = await api.updateAnnotation(image.image_id, id, body);
+      setAnnotations((list) => list.map((a) => (a.id === id ? saved : a)));
+    } catch (err) {
+      if (before) setAnnotations((list) => list.map((a) => (a.id === id ? before : a)));
+      setLabelError(err.detail?.message || err.detail || err.message);
+    }
   }
   async function clearLabels() {
     if (!image?.image_id || !confirm("Delete every label on this image?")) return;
@@ -406,6 +424,8 @@ export default function App({ user = null, onSignOut = null }) {
               mode: trainOpen && trainStep === 1 ? drawMode : null,
               className: activeClass, annotations,
               onDrawn: saveLabel, onShapeClick: deleteLabel,
+              editable: trainOpen && trainStep === 1, editId,
+              onEdit: setEditId, onUpdate: (id, latlngs) => updateLabel(id, { latlngs }), onDeleteSelected: deleteLabel,
               onSegment: segmentClick, onPreview: setSegPreview, exact: exactSize,
             }}
             perfOpen={perfOpen}
@@ -419,12 +439,14 @@ export default function App({ user = null, onSignOut = null }) {
             trainPanel={
               <TrainPanel
                 open={trainOpen} onClose={() => setTrainOpen(false)}
-                step={trainStep} onStep={(i) => { setDrawMode(null); setTrainStep(Math.max(0, Math.min(4, i))); }}
+                step={trainStep} onStep={(i) => { setDrawMode(null); setEditId(null); setTrainStep(Math.max(0, Math.min(4, i))); }}
                 image={image} onImageChange={setImage}
                 annotations={annotations} classes={trainClasses}
                 onAddClass={(c) => { setExtraClasses((l) => (l.includes(c) ? l : [...l, c])); setActiveClass(c); }}
                 activeClass={activeClass} onActiveClass={setActiveClass}
-                mode={drawMode} onMode={(m) => { setDrawMode(m); setExactSize(null); }}
+                mode={drawMode} onMode={(m) => { setDrawMode(m); setExactSize(null); if (m) setEditId(null); }}
+                editId={editId} onEditDone={() => setEditId(null)}
+                onEditClass={(c) => editId && updateLabel(editId, { class_name: c })} onEditDelete={() => editId && deleteLabel(editId)}
                 outline={outline} onOutline={setOutline}
                 exact={exactSize} onExact={setExactSize} segPreview={segPreview}
                 onClearAnnotations={clearLabels} labelError={labelError}

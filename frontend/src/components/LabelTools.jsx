@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { api } from "../api/client.js";
-import { classColor, isArea, TRAIN_AREA, CHECK_AREA, fmtArea } from "./AnnotationTool.jsx";
+import { classColor, isArea, TRAIN_AREA, CHECK_AREA, AREA_LABEL, fmtArea } from "./AnnotationTool.jsx";
 import { IconClickAI, IconCircle, IconPencil, IconPolygon, IconRectangle, IconSquare, IconTrash } from "./Icons.jsx";
 
 // The Label step of the Train panel: classes (keys 1-9), the tools (one
@@ -147,7 +147,7 @@ function ClickTool({ outline, onOutline, preview }) {
 
 export default function LabelTools({
   open, classes, counts, activeClass, onActiveClass, mode, onMode, annotations, onClearAnnotations, labelError,
-  outline, onOutline, exact, onExact, segPreview,
+  outline, onOutline, exact, onExact, segPreview, editId, onEditDone, onEditClass, onEditDelete,
 }) {
   const drawingArea = isArea(activeClass || "");
   const objects = annotations.filter((a) => !isArea(a.class_name));
@@ -159,13 +159,17 @@ export default function LabelTools({
 
   // keys: 1-9 pick a class, a tool's letter toggles it
   const live = useRef();
-  live.current = { classes, pickTool, onActiveClass };
+  live.current = { classes, pickTool, onActiveClass, editId, onEditClass };
   useEffect(() => {
     if (!open) return;
     function onKey(e) {
       if (e.metaKey || e.ctrlKey || e.altKey || isTyping(e.target)) return;
-      const { classes: cls, pickTool: pick, onActiveClass: setCls } = live.current;
-      if (/^[1-9]$/.test(e.key) && cls[+e.key - 1]) { e.preventDefault(); setCls(cls[+e.key - 1]); return; }
+      const { classes: cls, pickTool: pick, onActiveClass: setCls, editId: editing, onEditClass: reclass } = live.current;
+      if (/^[1-9]$/.test(e.key) && cls[+e.key - 1]) {
+        e.preventDefault();
+        if (editing) reclass?.(cls[+e.key - 1]); else setCls(cls[+e.key - 1]);   // while editing, the number changes the label's class
+        return;
+      }
       const t = LABEL_TOOLS.find((x) => x.key === e.key.toUpperCase());
       if (t && cls.length) { e.preventDefault(); pick(t.id); }
     }
@@ -174,13 +178,15 @@ export default function LabelTools({
   }, [open]);
 
   const tool = LABEL_TOOLS.find((t) => t.id === mode);
+  const editing = editId && annotations.find((a) => a.id === editId);
   return (
     <>
       <p className="train-label">Class</p>
       <ul className="train-classes train-classes-pick">
         {classes.map((c, i) => (
           <li key={c}>
-            <button type="button" className={c === activeClass ? "selected" : ""} onClick={() => { onActiveClass(c); if (drawingArea) onMode(null); }}>
+            <button type="button" className={c === (editing ? editing.class_name : activeClass) ? "selected" : ""}
+                    onClick={() => { if (editing) { onEditClass?.(c); return; } onActiveClass(c); if (drawingArea) onMode(null); }}>
               {i < 9 && <kbd className="label-key">{i + 1}</kbd>}
               <span className="train-swatch" style={{ background: classColor(c) }} />{c}
               <span className="mono train-dim">{counts[c] || 0}</span>
@@ -227,7 +233,20 @@ export default function LabelTools({
         </p>
       )}
       {!classes.length && <p className="train-dim">Add a class in step 1 first.</p>}
-      {!mode && classes.length > 0 && <p className="train-dim">Pick a tool. Click a saved shape to delete it.</p>}
+      {editing ? (
+        <div className="label-edit">
+          <div className="label-edit-head">
+            <span className="train-swatch" style={{ background: classColor(editing.class_name) }} />
+            <span>Editing <b>{AREA_LABEL[editing.class_name] || editing.class_name}</b></span>
+            {editing.points_px && <span className="mono train-dim">{editing.points_lonlat.length} points</span>}
+          </div>
+          <p className="train-dim">Drag a corner or a midpoint · Alt+click a corner removes it · drag the shape to move it, the round handle to rotate (Shift in 15° steps) · {isArea(editing.class_name) ? "" : "1–9 changes the class · "}Delete removes it · Esc ends</p>
+          <div className="train-row">
+            <button type="button" className="train-tool" onClick={onEditDone}>Done</button>
+            <button type="button" className="link-button danger" onClick={onEditDelete}><IconTrash /> Delete</button>
+          </div>
+        </div>
+      ) : (!mode && classes.length > 0 && <p className="train-dim">Pick a tool, or click a saved shape to edit it</p>)}
       {labelError && <p className="train-error">{labelError}</p>}
       <div className="train-row train-row-split">
         <span className="train-dim"><span className="mono">{objects.length}</span> labelled · aim for 50+ per class</span>

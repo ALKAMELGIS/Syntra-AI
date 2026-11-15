@@ -80,3 +80,30 @@ def test_to_export_payload_assigns_stable_class_ids(tmp_path):
     assert names == ["tree", "building"]
     assert [p["class_id"] for p in payload] == [0, 1, 0]
     assert all("points_px" in p for p in payload)
+
+
+def test_update_keeps_id_and_moves_the_label_between_classes(tmp_path):
+    img = tmp_path / "ortho.tif"
+    img.write_bytes(b"fake")
+    box = [[20.1, 10.9], [20.2, 10.9], [20.2, 10.8], [20.1, 10.8]]
+    a = store.add_annotation(img, "boat", box, BOUNDS, WIDTH, HEIGHT)
+    moved = [[20.3, 10.7], [20.4, 10.7], [20.4, 10.6], [20.3, 10.6], [20.35, 10.65]]
+    u = store.update_annotation(img, a["id"], BOUNDS, WIDTH, HEIGHT, points_lonlat=moved, class_name="ship")
+    assert u["id"] == a["id"] and u["created_at"] == a["created_at"] and u["shape"] == "edited"
+    back = store.load_annotations(img)
+    assert len(back) == 1 and back[0]["class_name"] == "ship" and back[0]["points_lonlat"] == moved
+    assert round(back[0]["points_px"][0][0]) == 300                      # pixel grid follows the new outline
+
+
+def test_update_refuses_bad_shapes_and_unknown_ids(tmp_path):
+    import pytest
+    img = tmp_path / "ortho.tif"
+    img.write_bytes(b"fake")
+    box = [[20.1, 10.9], [20.2, 10.9], [20.2, 10.8]]
+    a = store.add_annotation(img, "boat", box, BOUNDS, WIDTH, HEIGHT)
+    assert store.update_annotation(img, "nope", BOUNDS, WIDTH, HEIGHT, class_name="x") is None
+    with pytest.raises(ValueError):
+        store.update_annotation(img, a["id"], BOUNDS, WIDTH, HEIGHT, points_lonlat=box[:2])
+    with pytest.raises(ValueError):
+        store.update_annotation(img, a["id"], BOUNDS, WIDTH, HEIGHT, points_lonlat=[[30, 30], [31, 30], [31, 31]])
+    assert store.load_annotations(img)[0]["points_lonlat"] == box        # unchanged after a refusal

@@ -215,6 +215,9 @@ direction in a comment. Work inside them:
   records every move and keeps the old label files.
 - Tests never write to `backend/data`: `tests/conftest.py` gives each test its
   own data folder.
+- Labels are changed only through the store (`add_annotation`,
+  `update_annotation`, `delete_annotation`), which recompute the pixel grid
+  and refuse shapes outside the image; never write a class's GeoJSON by hand.
 - The approved version of a class reaches detection only through
   `app/models/approved.py` as `class_<class>`; never copy weights into the
   catalog by hand. Its status is Ready only when that version has a test F1,

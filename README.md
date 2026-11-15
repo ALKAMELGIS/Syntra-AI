@@ -486,6 +486,18 @@ for when it is exposed to a network (all in `backend/.env.example`):
   hash in `syntra.db`. Five wrong passwords lock an email or address for ten
   minutes. `SYNTRA_AUTH=off` restores open access. Verified by
   `test_auth_offline.py` (9 tests) and a live browser run at four screen sizes.
+- **Editing saved labels.** In the Label step with no tool on, clicking a
+  saved shape selects it (it used to delete it): drag a corner, drag a
+  midpoint to add a corner, Alt+click or right-click a corner to remove it,
+  drag the shape to move it, the round handle to rotate it (Shift in 15°
+  steps), 1–9 or a class row to change its class, Delete to remove it, Esc to
+  finish. Each finished change is saved at once through
+  `PATCH /api/images/{id}/annotations/{annotation_id}` (outline and / or
+  class; id and creation time kept, pixel grid recomputed, shape marked
+  "edited"); a refused change puts the old outline back. Verified:
+  `test_annotations_store_offline.py` (2 new: update keeps id and moves
+  class; bad or outside shapes refused and nothing changed) and live: select,
+  drag a corner, one PATCH, saved as edited.
 - **Layers, attribute table, pop-ups (like ArcGIS Online).** The Layers
   button (stacked sheets) replaces Legend and the hide-all eye. Each run is a
   layer with its own eye, colour, count and options: zoom to, show table,

@@ -184,6 +184,29 @@ def add_annotation(image_path: str | Path, class_name: str, points_lonlat: list[
     return entry
 
 
+def update_annotation(image_path: str | Path, annotation_id: str, bounds: dict, width: int, height: int,
+                      points_lonlat: list[list[float]] | None = None, class_name: str | None = None) -> dict | None:
+    """Change a saved label's outline and / or class; its id and creation time stay."""
+    anns = load_annotations(image_path)
+    a = next((x for x in anns if x["id"] == annotation_id), None)
+    if a is None:
+        return None
+    if points_lonlat is not None:
+        if len(points_lonlat) < 3:
+            raise ValueError("An annotation needs at least 3 points (a closed ring).")
+        points_px = [list(lonlat_to_pixel(lon, lat, bounds, width, height)) for lon, lat in points_lonlat]
+        xs, ys = [p[0] for p in points_px], [p[1] for p in points_px]
+        if max(xs) <= 0 or min(xs) >= width or max(ys) <= 0 or min(ys) >= height:
+            raise ValueError("This shape is outside the image. Keep it on the image")
+        a["points_lonlat"], a["points_px"] = points_lonlat, points_px
+        a["shape"] = "edited"
+    if class_name is not None:
+        a["class_name"] = class_name.strip() or a["class_name"]
+    a["updated_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    save_annotations(image_path, anns)
+    return a
+
+
 def delete_annotation(image_path: str | Path, annotation_id: str) -> bool:
     anns = load_annotations(image_path)
     kept = [a for a in anns if a["id"] != annotation_id]
