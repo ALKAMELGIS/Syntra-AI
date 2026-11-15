@@ -22,13 +22,7 @@ weights/*.pt
 weights/*.onnx
 **/weights/**/*.onnx
 **/weights/**/*.pt
-backend/data/syntra.db
-backend/data/syntra.db-shm
-backend/data/syntra.db-wal
-backend/data/uploads/
-backend/data/models/
-backend/data/engines/
-backend/data/images/
-backend/data/classes/
-backend/data/datasets/
-backend/data/migration.json
+
+# Everything the engine writes at run time: images (often licensed), labels,
+# datasets, models, keys, jobs, results. Never in git.
+backend/data/
