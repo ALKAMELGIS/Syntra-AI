@@ -304,6 +304,36 @@ for when it is exposed to a network (all in `backend/.env.example`):
 - Upload filenames are sanitised and capped by `SYNTRA_MAX_UPLOAD_MB`.
 - Library Status install/repair/update (which runs `pip`) only works from
   the server itself unless `SYNTRA_ALLOW_ENV_ACTIONS=1`.
+- **Train on a RunPod GPU (plan stage 3).** Settings > GPU training: paste
+  a RunPod API key (checked, kept in `secrets.json`). Train > Where: RunPod
+  GPU (RTX 4090 / 5090, L40S, A40; Community or Secure; a stop-after limit in
+  hours). Needs the samples saved to Hugging Face first: the pod reads them
+  from there. The pod runs the same `train_worker.py` as local training
+  (plus `pod_main.py`), uploads progress every minute and the weights, ONNX
+  and results.csv at the end, then leaves `done.json`. Syntra shows epochs,
+  pod status and cost, downloads the model next to a local run's files (so
+  Use / register / performance charts work unchanged) and terminates the pod.
+  Three guards against a pod left running: the pod's `timeout`, its own
+  terminate call, and Syntra's watcher with your key (resumed when the
+  engine restarts; GPU runs are not marked interrupted). A restarted pod does
+  not train twice. Built against the RunPod REST API v2 as documented on
+  2026-11-15 (`POST /v2/pods` with `gpu`, `cloud`, `disk`, `env`, `args`;
+  `POST /v2/pods/{id}/action` terminate). Verified by
+  `test_cloud_train_offline.py` (8 tests: the real pod script run here
+  against stand-in Hugging Face and Ultralytics packages; the watcher against
+  a recording RunPod). Not yet run on a real pod: needs a funded RunPod
+  account; whether the pod's own key may terminate it is not documented,
+  which is why the watcher also terminates it.
+- **Fixed: training always started from yolov8 detect weights,** whatever the
+  dataset (OBB ships, segmentation). Base weights now follow the dataset's
+  task: `yolo11{n,s,m}`, `-obb`, `-seg` (`test_base_weights_follow_the_dataset_task`).
+- **Fixed: reviewed objects never reached the dataset.** Review areas cover
+  under 1% of a tile, so the 35%-of-tile area rule and the 80%-black rule
+  (which counted the masked part as black) dropped every tile: 0 tiles from 3
+  accepted ships. Tiles with labels now pass the area rule, black is measured
+  inside the area only, and rejected objects are written as background tiles
+  on purpose. Live: 20 training tiles + 1 check tile from the same review
+  (`test_review_reaches_the_dataset`, fails on the old builder).
 - **Samples saved to Hugging Face (plan stage 2).** Settings > Training
   samples: paste a Write token once; the engine checks it, keeps it in
   `SYNTRA_DATA_DIR/secrets.json` and never sends it back. After Train >

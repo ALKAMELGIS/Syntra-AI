@@ -89,7 +89,7 @@ class DatasetBuilder:
                  tile=640, overlap=64, val_split=0.2, neg_ratio=0.1,
                  black_thr=0.8, augment=True, variants=None, augment_val=False,
                  task="detect", min_visibility=0.4, img_fmt="jpg", seed=42,
-                 write_world=True, tile_filter=None, area_bounds=None,
+                 write_world=True, tile_filter=None, area_bounds=None, negative_areas=None,
                  progress=None, canceled=None, log=None):
         self.r = reader
         self.anns = annotations
@@ -111,6 +111,9 @@ class DatasetBuilder:
         self.write_world = write_world
         self.tile_filter = tile_filter        # callable(xoff, yoff) -> None | bool mask | bool
         self.area_bounds = area_bounds        # (px0, py0, px1, py1) pixel bbox of the area
+        # small areas around results rejected in review: each becomes a background
+        # tile on purpose ("this is not a ship"), never left to random sampling
+        self.negative_areas = [np.asarray(a, dtype=float) for a in (negative_areas or [])]
         self.progress = progress or (lambda p, m=None: None)
         self.canceled = canceled or _noop
         self.log = log or (lambda m: None)
@@ -190,8 +193,12 @@ class DatasetBuilder:
 
     MIN_AREA_FRACTION = 0.35
 
-    def _area_mask(self, xoff, yoff):
-        """None = whole tile usable, False = reject, array = usable pixels."""
+    def _area_mask(self, xoff, yoff, keep_small=False):
+        """None = whole tile usable, False = reject, array = usable pixels.
+
+        A tile mostly outside the areas is dropped, unless it carries labels or a
+        reviewed negative (keep_small): areas made in review are small boxes
+        around one object, and those tiles are exactly the ones to keep."""
         if not self.tile_filter:
             return None
         m = self.tile_filter(xoff, yoff)
@@ -199,9 +206,19 @@ class DatasetBuilder:
             return None
         if m is False:
             return False
-        if m.mean() < self.MIN_AREA_FRACTION:
+        if m.mean() < self.MIN_AREA_FRACTION and not keep_small:
             return False
         return m
+
+    @staticmethod
+    def _black_in(rgb, valid, amask):
+        """Black / no-data share of the usable pixels: the masked-out part is black
+        on purpose and must not count (it made every review tile 'too black')."""
+        black = (rgb <= 0).all(axis=2) | ~valid
+        if amask is None:
+            return float(black.mean())
+        n = int(amask.sum())
+        return float(black[amask].mean()) if n else 1.0
 
     # --------------------------------------------------------------- write
     def _fill_empty_val(self):
@@ -285,19 +302,19 @@ class DatasetBuilder:
                 raise Cancelled()
             j, i = key
             xoff, yoff = int(self.xs[i]), int(self.ys[j])
-            amask = self._area_mask(xoff, yoff)
-            if amask is False:
-                self.stats["rejected_outside_area"] += 1
-                continue
             labels = self._tile_labels(xoff, yoff, tile_map[key])
             if not labels:
                 self.stats["rejected_no_label"] += 1
                 continue
+            amask = self._area_mask(xoff, yoff, keep_small=True)
+            if amask is False:
+                self.stats["rejected_outside_area"] += 1
+                continue
             rgb, valid = r.read_window(xoff, yoff, self.T, self.T)
+            br = self._black_in(rgb, valid, amask)
             if amask is not None:
                 rgb[~amask] = 0          # outside the annotated area: masked (never seen as background)
                 valid &= amask
-            br = r.black_ratio(rgb, valid)
             if br > self.black_thr:
                 self.stats["rejected_black"] += 1
                 continue
@@ -308,10 +325,37 @@ class DatasetBuilder:
             self.progress(70.0 * (c + 1) / max(len(pos_keys), 1),
                           None if c % 25 else "Positive tiles: %d/%d" % (c + 1, len(pos_keys)))
 
+        # ---------------- reviewed negatives: every tile holding one is written
+        occupied = set(tile_map.keys())
+        for ring in self.negative_areas:
+            x0, y0 = ring[:, 0].min(), ring[:, 1].min()
+            x1, y1 = ring[:, 0].max(), ring[:, 1].max()
+            for j, ty in enumerate(self.ys):
+                for i, tx in enumerate(self.xs):
+                    if (j, i) in occupied or tx > x1 or tx + self.T < x0 or ty > y1 or ty + self.T < y0:
+                        continue
+                    if not (tx <= x0 and ty <= y0 and tx + self.T >= x1 and ty + self.T >= y1):
+                        continue                                    # only tiles that hold the whole object
+                    occupied.add((j, i))
+                    xoff, yoff = int(tx), int(ty)
+                    amask = self._area_mask(xoff, yoff, keep_small=True)
+                    if amask is False:
+                        continue
+                    rgb, valid = r.read_window(xoff, yoff, self.T, self.T)
+                    br = self._black_in(rgb, valid, amask)
+                    if amask is not None:
+                        rgb[~amask] = 0
+                        valid &= amask
+                    if br > self.black_thr:
+                        self.stats["rejected_black"] += 1
+                        continue
+                    split = "val" if self.rng.random() < self.val_split else "train"
+                    self._write_tile(rgb, [], split, "%s_neg_r%05d_c%05d" % (self.prefix, j, i), xoff, yoff, br)
+                    self.stats["reviewed_negatives"] = self.stats.get("reviewed_negatives", 0) + 1
+
         # ---------------- background tiles
         n_neg_target = int(round(n_pos * self.neg_ratio))
         n_neg, attempts = 0, 0
-        occupied = set(tile_map.keys())
         ix0, ix1, iy0, iy1 = 0, len(self.xs), 0, len(self.ys)
         if self.area_bounds is not None:
             px0, py0, px1, py1 = self.area_bounds
@@ -339,10 +383,10 @@ class DatasetBuilder:
             if amask is False:
                 continue
             rgb, valid = r.read_window(xoff, yoff, self.T, self.T)
+            br = self._black_in(rgb, valid, amask)
             if amask is not None:
                 rgb[~amask] = 0
                 valid &= amask
-            br = r.black_ratio(rgb, valid)
             if br > self.black_thr:
                 self.stats["rejected_black"] += 1
                 continue

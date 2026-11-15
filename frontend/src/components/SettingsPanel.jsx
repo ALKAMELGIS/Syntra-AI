@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import EnvironmentPanel from "./EnvironmentPanel.jsx";
-import { HfSettings } from "./SamplesStore.jsx";
+import { HfSettings, RunPodSettings } from "./SamplesStore.jsx";
 import { IconClose } from "./Icons.jsx";
 
 // Settings, beside the map toolbar like every other tool. Toolbar icon style
@@ -25,6 +25,9 @@ export default function SettingsPanel({ open, onClose, iconStyle, onChangeIconSt
 
         <p className="perf-label">Training samples · Hugging Face</p>
         <HfSettings />
+
+        <p className="perf-label">GPU training · RunPod</p>
+        <RunPodSettings />
 
         <button type="button" className="settings-fold" aria-expanded={envOpen} onClick={() => setEnvOpen((o) => !o)}>
           <span className={`env-collapse-caret ${envOpen ? "open" : ""}`}>▶</span>

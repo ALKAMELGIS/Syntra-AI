@@ -48,13 +48,14 @@ export function HfSettings() {
   );
 }
 
-export function SaveSamples({ datasetJobId }) {
+export function SaveSamples({ datasetJobId, onSaved }) {
   const [hf, setHf] = useState(null);
   const [job, setJob] = useState(null);
   const [err, setErr] = useState(null);
 
   useEffect(() => { api.hfStatus().then(setHf).catch(() => setHf(null)); }, []);
   useEffect(() => { setJob(null); setErr(null); }, [datasetJobId]);
+  useEffect(() => { if (job?.status === "completed") onSaved?.(job); }, [job?.status]);
 
   useEffect(() => {
     if (!job || ["completed", "error"].includes(job.status)) return;
@@ -80,6 +81,41 @@ export function SaveSamples({ datasetJobId }) {
         </p>
       )}
       {(err || job?.status === "error") && <p className="train-error">{err || job.error}</p>}
+    </div>
+  );
+}
+
+// RunPod API key, in Settings. Like the Hugging Face token: checked, kept on
+// this computer, never sent back.
+export function RunPodSettings() {
+  const [st, setSt] = useState(null);
+  const [key, setKey] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+
+  useEffect(() => { api.runpodStatus().then(setSt).catch(() => setSt(null)); }, []);
+
+  async function save(k) {
+    setBusy(true); setErr(null);
+    try { setSt(await api.runpodSave(k)); setKey(""); } catch (e) { setErr(e.message); }
+    setBusy(false);
+  }
+
+  if (!st) return null;
+  return (
+    <div className="hf-settings">
+      {st.configured ? (
+        <p className="hf-status"><span className="auth-dot up" aria-hidden="true" /> Connected
+          {st.running > 0 && <span className="mono train-dim">· {st.running} GPU running</span>}
+          <button type="button" className="link-button" onClick={() => save("")} disabled={busy}>Remove</button></p>
+      ) : (
+        <form className="hf-row" onSubmit={(e) => { e.preventDefault(); if (key.trim()) save(key.trim()); }}>
+          <input type="password" className="hf-input" placeholder="API key" value={key} autoComplete="off"
+                 onChange={(e) => setKey(e.target.value)} aria-label="RunPod API key" spellCheck={false} />
+          <button type="submit" className="quiet-button" disabled={busy || !key.trim()}>{busy ? "Checking…" : "Connect"}</button>
+        </form>
+      )}
+      {err && <p className="train-error">{err}</p>}
     </div>
   );
 }

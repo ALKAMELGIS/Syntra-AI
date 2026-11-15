@@ -59,6 +59,13 @@ real, what is written but unrun, and how it was verified.
   stored in the data folder, never returned by any endpoint, never in
   `.env` or the repo. Anything uploaded from licensed imagery goes to a
   private destination; refuse a public one unless the user explicitly asks.
+- Anything that rents hardware has three stops: a time limit on the remote
+  side, the remote job stopping itself, and a local watcher that stops it
+  with the user's key and is resumed when the engine starts. Show the cost
+  while it runs. Build against the provider's current documented API and
+  write the date you checked it next to the code.
+- Test a feature through to what the user gets, not one step of it: a review
+  that wrote correct areas still produced a dataset with 0 tiles.
 - A network error message says whose fault it is (bad token vs blocked
   network): the fixes are different.
 - Single-letter map shortcuts (MapDrawTools) are global; a panel with its

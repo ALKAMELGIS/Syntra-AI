@@ -13,7 +13,7 @@ from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import annotations, auth, samples, benchmark, compute, datasets, environment, images, jobs, models, predict, results, training, usage
+from app.api import annotations, auth, cloud, samples, benchmark, compute, datasets, environment, images, jobs, models, predict, results, training, usage
 from app.core.config import settings
 from app.core.jobs import get_store
 from app.core.auth import require_access
@@ -25,6 +25,11 @@ async def lifespan(_app: FastAPI):
     # Jobs a previous process left running can't still be running: their
     # worker threads died with it. Say so instead of showing them as live.
     get_store().mark_interrupted()
+    try:                                     # GPU runs on RunPod keep going while Syntra is closed
+        from app.api.cloud import resume_watchers
+        resume_watchers()
+    except Exception:  # noqa: BLE001 - never block start-up on this
+        pass
     yield
 
 
@@ -55,6 +60,7 @@ app.include_router(training.router, dependencies=_protected)
 app.include_router(annotations.router, dependencies=_protected)
 app.include_router(jobs.router, dependencies=_protected)
 app.include_router(samples.router, dependencies=_protected)
+app.include_router(cloud.router, dependencies=_protected)
 
 
 @app.exception_handler(Exception)

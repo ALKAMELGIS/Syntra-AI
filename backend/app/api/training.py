@@ -51,6 +51,7 @@ class ExportDatasetRequest(BaseModel):
     task: str = "detect"             # "detect" | "obb" | "segment"
     train_areas_px: list[list[list[float]]] | None = None   # tiles only from inside these (pixel rings)
     exclude_areas_px: list[list[list[float]]] | None = None # never trained on (accuracy areas)
+    negative_areas_px: list[list[list[float]]] | None = None  # results rejected in review: written as background
     augment: bool = True
     img_fmt: str = "jpg"
 
@@ -85,6 +86,7 @@ def _run_job(job_id: str, req: ExportDatasetRequest):
             log(f"Training areas: {len(req.train_areas_px or [])}, accuracy areas kept out: {len(req.exclude_areas_px or [])}")
         builder = DatasetBuilder(
             reader, anns, req.class_names, out_dir, tile_filter=tile_filter, area_bounds=area_bounds,
+            negative_areas=req.negative_areas_px,
             tile=req.tile, overlap=req.overlap, val_split=req.val_split, neg_ratio=req.neg_ratio,
             task=req.task, augment=req.augment, img_fmt=req.img_fmt,
             progress=progress, canceled=canceled, log=log,
@@ -149,6 +151,8 @@ def _resolve_from_image_id(req: ExportDatasetRequest) -> ExportDatasetRequest:
         "annotations": [AnnotationIn(**a) for a in annotations],
         "train_areas_px": [a["points_px"] for a in store.areas(anns, store.TRAIN_AREA)] or None,
         "exclude_areas_px": [a["points_px"] for a in store.areas(anns, store.CHECK_AREA)] or None,
+        "negative_areas_px": [a["points_px"] for a in store.areas(anns, store.TRAIN_AREA)
+                              if (a.get("source") or {}).get("decision") == "reject"] or None,
     })
 
 

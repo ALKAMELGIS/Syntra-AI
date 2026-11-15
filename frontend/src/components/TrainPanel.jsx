@@ -44,10 +44,18 @@ export default function TrainPanel({
   const [epochs, setEpochs] = useState("");
   const [modelName, setModelName] = useState("");
   const [registered, setRegistered] = useState(null);
+  const [where, setWhere] = useState("local");       // "local" | "gpu"
+  const [gpu, setGpu] = useState("rtx4090");
+  const [cloud, setCloud] = useState("COMMUNITY");
+  const [maxHours, setMaxHours] = useState("2");
+  const [pushJob, setPushJob] = useState(null);       // samples saved to Hugging Face
+  const [rp, setRp] = useState(null);
   const [err, setErr] = useState(null);
   const fileRef = useRef(null);
 
   useEffect(() => { if (open && step === 0) api.listImages().then(setImages).catch(() => setImages([])); }, [open, step]);
+  useEffect(() => { if (open && step === 3) api.runpodStatus().then(setRp).catch(() => setRp(null)); }, [open, step]);
+  useEffect(() => { setPushJob(null); }, [ds?.job_id]);
 
   usePoll(async () => {
     try {
@@ -106,6 +114,14 @@ export default function TrainPanel({
     setErr(null);
     setRegistered(null);
     try {
+      if (where === "gpu") {
+        const job = await api.cloudTrain({
+          push_job_id: pushJob.job_id, dataset_job_id: ds.job_id, model_size: size, gpu, cloud,
+          epochs: epochs ? parseInt(epochs, 10) : null, max_hours: parseFloat(maxHours) || 2,
+        });
+        setTr(job);
+        return;
+      }
       const r = await api.startTraining({
         data_yaml: ds.data_yaml, device, model_size: size,
         epochs: epochs ? parseInt(epochs, 10) : null,
@@ -258,7 +274,7 @@ export default function TrainPanel({
               <>
                 <p className="train-ok"><span className="mono">{ds.info?.stats?.train_images ?? "–"}</span> training tiles ·{" "}
                   <span className="mono">{ds.info?.stats?.val_images ?? "–"}</span> for checking</p>
-                <SaveSamples datasetJobId={ds.job_id} />
+                <SaveSamples datasetJobId={ds.job_id} onSaved={setPushJob} />
               </>
             )}
             {ds?.status === "error" && <p className="train-error">{ds.error}</p>}
@@ -267,6 +283,35 @@ export default function TrainPanel({
 
         {step === 3 && (
           <>
+            <p className="train-label">Where</p>
+            <div className="train-seg">
+              <button type="button" className={where === "local" ? "selected" : ""} onClick={() => setWhere("local")} disabled={trRunning}>This computer</button>
+              <button type="button" className={where === "gpu" ? "selected" : ""} onClick={() => setWhere("gpu")} disabled={trRunning}>RunPod GPU</button>
+            </div>
+            {where === "gpu" && (
+              !rp?.configured ? <p className="train-dim">Add your RunPod API key in Settings</p>
+              : !pushJob ? <p className="train-dim">Save the samples to Hugging Face in the Dataset step first: the GPU reads them from there</p>
+              : (
+                <div className="gpu-opts">
+                  <label className="train-field">GPU
+                    <select className="train-select" value={gpu} onChange={(e) => setGpu(e.target.value)} disabled={trRunning}>
+                      {[["rtx4090", "RTX 4090 · 24 GB"], ["rtx5090", "RTX 5090 · 32 GB"], ["l40s", "L40S · 48 GB"], ["a40", "A40 · 48 GB"]].map(([id, l]) => (
+                        <option key={id} value={id}>{l}</option>))}
+                    </select>
+                  </label>
+                  <div className="train-seg">
+                    <button type="button" className={cloud === "COMMUNITY" ? "selected" : ""} onClick={() => setCloud("COMMUNITY")} disabled={trRunning}
+                            title="Machines run by RunPod's hosts: cheapest">Community</button>
+                    <button type="button" className={cloud === "SECURE" ? "selected" : ""} onClick={() => setCloud("SECURE")} disabled={trRunning}
+                            title="RunPod's own data centres: for imagery whose licence asks for it">Secure</button>
+                  </div>
+                  <label className="train-field">Stop after (hours)
+                    <input className="train-input mono" type="number" min="0.25" max="24" step="0.25" value={maxHours}
+                           onChange={(e) => setMaxHours(e.target.value)} disabled={trRunning} />
+                  </label>
+                </div>
+              )
+            )}
             <p className="train-label">Model size</p>
             <div className="train-seg">
               {[["nano", "Fast"], ["small", "Balanced"], ["medium", "Accurate"]].map(([id, label]) => (
@@ -276,8 +321,9 @@ export default function TrainPanel({
             <label className="train-field">Epochs
               <input className="train-input mono" type="number" min="1" value={epochs} onChange={(e) => setEpochs(e.target.value)} placeholder="auto" />
             </label>
-            <button type="button" className="run-button" onClick={startTraining} disabled={trRunning}>
-              {trRunning ? "Training…" : trDone ? "Train again" : "Start training"}
+            <button type="button" className="run-button" onClick={startTraining}
+                    disabled={trRunning || (where === "gpu" && (!rp?.configured || !pushJob))}>
+              {trRunning ? "Training…" : trDone ? "Train again" : where === "gpu" ? "Train on GPU" : "Start training"}
             </button>
             {trRunning && (
               <>
@@ -285,10 +331,24 @@ export default function TrainPanel({
                 <p className="train-dim mono">
                   {p ? `Epoch ${p.epoch}/${p.epochs} · mAP50 ${p.map50?.toFixed?.(2) ?? "–"}` : tr.status}
                 </p>
-                <button type="button" className="link-button" onClick={() => api.trainingCancel(tr.job_id).catch(() => {})}>Cancel</button>
+                {tr.where === "runpod" && (
+                  <p className="train-dim mono">
+                    {[tr.pod_status, tr.cost_per_hour != null ? `$${Number(tr.cost_per_hour).toFixed(2)}/h` : null,
+                      tr.cost_usd != null ? `$${Number(tr.cost_usd).toFixed(2)} so far` : null, tr.message].filter(Boolean).join(" · ")}
+                  </p>
+                )}
+                {tr.where === "runpod" ? (
+                  <button type="button" className="link-button" onClick={() => api.cloudStop(tr.job_id).then((j) => setTr((t) => ({ ...t, ...j }))).catch((e) => setErr(e.message))}>
+                    Stop the GPU
+                  </button>
+                ) : (
+                  <button type="button" className="link-button" onClick={() => api.trainingCancel(tr.job_id).catch(() => {})}>Cancel</button>
+                )}
               </>
             )}
-            {trDone && <p className="train-ok">Done · mAP50 <span className="mono">{p?.map50?.toFixed?.(2) ?? "–"}</span> on held-out tiles</p>}
+            {trDone && <p className="train-ok">Done · mAP50 <span className="mono">{p?.map50?.toFixed?.(2) ?? "–"}</span> on held-out tiles
+              {tr.where === "runpod" && tr.cost_usd != null && <> · GPU cost <span className="mono">${Number(tr.cost_usd).toFixed(2)}</span></>}</p>}
+            {tr?.warning && <p className="train-error">{tr.warning}</p>}
             {tr && ["error", "canceled", "interrupted"].includes(tr.status) && (
               <p className="train-error">{tr.error || tr.result?.message || `Training ${tr.status}`}</p>
             )}

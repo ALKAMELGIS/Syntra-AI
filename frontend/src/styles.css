@@ -1547,3 +1547,5 @@ path.focus-outline { stroke: #f4f5f7; }
 .hf-input:focus { outline: none; border-color: var(--accent); }
 .save-samples { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
 .save-samples a { color: var(--text); overflow-wrap: anywhere; font-size: 12px; }
+
+.gpu-opts { display: flex; flex-direction: column; gap: 8px; }

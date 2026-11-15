@@ -69,6 +69,10 @@ export const auth = {
 };
 
 export const api = {
+  runpodStatus: () => request(`${BASE}/cloud/runpod`).then(handle),
+  runpodSave: (key) => request(`${BASE}/cloud/runpod`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key }) }).then(handle),
+  cloudTrain: (body) => request(`${BASE}/cloud/train`, json(body)).then(handle),
+  cloudStop: (jobId) => request(`${BASE}/cloud/train/${jobId}/stop`, { method: "POST" }).then(handle),
   hfStatus: () => request(`${BASE}/samples/hf`).then(handle),
   hfSave: (body) => request(`${BASE}/samples/hf`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).then(handle),
   pushSamples: (dataset_job_id) => request(`${BASE}/samples/push`, json({ dataset_job_id })).then(handle),

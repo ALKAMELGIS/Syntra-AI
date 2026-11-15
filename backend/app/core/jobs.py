@@ -148,14 +148,18 @@ class JobStore:
                 ACTIVE_STATUSES,
             ).fetchall()
             now = _now()
+            marked = 0
             for r in rows:
                 data = json.loads(r["data"])
+                if data.get("where") == "runpod":
+                    continue        # runs on a rented GPU, not in this process: watched again at start
+                marked += 1
                 data.update(status="interrupted", error=message, previous_status=data.get("status"))
                 self._conn.execute(
                     "UPDATE jobs SET data = ?, status = 'interrupted', updated_at = ? WHERE id = ?",
                     (_dumps(data), now, r["id"]),
                 )
-        return len(rows)
+        return marked
 
     def close(self) -> None:
         with self._lock:

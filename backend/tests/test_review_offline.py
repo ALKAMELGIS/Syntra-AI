@@ -104,3 +104,29 @@ def test_rejected_object_is_background_in_the_training_tile(run):
     tile_filter, _ = area_filter(areas, [], 512, 1000, 1000)
     m = tile_filter(0, 0)
     assert m is not False and m[410, 410] and not m[100, 100]          # ship 1 kept, unreviewed ship 0 hidden
+
+
+def test_review_reaches_the_dataset(run):
+    """End to end: accepted ships become labelled tiles, the rejected one a background tile.
+
+    Before the fix every tile was dropped: review areas cover under 1% of a
+    640 px tile, under the 35% area rule and over the 80% black rule."""
+    from pathlib import Path
+
+    c, job_id, img = run
+    url = f"/api/results/{job_id}/ship_detection/review"
+    c.put(url, json={"changes": {"0": "accept", "2": "accept", "1": "reject"}})
+    c.post(url + "/apply")
+    r = c.post("/api/training/export-dataset", json={"image_id": img["image_id"], "task": "obb", "tile": 640,
+                                                     "overlap": 64, "augment": False})
+    assert r.status_code == 200, r.text
+    st = c.get(f"/api/training/export-dataset/{r.json()['job_id']}").json()
+    assert st["status"] == "completed", st
+    stats = st["info"]["stats"]
+    assert stats["class_counts"]["ship"] == 2
+    assert stats.get("reviewed_negatives", 0) >= 1
+    labels = list((Path(st["data_yaml"]).parent / "labels").rglob("*.txt"))
+    neg = [p for p in labels if "_neg_" in p.name]
+    assert neg and all(p.read_text().strip() == "" for p in neg)          # "not a ship": no label rows
+    pos = [p for p in labels if "_neg_" not in p.name and p.read_text().strip()]
+    assert pos and all(len(row.split()) == 9 for p in pos for row in p.read_text().splitlines())   # OBB rows
