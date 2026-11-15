@@ -66,6 +66,11 @@ export default function MapDrawTools({
   const map = useMap();
   const [mode, setMode] = useState(null); // null | "rect" | "circle" | "pencil" | "ruler"
   const [menuOpen, setMenuOpen] = useState(false);
+  // the layers' pop-ups stay quiet while a drawing tool owns the clicks
+  useEffect(() => {
+    document.body.dataset.drawing = mode ? "1" : "";
+    return () => { document.body.dataset.drawing = ""; };
+  }, [mode]);
   // another panel opened beside the toolbar: fold the Edit menu
   useEffect(() => { if (otherPanelOpen) setMenuOpen(false); }, [otherPanelOpen]);
   const drawState = useRef({ overlay: null, start: null, points: [] });

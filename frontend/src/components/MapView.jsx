@@ -1,12 +1,15 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
 import { api } from "../api/client";
-import { MapContainer, TileLayer, GeoJSON, ImageOverlay, Rectangle, Tooltip, useMap, useMapEvents } from "react-leaflet";
+import { MapContainer, TileLayer, GeoJSON, ImageOverlay, Rectangle, Tooltip, Popup, useMap, useMapEvents } from "react-leaflet";
 import MapDrawTools from "./MapDrawTools.jsx";
 import AnnotationLayer from "./AnnotationTool.jsx";
 import ImageLibrary from "./ImageLibrary.jsx";
 import SettingsPanel from "./SettingsPanel.jsx";
-import { IconExpand, IconBasemap, IconLegend, IconGallery, IconGear, IconAnalysis, IconTrain, IconPerformance, IconEye, IconEyeOff, IconDatabase } from "./Icons.jsx";
+import { IconExpand, IconBasemap, IconLayers, IconGallery, IconGear, IconAnalysis, IconTrain, IconPerformance, IconDatabase, IconZoomTo, IconTable } from "./Icons.jsx";
+import LayersPanel from "./LayersPanel.jsx";
+import AttributeTable from "./AttributeTable.jsx";
+import { featuresBounds, fieldsOf, fmtValue } from "./layerUtils.js";
 
 const BASEMAPS = {
   satellite: {
@@ -80,7 +83,7 @@ function MapToolbar({
   }
 
   function toggleBasemap() {
-    onBasemapChange(basemap === "satellite" ? "streets" : "satellite");
+    onBasemapChange(basemap === "satellite" ? "streets" : basemap === "streets" ? "none" : "satellite");
   }
 
   return (
@@ -93,17 +96,10 @@ function MapToolbar({
       </button>
       <button
         className={`map-tool-btn ${legendOpen ? "active" : ""}`}
-        data-tool="legend" title="Legend" aria-expanded={legendOpen}
+        data-tool="layers" title="Layers" aria-expanded={legendOpen}
         onClick={onLegendToggle}
       >
-        <IconLegend />
-      </button>
-      <button
-        className={`map-tool-btn ${!detectionsVisible ? "active" : ""}`}
-        data-tool="visibility" title={detectionsVisible ? "Hide detections" : "Show detections"}
-        onClick={onToggleDetections}
-      >
-        {detectionsVisible ? <IconEye /> : <IconEyeOff />}
+        <IconLayers />
       </button>
       <div className="map-toolbar-sep" />
       {editMenu}
@@ -173,9 +169,10 @@ function SourceImage({ image, bounds, opacity = 1 }) {
       maxNativeZoom={Math.min(MAX_ZOOM, nativeZoom ?? MAX_ZOOM)}
       keepBuffer={1}
       opacity={opacity}
+      className="syntra-raster"
     />
   ) : (
-    <ImageOverlay key={image.image_id} url={api.imagePreviewUrl(image.image_id)} bounds={ll} opacity={opacity} />
+    <ImageOverlay key={image.image_id} url={api.imagePreviewUrl(image.image_id)} bounds={ll} opacity={opacity} className="syntra-raster" />
   );
 }
 
@@ -199,32 +196,6 @@ function FocusFeature({ feature }) {
     return () => { map.removeLayer(halo); map.removeLayer(line); };
   }, [feature, map]);
   return null;
-}
-
-// The source image as a layer: show or hide, opacity, and its ground resolution.
-function ImageLayerRow({ image, layer, onChange }) {
-  const gsd = image.health?.gsd_m || image.gsd_x_m;
-  const res = gsd ? (gsd < 1 ? `${Math.round(gsd * 100)} cm` : `${+gsd.toFixed(2)} m`) : null;
-  const pct = Math.round(layer.opacity * 100);
-  return (
-    <div className="legend-image">
-      <div className="legend-row">
-        <button type="button" className="legend-eye" aria-pressed={layer.visible}
-                aria-label={layer.visible ? "Hide image" : "Show image"} title={layer.visible ? "Hide image" : "Show image"}
-                onClick={() => onChange({ ...layer, visible: !layer.visible })}>
-          {layer.visible ? <IconEye /> : <IconEyeOff />}
-        </button>
-        <span className={`legend-name ${layer.visible ? "" : "dim"}`} title={image.filename}>{image.filename}</span>
-        {res && <span className="legend-value mono" title="Ground size of one pixel">{res}</span>}
-      </div>
-      <label className="legend-opacity">
-        <span className="legend-opacity-label">Opacity</span>
-        <input type="range" min="0" max="100" step="5" value={pct} disabled={!layer.visible}
-               onChange={(e) => onChange({ ...layer, opacity: Number(e.target.value) / 100 })} aria-label="Image opacity" />
-        <span className="mono legend-value">{pct}%</span>
-      </label>
-    </div>
-  );
 }
 
 // Where the file sits on the ground, drawn whatever its pixels hold: a hairline
@@ -309,6 +280,57 @@ function L_boundsFromGeojson(geojson) {
   return [[minLat, minLng], [maxLat, maxLng]];
 }
 
+// One results layer on the map: its own colour, transparency and score
+// filter; optional labels; a click opens the object's pop-up and selects it
+// in the attribute table (unless a drawing or label tool owns the clicks).
+const LABEL_LIMIT = 400;
+function VectorLayer({ layer, onPick }) {
+  const pick = useRef(onPick);
+  pick.current = onPick;
+  const a = layer.opacity;
+  return (
+    <GeoJSON
+      key={`${layer.key}-${layer.version}-${layer.color}-${a}-${layer.minScore}-${layer.labels}`}
+      data={{ type: "FeatureCollection", features: layer.shown }}
+      style={() => ({ color: layer.color, weight: 1.5, opacity: a, fillColor: layer.color, fillOpacity: (layer.isArea ? 0.22 : 0.3) * a })}
+      pointToLayer={(f, ll) => L.circleMarker(ll, { radius: 5, color: layer.color, weight: 1.5, opacity: a, fillColor: layer.color, fillOpacity: 0.5 * a })}
+      onEachFeature={(f, lyr) => {
+        if (layer.labels && layer.shown.length <= LABEL_LIMIT) {
+          const p = f.properties || {};
+          lyr.bindTooltip(`${p.class ?? ""}${typeof p.score === "number" ? ` ${p.score.toFixed(2)}` : ""}`,
+                          { permanent: true, direction: "center", className: "map-label" });
+        }
+        lyr.on("click", (e) => {
+          const b = document.body.dataset;
+          if (b.drawing === "1" || b.labelling === "1") return;
+          L.DomEvent.stopPropagation(e);
+          pick.current(layer.key, f.id, e.latlng);
+        });
+      }}
+    />
+  );
+}
+
+// The rows selected in the attribute table, outlined on the map.
+function SelectionLayer({ features }) {
+  if (!features.length) return null;
+  return (
+    <GeoJSON key={features.map((f) => `${f._layer}:${f.id}`).join(",")}
+             data={{ type: "FeatureCollection", features }} interactive={false}
+             style={() => ({ color: "#ffffff", weight: 2.5, fill: false })}
+             pointToLayer={(f, ll) => L.circleMarker(ll, { radius: 7, color: "#ffffff", weight: 2.5, fill: false, interactive: false })} />
+  );
+}
+
+// Keeps the visible map extent, for "Map extent only" and "in view".
+function ViewTracker({ onView }) {
+  const map = useMap();
+  const push = () => { const b = map.getBounds(); onView({ south: b.getSouth(), west: b.getWest(), north: b.getNorth(), east: b.getEast() }); };
+  useMapEvents({ moveend: push });
+  useEffect(push, []); // eslint-disable-line react-hooks/exhaustive-deps
+  return null;
+}
+
 export default function MapView({
   layers, detectionsVisible = true, onToggleDetections,
   aoi, onAoiChange, measurement, onMeasurementChange,
@@ -348,16 +370,90 @@ export default function MapView({
   }
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+
+  // --- Layers: per-layer state, order, removed layers, attribute table, pop-up ---
+  const [map, setMap] = useState(null);
+  const [layerState, setLayerState] = useState({});      // key -> {visible, opacity, color, name, minScore, labels, popups}
+  const [order, setOrder] = useState([]);                // keys, top of the list first (drawn last)
+  const [removed, setRemoved] = useState({});            // key -> the geojson it was removed with
+  const [aoiVisible, setAoiVisible] = useState(true);
+  const [tableOpen, setTableOpen] = useState(false);
+  const [tableKey, setTableKey] = useState(null);
+  const [selection, setSelection] = useState({});        // key -> Set of feature ids
+  const [view, setView] = useState(null);
+  const [popup, setPopup] = useState(null);              // {key, id, latlng}
+  const [tableH, setTableH] = useState(260);
+
+  useEffect(() => {
+    const keys = layers.map((l) => l.key);
+    setOrder((o) => [...keys.filter((k) => !o.includes(k)), ...o.filter((k) => keys.includes(k))]);
+  }, [layers]);
+
+  const featuresByKey = useMemo(() => {
+    const out = {};
+    for (const l of layers) out[l.key] = (l.geojson?.features || []).map((f, i) => ({ ...f, id: i + 1 }));
+    return out;
+  }, [layers]);
+
+  const vlayers = useMemo(() => order
+    .map((k) => layers.find((l) => l.key === k))
+    .filter((l) => l && l.geojson && removed[l.key] !== l.geojson)
+    .map((l) => {
+      const st = layerState[l.key] || {};
+      const features = featuresByKey[l.key] || [];
+      const minScore = st.minScore ?? 0;
+      const shown = minScore > 0 ? features.filter((f) => typeof f.properties?.score !== "number" || f.properties.score >= minScore) : features;
+      return {
+        ...l, baseName: l.name, name: st.name || l.name, color: st.color || l.color,
+        visible: st.visible ?? true, opacity: st.opacity ?? 1, minScore, labels: st.labels ?? false, popups: st.popups ?? true,
+        isArea: l.key.endsWith("vegetation_index"), features, shown, count: shown.length,
+        value: /ha$/.test(l.value || "") ? l.value : String(shown.length),
+      };
+    }), [order, layers, layerState, removed, featuresByKey]);
+
+  const patchLayer = (key, p) => setLayerState((s) => ({ ...s, [key]: { ...(s[key] || {}), ...p } }));
+  const moveLayer = (key, d) => setOrder((o) => {
+    const vis = o.filter((k) => vlayers.some((l) => l.key === k));
+    const i = vis.indexOf(key), j = i + d;
+    if (i < 0 || j < 0 || j >= vis.length) return o;
+    const next = [...vis]; [next[i], next[j]] = [next[j], next[i]];
+    return [...next, ...o.filter((k) => !vis.includes(k))];
+  });
+  const removeLayer = (key) => {
+    const l = layers.find((x) => x.key === key);
+    if (l) setRemoved((r) => ({ ...r, [key]: l.geojson }));
+    setSelection((s) => ({ ...s, [key]: new Set() }));
+    if (popup?.key === key) setPopup(null);
+  };
+  const zoomTo = (features) => {
+    const b = featuresBounds(features);
+    if (map && b) map.flyToBounds(b, { padding: [48, 48], maxZoom: 19, duration: 0.4 });
+  };
+  const openTable = (key) => { setTableKey(key); setTableOpen(true); };
+  const onPick = (key, id, latlng) => {
+    const l = vlayers.find((x) => x.key === key);
+    setSelection((s) => ({ ...s, [key]: new Set([id]) }));
+    if (tableOpen) setTableKey(key);
+    if (l?.popups) setPopup({ key, id, latlng });
+  };
+  const selectedFeatures = useMemo(() => vlayers.filter((l) => l.visible && detectionsVisible).flatMap((l) => {
+    const sel = selection[l.key];
+    return sel?.size ? l.shown.filter((f) => sel.has(f.id)).map((f) => ({ ...f, _layer: l.key })) : [];
+  }), [vlayers, selection, detectionsVisible]);
+  const popLayer = popup && vlayers.find((l) => l.key === popup.key);
+  const popFeature = popLayer && popLayer.features.find((f) => f.id === popup.id);
+  const imgFilter = `contrast(${1 + (imageLayer.contrast || 0) / 100}) brightness(${1 + (imageLayer.brightness || 0) / 100})`;
   // one panel beside the toolbar at a time
   useEffect(() => {
     if (analysisOpen || trainOpen || perfOpen || legendOpen) setSettingsOpen(false);
   }, [analysisOpen, trainOpen, perfOpen, legendOpen]);
   const [iconStyle, setIconStyle] = useState(() => localStorage.getItem("syntra_icon_style") || "mono");
-  const bm = BASEMAPS[basemap];
+  const bm = BASEMAPS[basemap] || null;
   // Basemap health: tiles that never load (offline, firewall) leave the map
   // black with no explanation; say so in one line.
   const [tiles, setTiles] = useState({ ok: false, failed: 0 });
   useEffect(() => setTiles({ ok: false, failed: 0 }), [basemap]);
+  const aoiLabel = measurement != null ? String(measurement) : null;
   // The preview is drawn in Web Mercator; only its own corners place it exactly.
   // (Without them the overlay is not drawn: the old lat/lon box misplaced it.)
   const overlayBounds = sourceImage?.preview_bounds_wgs84 || null;
@@ -368,9 +464,10 @@ export default function MapView({
   }
 
   return (
-    <div className={`map-area icon-style-${iconStyle} ${libraryOpen ? "library-open" : ""}`}>
-      <MapContainer center={[24.7, 46.7]} zoom={5} maxZoom={MAX_ZOOM} scrollWheelZoom>
-        <TileLayer
+    <div className={`map-area icon-style-${iconStyle} ${libraryOpen ? "library-open" : ""} ${tableOpen && vlayers.length ? "table-open" : ""}`}
+         style={{ "--raster-filter": imgFilter, ...(tableOpen && vlayers.length ? { "--dock-h": `${tableH}px` } : {}) }}>
+      <MapContainer center={[24.7, 46.7]} zoom={5} maxZoom={MAX_ZOOM} scrollWheelZoom ref={setMap}>
+        {bm && <TileLayer
           key={basemap}
           attribution={bm.attribution}
           url={bm.url}
@@ -380,26 +477,33 @@ export default function MapView({
             tileload: () => setTiles((t) => (t.ok ? t : { ...t, ok: true })),
             tileerror: () => setTiles((t) => ({ ...t, failed: t.failed + 1 })),
           }}
-        />
+        />}
         {overlayBounds && sourceImage?.image_id && imageLayer.visible && <SourceImage image={sourceImage} bounds={overlayBounds} opacity={imageLayer.opacity} />}
         <ImageFootprint image={sourceImage} />
         <FocusFeature feature={focusFeature} />
         <AutoFitSourceImage sourceImage={sourceImage} />
         {detectionsVisible &&
-          layers.map((l) =>
-            l.geojson ? (
-              <GeoJSON
-                key={`${l.key}-${l.version ?? 0}`}
-                data={l.geojson}
-                style={() => ({
-                  color: l.color, weight: 1, fillColor: l.color,
-                  // area layers cover a lot of the image; keep the imagery readable under them
-                  fillOpacity: l.key.endsWith("vegetation_index") ? 0.22 : 0.4,
-                })}
-              />
-            ) : null
-          )}
-        {aoi && (
+          [...vlayers].reverse().map((l) => (l.visible ? <VectorLayer key={l.key} layer={l} onPick={onPick} /> : null))}
+        <SelectionLayer features={selectedFeatures} />
+        <ViewTracker onView={setView} />
+        {popFeature && (
+          <Popup position={popup.latlng} eventHandlers={{ remove: () => setPopup(null) }} className="feature-popup" maxWidth={320} minWidth={260} autoPanPaddingTopLeft={[64, 64]} autoPanPaddingBottomRight={[64, 64]}>
+            <div className="fp-head">
+              <span className="lp-swatch" style={{ borderColor: popLayer.color }} aria-hidden="true" />
+              <b>{popFeature.properties?.class ?? popLayer.name}</b><span className="mono">OID {popFeature.id}</span>
+            </div>
+            <dl className="fp-attrs">
+              {fieldsOf([popFeature]).filter((k) => k !== "class").map((k) => (
+                <React.Fragment key={k}><dt>{k}</dt><dd className="mono">{fmtValue(k, popFeature.properties[k])}</dd></React.Fragment>
+              ))}
+            </dl>
+            <div className="fp-actions">
+              <button type="button" onClick={() => zoomTo([popFeature])}><IconZoomTo />Zoom to</button>
+              <button type="button" onClick={() => openTable(popLayer.key)}><IconTable />Show in table</button>
+            </div>
+          </Popup>
+        )}
+        {aoi && aoiVisible && (
           <GeoJSON
             key="aoi"
             data={aoi}
@@ -455,7 +559,7 @@ export default function MapView({
         />
         <AnnotationLayer {...labels} />
       </MapContainer>
-      {!tiles.ok && tiles.failed >= 4 && (
+      {bm && !tiles.ok && tiles.failed >= 4 && (
         <p className="basemap-note" role="status">
           {bm.label} base map can't load: this computer can't reach its tile server
         </p>
@@ -472,6 +576,7 @@ export default function MapView({
           setLibraryOpen(false);
         }}
         currentImageId={currentImageId}
+        view={view}
       />
       <SettingsPanel
         open={settingsOpen}
@@ -479,45 +584,20 @@ export default function MapView({
         iconStyle={iconStyle}
         onChangeIconStyle={changeIconStyle}
       />
-      {legendOpen && (
-        <section className="legend-popover" aria-label="Legend">
-          <header className="legend-head">
-            <span className="legend-title">Legend</span>
-            <span className="legend-total mono">{layers.length + (aoi ? 1 : 0) + (sourceImage?.image_id ? 1 : 0) || ""}</span>
-          </header>
-          {sourceImage?.image_id && (
-            <ImageLayerRow image={sourceImage} layer={imageLayer} onChange={setImageLayer} />
-          )}
-          {layers.length === 0 && !aoi ? (
-            sourceImage?.image_id ? null :
-            <p className="legend-empty">No layers yet</p>
-          ) : (
-            <ul className="legend-list">
-              {layers.map((l) => (
-                <li className="legend-row" key={l.key}>
-                  <span className="legend-swatch" style={{ background: l.color }} />
-                  <span className="legend-name">{l.name}</span>
-                  <span className="legend-value mono">{l.value}</span>
-                </li>
-              ))}
-              {aoi && (
-                <li className="legend-row">
-                  <span className="legend-swatch legend-swatch-aoi" />
-                  <span className="legend-name">Area of interest</span>
-                  {measurement != null && <span className="legend-value mono">{measurement}</span>}
-                </li>
-              )}
-              {!aoi && measurement != null && (
-                <li className="legend-row">
-                  <span className="legend-swatch legend-swatch-line" />
-                  <span className="legend-name">Measured</span>
-                  <span className="legend-value mono">{measurement}</span>
-                </li>
-              )}
-            </ul>
-          )}
-        </section>
-      )}
+      <LayersPanel
+        open={legendOpen} onClose={() => setLegendOpen(false)}
+        layers={vlayers} onPatch={patchLayer} onMove={moveLayer} onRemove={removeLayer} onZoom={zoomTo} onTable={openTable}
+        allVisible={detectionsVisible} onToggleAll={onToggleDetections}
+        aoi={aoi} aoiVisible={aoiVisible} onAoiVisible={setAoiVisible} aoiLabel={aoiLabel}
+        image={sourceImage} imageLayer={imageLayer} onImageLayer={setImageLayer}
+        onZoomImage={() => { const b = sourceImage?.bounds_wgs84; if (map && b) map.flyToBounds([[b.south, b.west], [b.north, b.east]], { padding: [40, 40], duration: 0.4 }); }}
+        basemap={basemap} onBasemap={setBasemap}
+      />
+      <AttributeTable
+        open={tableOpen && vlayers.length > 0} layers={vlayers} activeKey={tableKey} onActive={setTableKey}
+        selection={selection} onSelect={(key, set) => setSelection((s) => ({ ...s, [key]: set }))}
+        view={view} onZoom={zoomTo} onClose={() => setTableOpen(false)} height={tableH} onHeight={setTableH}
+      />
     </div>
   );
 }

@@ -486,6 +486,29 @@ for when it is exposed to a network (all in `backend/.env.example`):
   hash in `syntra.db`. Five wrong passwords lock an email or address for ten
   minutes. `SYNTRA_AUTH=off` restores open access. Verified by
   `test_auth_offline.py` (9 tests) and a live browser run at four screen sizes.
+- **Layers, attribute table, pop-ups (like ArcGIS Online).** The Layers
+  button (stacked sheets) replaces Legend and the hide-all eye. Each run is a
+  layer with its own eye, colour, count and options: zoom to, show table,
+  information (model and version, image, run time, CRS, extent, every field
+  with its type and unit), colour, transparency, labels, pop-ups, filter by
+  score, rename, move up / down, export GeoJSON, remove from map. The image
+  layer has opacity and display contrast / brightness (the file is never
+  changed; detection reads the original pixels); basemap Satellite, Streets
+  or None. Clicking an object opens its pop-up with its real attributes and
+  selects it; the attribute table docks under the map with a tab per layer,
+  sort, search, map extent only, selected only, Ctrl / Shift selection
+  outlined on the map, zoom to selection, export, and sum / mean of the
+  sorted column. Not yet: band choice and stretch (need server-side
+  rendering), visible range, adding outside layers (files, WMS / XYZ).
+  Verified live with sample result layers (panel, options, labels, table,
+  pop-up, information) and `vite build`.
+- **Image gallery.** The Images dock shows each image's own preview with a
+  short name read from the file name (sensor and product, e.g. SuperView
+  Neo-3 PAN), the capture date when the name carries one, resolution and
+  area; copies of the same file show once with their count (×4); the full
+  file name is only the card's native tooltip. Search by name, sensor or
+  date; All / In view (footprint in the map view); sort; Gallery / List.
+  Verified live against a copy of the user's 11 library entries (4 cards).
 - **Sign-in globe.** The sign-in page shows a real Earth turning on the left
   (`components/EarthGlobe.jsx`): NASA Blue Marble on an orthographic sphere,
   lit from the upper left with NASA city lights on the night side, a satellite

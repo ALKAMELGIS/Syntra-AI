@@ -20,6 +20,14 @@ function jobKey(imageId, modelId) {
 
 export const PROJECT_KEY = "syntra_project";
 
+function runTime(t) {
+  if (t == null) return null;
+  const d = new Date(typeof t === "number" ? t * 1000 : t);
+  if (isNaN(d)) return null;
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
 export default function App({ user = null, onSignOut = null }) {
   // phones show one pane at a time: the setup panel or the map
   const [mobilePane, setMobilePane] = useState("setup");
@@ -341,6 +349,11 @@ export default function App({ user = null, onSignOut = null }) {
       name: models.find((m) => m.model_id === job.model_id)?.name || job.model_id,
       color: colorFor(job.model_id),
       geojson: filtered[key],
+      // for the layer's Information page
+      modelId: job.model_id,
+      modelVersion: job.model_version || models.find((m) => m.model_id === job.model_id)?.version || null,
+      imageName: job.image_name || image?.filename || null,
+      ranAt: runTime(job.updated_at || job.created_at),
       // what the legend shows beside the name: hectares for area layers, else the feature count
       value: job.result?.summary?.vegetation_area_ha != null
         ? `${job.result.summary.vegetation_area_ha} ha`

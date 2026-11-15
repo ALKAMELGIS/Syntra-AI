@@ -136,3 +136,27 @@ export const IconRaster = (p) => (
 export const IconCheck = (p) => (
   <svg {...base} {...p}><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
 );
+export const IconLayers = (p) => (
+  <svg {...base} {...p}><path d="M12 3 3 8l9 5 9-5-9-5Z" /><path d="m3 13 9 5 9-5" /><path d="m3 17.5 9 4.5 9-4.5" /></svg>
+);
+export const IconTable = (p) => (
+  <svg {...base} {...p}><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3 10h18M9 10v10" /></svg>
+);
+export const IconMore = (p) => (
+  <svg {...base} {...p}><circle cx="5" cy="12" r="1" /><circle cx="12" cy="12" r="1" /><circle cx="19" cy="12" r="1" /></svg>
+);
+export const IconZoomTo = (p) => (
+  <svg {...base} {...p}><circle cx="11" cy="11" r="6" /><path d="m20 20-4.5-4.5" /></svg>
+);
+export const IconArrowUp = (p) => (
+  <svg {...base} {...p}><path d="M12 19V5M6 11l6-6 6 6" /></svg>
+);
+export const IconArrowDown = (p) => (
+  <svg {...base} {...p}><path d="M12 5v14M6 13l6 6 6-6" /></svg>
+);
+export const IconDownload = (p) => (
+  <svg {...base} {...p}><path d="M12 3v12M7 10l5 5 5-5M4 20h16" /></svg>
+);
+export const IconFilter = (p) => (
+  <svg {...base} {...p}><path d="M4 5h16l-6 7v6l-4 2v-8L4 5Z" /></svg>
+);
