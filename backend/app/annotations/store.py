@@ -1,8 +1,9 @@
 """
 Persistence + lon/lat <-> pixel conversion for per-image object annotations.
 
-Pure stdlib/json — no rasterio dependency — so this is importable and fully
-unit-testable anywhere, same as app.core.image_library.
+No rasterio dependency, so this is importable and fully unit-testable
+anywhere. Labels are stored per class as GeoJSON in the data folder's
+`classes/` library (see app.core.layout).
 
 Coordinate convention: the frontend displays the raster via a Leaflet
 `<ImageOverlay>` stretched linearly across the image's `bounds_wgs84`
@@ -26,6 +27,7 @@ from typing import Any
 
 
 def sidecar_path(image_path: str | Path) -> Path:
+    """The file labels lived in before the per-class library (read once, then moved)."""
     p = Path(image_path)
     return p.with_suffix(p.suffix + ".annotations.json")
 
@@ -46,18 +48,118 @@ def pixel_to_lonlat(x: float, y: float, bounds: dict, width: int, height: int) -
     return lon, lat
 
 
+# ---------------------------------------------------------------- the library
+# Labels are kept per class, as GeoJSON with real coordinates (app.core.layout):
+#   classes/<class>/labels/<key>.geojson   objects of that class on image <key>
+#   classes/_areas/<key>.geojson           training ("complete") and accuracy areas
+# The pixel ring is kept in each feature's properties, so nothing has to be
+# re-projected to tile the image.
+
+_ROLE = {"__train_area__": "complete", "__check_area__": "accuracy"}
+_ROLE_CLASS = {v: k for k, v in _ROLE.items()}
+
+
+def image_key_for(image_path: str | Path) -> str:
+    import hashlib
+    import re
+
+    from app.core.layout import image_key
+
+    p = Path(image_path)
+    if re.fullmatch(r"[0-9a-f]{8}", p.parent.name):
+        return p.parent.name
+    m = re.match(r"^([0-9a-f]{8})-?[0-9a-f]{4}", p.name)
+    if m:
+        return image_key(m.group(1))
+    return hashlib.sha1(str(p.resolve()).encode()).hexdigest()[:8]
+
+
+def _files(image_path) -> list[Path]:
+    from app.core.layout import classes_dir
+
+    key = image_key_for(image_path)
+    root = classes_dir()
+    if not root.is_dir():
+        return []
+    return sorted(root.glob(f"*/labels/{key}.geojson")) + sorted(root.glob(f"_areas/{key}.geojson"))
+
+
+def _to_feature(a: dict) -> dict:
+    ring = [list(map(float, p)) for p in a["points_lonlat"]]
+    if ring and ring[0] != ring[-1]:
+        ring = ring + [ring[0]]
+    props = {k: v for k, v in a.items() if k not in ("points_lonlat",)}
+    if a["class_name"] in _ROLE:
+        props["role"] = _ROLE[a["class_name"]]
+    return {"type": "Feature", "geometry": {"type": "Polygon", "coordinates": [ring]}, "properties": props}
+
+
+def _from_feature(f: dict) -> dict | None:
+    props = dict(f.get("properties") or {})
+    try:
+        ring = f["geometry"]["coordinates"][0]
+    except (KeyError, IndexError, TypeError):
+        return None
+    if len(ring) > 1 and ring[0] == ring[-1]:
+        ring = ring[:-1]
+    if "class_name" not in props:
+        props["class_name"] = _ROLE_CLASS.get(props.get("role"), props.get("class", "object"))
+    props.pop("role", None)
+    props["points_lonlat"] = ring
+    return props
+
+
 def load_annotations(image_path: str | Path) -> list[dict]:
     sc = sidecar_path(image_path)
-    if not sc.exists():
-        return []
-    try:
-        return json.loads(sc.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return []
+    if sc.exists():                                          # labels from before the library: move them once
+        try:
+            legacy = json.loads(sc.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            legacy = None
+        if isinstance(legacy, list):
+            have = {a["id"] for a in _load_library(image_path)}
+            save_annotations(image_path, _load_library(image_path) + [a for a in legacy if a.get("id") not in have])
+            sc.rename(sc.with_name(sc.name + ".moved"))
+    return _load_library(image_path)
+
+
+def _load_library(image_path) -> list[dict]:
+    out: list[dict] = []
+    for f in _files(image_path):
+        try:
+            data = json.loads(f.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            continue
+        for feat in data.get("features", []):
+            a = _from_feature(feat)
+            if a is not None:
+                out.append(a)
+    out.sort(key=lambda a: (a.get("order", 1e9), a.get("created_at") or ""))
+    return out
 
 
 def save_annotations(image_path: str | Path, annotations: list[dict]) -> None:
-    sidecar_path(image_path).write_text(json.dumps(annotations, indent=2, ensure_ascii=False), encoding="utf-8")
+    from app.core.layout import AREAS, class_dir, write_json
+    from app.engine.shapes import shape_for_class
+
+    key = image_key_for(image_path)
+    groups: dict[str, list[dict]] = {}
+    for i, a in enumerate(annotations):
+        a = {**a, "order": i}                                 # keeps the drawing order across class files
+        folder = AREAS if a["class_name"] in _ROLE else a["class_name"]
+        groups.setdefault(folder, []).append(a)
+    written = set()
+    for folder, items in groups.items():
+        d = class_dir(folder)
+        target = d / f"{key}.geojson" if folder == AREAS else d / "labels" / f"{key}.geojson"
+        write_json(target, {"type": "FeatureCollection", "image": key, "source": Path(image_path).name,
+                            "features": [_to_feature(a) for a in items]})
+        written.add(target)
+        if folder != AREAS and not (d / "class.json").exists():
+            write_json(d / "class.json", {"name": folder, "shape": shape_for_class(folder), "target": 1500})
+    for f in _files(image_path):                             # classes with no labels left on this image
+        if f not in written:
+            f.unlink(missing_ok=True)
 
 
 def add_annotation(image_path: str | Path, class_name: str, points_lonlat: list[list[float]],
@@ -136,6 +238,14 @@ def objects_for_training(annotations: list[dict]) -> list[dict]:
     """Object labels that may be trained on: not areas, not inside an accuracy area."""
     checks = [a["points_px"] for a in areas(annotations, CHECK_AREA)]
     return [a for a in annotations if not is_area(a) and not (checks and _inside_any(a["points_px"], checks))]
+
+
+def objects_for_test(annotations: list[dict], names: list[str]) -> list[dict]:
+    """Objects inside accuracy areas, as {class_id, points_px}: the test split's labels."""
+    checks = [a["points_px"] for a in areas(annotations, CHECK_AREA)]
+    index = {n: i for i, n in enumerate(names)}
+    return [{"class_id": index[a["class_name"]], "points_px": a["points_px"]} for a in annotations
+            if not is_area(a) and a["class_name"] in index and checks and _inside_any(a["points_px"], checks)]
 
 
 def class_names_used(annotations: list[dict]) -> list[str]:

@@ -120,8 +120,13 @@ def list_library(upload_dir: Path) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     if not upload_dir.exists():
         return out
-    for p in sorted(upload_dir.glob("*")):
-        if p.suffix.lower() not in (".tif", ".tiff"):
+    # images/<key>/<name>.tif (app.core.layout); files directly in the folder
+    # are from before the layout and are still listed until they are moved
+    files = [*upload_dir.glob("*"), *upload_dir.glob("*/*")]
+    for p in sorted(files):
+        if p.suffix.lower() not in (".tif", ".tiff") or not p.is_file():
+            continue
+        if p.name.endswith((".georef.tif", ".tiled.tif")):
             continue
         entry = read_entry(p)
         if entry is None:
@@ -136,6 +141,8 @@ def list_library(upload_dir: Path) -> list[dict[str, Any]]:
                 "gsd_x_m": None, "gsd_y_m": None, "area_km2": None,
                 "raster_meta_note": "No metadata sidecar found for this file.",
             }
+        else:
+            entry["path"] = str(p)            # where it is now, even after a move
         out.append(entry)
     out.sort(key=lambda e: e.get("uploaded_at") or "", reverse=True)
     return out

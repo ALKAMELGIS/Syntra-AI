@@ -228,3 +228,19 @@ def test_runpod_client_sends_the_v2_body_and_explains_errors():
     assert headers["Authorization"] == "Bearer k"
     with pytest.raises(RunPodError, match="did not accept this API key"):
         rp.terminate("bad")
+
+
+def test_pod_unpacks_tile_shards_before_training(tmp_path, fakes):
+    import shutil
+    import tarfile
+
+    mods, hub = fakes
+    ds = hub / "ali/syntra-samples" / "20261115_harbour_obb"
+    (ds / "shards").mkdir()
+    with tarfile.open(ds / "shards" / "train-000.tar", "w") as t:
+        t.add(ds / "images" / "train" / "a.jpg", arcname="images/train/a.jpg")
+    shutil.rmtree(ds / "images")
+    r = _run_pod(tmp_path, mods, hub)
+    assert r.returncode == 0, r.stdout + r.stderr
+    got = tmp_path / "ws" / "data" / "20261115_harbour_obb"
+    assert (got / "images" / "train" / "a.jpg").read_bytes() == b"x" and not list((got / "shards").glob("*.tar"))

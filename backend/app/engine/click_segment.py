@@ -58,7 +58,7 @@ class SegmentUnavailable(RuntimeError):
 def models_dir() -> Path:
     from app.core.config import settings
 
-    return settings.DATA_DIR / "models" / "segment"
+    return settings.DATA_DIR / "engines" / "segment"      # models/ holds the classes' trained models
 
 
 def model_files(name: str = DEFAULT_MODEL) -> tuple[Path, Path] | None:

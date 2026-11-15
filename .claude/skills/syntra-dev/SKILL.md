@@ -199,6 +199,23 @@ direction in a comment. Work inside them:
 - A model ships only after its licence file has been read. SAM 3 weights are gated and under the SAM License: GPU (RunPod) only, never bundled.
 - Report measured encoder and per-click times on the user's machine before calling auto segmentation fast.
 
+## 4c. The data folder
+
+- Paths come from `app/core/layout.py`, never built by hand: `images/<key>/`,
+  `classes/<class>/labels/<key>.geojson`, `classes/_areas/`, `datasets/<class>/vNNN/`,
+  `models/<class>/vNNN/` + `approved.json`, `engines/` for downloaded tools.
+  Keys are 8 hex characters and class folders are slugs: short paths for Windows.
+- Labels in `classes/` are the only thing edited. A dataset or model version is
+  written once; a fix is the next version. Every dataset version has a
+  `manifest.json` (sources, label hashes, split method, counts, samples).
+- Never split train/val per tile at random: tiles overlap. Use the builder's
+  block split with its gap; accuracy areas are the test split and are never
+  trained on. Report test scores, not val scores, when both exist.
+- A change to the layout ships with a move in `app/core/migrate.py` that
+  records every move and keeps the old label files.
+- Tests never write to `backend/data`: `tests/conftest.py` gives each test its
+  own data folder.
+
 ## 5. Shipping a change
 
 1. Branch from `main`.

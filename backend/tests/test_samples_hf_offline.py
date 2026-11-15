@@ -74,7 +74,7 @@ def test_token_is_checked_kept_locally_and_never_returned(env):
     c, tmp = env
     assert c.put("/api/samples/hf", json={"token": "hf_bad"}).status_code == 400
     r = c.put("/api/samples/hf", json={"token": "hf_good"}).json()
-    assert r == {"configured": True, "user": "ali", "repo": "ali/syntra-samples", "library": True}
+    assert r == {"configured": True, "user": "ali", "repo": "ali/syntra-samples", "library": True, "auto_backup": False}
     assert "hf_good" not in json.dumps(c.get("/api/samples/hf").json())
     assert json.loads((tmp / "secrets.json").read_text())["hf_token"] == "hf_good"
     assert c.put("/api/samples/hf", json={"repo": "no-slash"}).status_code == 400
@@ -91,7 +91,7 @@ def test_push_creates_a_private_repo_and_one_folder_per_push(env):
     assert FakeApi.repos["ali/syntra-samples"] is True                      # created private
     up = FakeApi.uploads[0]
     assert up["path"].endswith("_harbour_obb") and "data.yaml" in up["files"]
-    assert "labels/train/t0.txt" in up["files"] and "syntra_source.json" in up["files"]
+    assert "shards/train-000.tar" in up["files"] and "syntra_source.json" in up["files"]   # tiles packed
     assert up["source"]["classes"] == ["ship"] and up["source"]["task"] == "obb"
     assert st["result"]["url"].startswith("https://huggingface.co/datasets/ali/syntra-samples/tree/main/")
 
@@ -143,3 +143,28 @@ def test_errors_say_whether_the_token_or_the_network_is_the_problem():
     assert "did not accept this token" in _explain(HubError("Invalid credentials", 401))
     assert "proxy or firewall" in _explain(ProxyError("403 Forbidden"))
     assert "internet connection" in _explain(ConnectionError("Name or service not known"))
+
+
+def test_stage_packs_tiles_into_shards_and_adds_the_original_labels(tmp_path, monkeypatch):
+    import tarfile
+
+    from app.engine import hf_push
+
+    ds = tmp_path / "ds"
+    for split in ("train", "val", "test"):
+        (ds / "images" / split).mkdir(parents=True)
+        (ds / "labels" / split).mkdir(parents=True)
+        for k in range(5):
+            (ds / "images" / split / f"t{k}.jpg").write_bytes(b"j")
+            (ds / "labels" / split / f"t{k}.txt").write_text("0 0.5 0.5 0.1 0.1")
+    (ds / "data.yaml").write_text("train: images/train")
+    lib = tmp_path / "classes" / "ship" / "labels"
+    lib.mkdir(parents=True)
+    (lib / "7f3a91c2.geojson").write_text("{}")
+    monkeypatch.setattr(hf_push, "SHARD_FILES", 4)
+    out = tmp_path / "up"
+    n = hf_push.stage(ds, out, {"label_files": ["ship/labels/7f3a91c2.geojson"], "classes_dir": str(tmp_path / "classes")})
+    assert n == 9                                                            # 10 files per split, 4 per shard
+    with tarfile.open(out / "shards" / "train-000.tar") as t:
+        assert t.getnames()[0].startswith(("images/train/", "labels/train/"))
+    assert (out / "library" / "ship" / "labels" / "7f3a91c2.geojson").exists() and (out / "data.yaml").exists()

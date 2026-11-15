@@ -65,6 +65,11 @@ def _pod_main() -> int:
         snapshot_download(repo_id=repo, repo_type="dataset", allow_patterns=[f"{folder}/**"],
                           local_dir=str(root / "data"), token=tok)
         ds = root / "data" / folder
+        import tarfile as _tar
+        for shard in sorted((ds / "shards").glob("*.tar")) if (ds / "shards").is_dir() else []:
+            with _tar.open(shard) as t:                       # tiles come packed: unpack them in place
+                t.extractall(ds, filter="data") if hasattr(_tar, "data_filter") else t.extractall(ds)
+            shard.unlink()
         yaml_path = ds / "data.yaml"
         lines = [ln for ln in yaml_path.read_text().splitlines() if not ln.startswith("path:")]
         yaml_path.write_text(f"path: {ds}\n" + "\n".join(lines) + "\n")
@@ -92,6 +97,8 @@ def _pod_main() -> int:
             put(onnx, "best.onnx")
             if (run_dir / "results.csv").exists():
                 put(run_dir / "results.csv", "results.csv")
+            if (run_dir / "test_metrics.json").exists():
+                put(run_dir / "test_metrics.json", "test_metrics.json")
             done = {"run_id": run_id, "status": "done", "elapsed_s": final.get("elapsed_s")}
         else:
             done = {"run_id": run_id, "status": "error", "message": final.get("message") or "Training gave no weights"}

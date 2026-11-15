@@ -44,11 +44,12 @@ def test_add_list_delete_clear_round_trip(tmp_path):
     assert {a["id"] for a in loaded} == {a1["id"], a2["id"]}
     assert all(len(a["points_px"]) == 4 for a in loaded)
 
-    # sidecar actually persisted to disk, not just in-memory
-    sidecar = store.sidecar_path(img)
-    assert sidecar.exists()
-    on_disk = json.loads(sidecar.read_text())
-    assert len(on_disk) == 2
+    # saved per class in the library, as GeoJSON with real coordinates
+    from app.core.config import settings
+    key = store.image_key_for(img)
+    tree = json.loads((settings.DATA_DIR / "classes" / "tree" / "labels" / f"{key}.geojson").read_text())
+    assert len(tree["features"]) == 1 and tree["features"][0]["geometry"]["type"] == "Polygon"
+    assert (settings.DATA_DIR / "classes" / "building" / "class.json").exists()
 
     assert store.class_names_used(loaded) == ["tree", "building"]
 

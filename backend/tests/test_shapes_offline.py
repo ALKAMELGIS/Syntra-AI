@@ -104,8 +104,11 @@ def test_default_shape_follows_the_class():
     assert shape_for_class("ship") == "polygon"
 
 
-def test_a_label_outside_the_image_is_refused(tmp_path):
+def test_a_label_outside_the_image_is_refused(tmp_path, monkeypatch):
     from app.annotations import store
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "DATA_DIR", tmp_path)
 
     b = {"west": 55.0, "east": 55.01, "south": 25.0, "north": 25.01}
     with pytest.raises(ValueError, match="outside the image"):

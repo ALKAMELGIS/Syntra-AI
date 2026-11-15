@@ -71,12 +71,46 @@ def check_folder_sizes(dataset_dir: Path) -> None:
                             f"{MAX_FILES_PER_FOLDER} per folder. Export with a larger tile or fewer areas.")
 
 
+SHARD_FILES = 2000          # files per tar shard: few, large files instead of thousands of small ones
+
+
+def stage(dataset_dir: Path, staging: Path, source: dict) -> int:
+    """What goes up: the small files as they are, each split's tiles and labels
+    packed into tar shards (shards/<split>-000.tar, unpacked by the GPU), and
+    the owner's original labels (library/<class>/labels/<image>.geojson)."""
+    import shutil
+    import tarfile
+
+    staging.mkdir(parents=True, exist_ok=True)
+    for f in dataset_dir.iterdir():
+        if f.is_file():
+            shutil.copy2(f, staging / f.name)
+    n = 0
+    for split in ("train", "val", "test"):
+        files = sorted([*(dataset_dir / "images" / split).glob("*"), *(dataset_dir / "labels" / split).glob("*")])
+        files = [f for f in files if f.is_file()]
+        for k in range(0, len(files), SHARD_FILES):
+            (staging / "shards").mkdir(exist_ok=True)
+            with tarfile.open(staging / "shards" / f"{split}-{k // SHARD_FILES:03d}.tar", "w") as tar:
+                for f in files[k:k + SHARD_FILES]:
+                    tar.add(f, arcname=str(f.relative_to(dataset_dir)).replace("\\", "/"))
+            n += 1
+    for rel in source.get("label_files") or []:
+        src = Path(source["classes_dir"]) / rel
+        if src.is_file():
+            dst = staging / "library" / rel
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dst)
+    return n
+
+
 def push_dataset(dataset_dir: Path, repo_id: str, token: str, source: dict, *,
                  allow_public: bool = False, progress=lambda pct, msg=None: None) -> dict:
+    import tempfile
+
     dataset_dir = Path(dataset_dir)
     if not (dataset_dir / "data.yaml").exists():
         raise PushError("This export has no data.yaml: export the dataset again")
-    check_folder_sizes(dataset_dir)
     api = _api(token)
     progress(5, "Checking the repo")
     try:
@@ -92,13 +126,22 @@ def push_dataset(dataset_dir: Path, repo_id: str, token: str, source: dict, *,
         api.create_repo(repo_id, repo_type="dataset", private=True, exist_ok=True)
 
     stamp = time.strftime("%Y%m%d-%H%M%S", time.gmtime())
-    stem = "".join(ch if ch.isalnum() or ch in "-_" else "-" for ch in Path(source.get("image_name") or "image").stem)[:48]
-    folder = f"{stamp}_{stem}_{source.get('task', 'detect')}"
-    (dataset_dir / "syntra_source.json").write_text(json.dumps({**source, "pushed_at": stamp, "folder": folder}, indent=1))
-    n_files = sum(1 for p in dataset_dir.rglob("*") if p.is_file())
-    progress(15, f"Uploading {n_files} files")
-    commit = api.upload_folder(folder_path=str(dataset_dir), path_in_repo=folder, repo_id=repo_id,
-                               repo_type="dataset", commit_message=f"Syntra samples: {folder}")
+    if source.get("dataset") and source.get("version"):          # datasets/<class>/vNNN -> <class>/vNNN
+        folder = f"{source['dataset']}/{source['version']}"
+    else:
+        stem = "".join(ch if ch.isalnum() or ch in "-_" else "-" for ch in Path(source.get("image_name") or "image").stem)[:48]
+        folder = f"{stamp}_{stem}_{source.get('task', 'detect')}"
+    meta = {k: v for k, v in source.items() if k not in ("classes_dir",)}
+    with tempfile.TemporaryDirectory(prefix="syntra-push-") as tmp:
+        staging = Path(tmp) / "up"
+        progress(10, "Packing tiles")
+        shards = stage(dataset_dir, staging, source)
+        (staging / "syntra_source.json").write_text(json.dumps({**meta, "pushed_at": stamp, "folder": folder}, indent=1))
+        n_files = sum(1 for p in staging.rglob("*") if p.is_file())
+        check_folder_sizes(staging)
+        progress(20, f"Uploading {n_files} files ({shards} tile packs)")
+        commit = api.upload_folder(folder_path=str(staging), path_in_repo=folder, repo_id=repo_id,
+                                   repo_type="dataset", commit_message=f"Syntra samples: {folder}")
     progress(100, "Saved")
     return {"repo_id": repo_id, "folder": folder, "files": n_files,
             "url": f"https://huggingface.co/datasets/{repo_id}/tree/main/{folder}",

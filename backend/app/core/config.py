@@ -28,7 +28,7 @@ class Settings:
     # --- Paths -----------------------------------------------------------
     BASE_DIR: Path = Path(__file__).resolve().parents[2]
     DATA_DIR: Path = Path(os.getenv("SYNTRA_DATA_DIR", BASE_DIR / "data"))
-    UPLOAD_DIR: Path = DATA_DIR / "uploads"
+    UPLOAD_DIR: Path = DATA_DIR / "images"          # images/<key>/<name>.tif, see app.core.layout
     RESULTS_DIR: Path = DATA_DIR / "results"
     WEIGHTS_DIR: Path = Path(os.getenv("SYNTRA_WEIGHTS_DIR", BASE_DIR / "weights"))
 

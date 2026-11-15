@@ -84,9 +84,24 @@ def run(job: dict) -> int:
         )
         save_dir = Path(getattr(results, "save_dir", job.get("project", ".")))
         best = save_dir / "weights" / "best.pt"
+        test = None
+        if best.exists() and not canceled["flag"] and "\ntest:" in Path(job["data_yaml"]).read_text(encoding="utf-8"):
+            # the score that counts: the accuracy areas, never seen in training
+            try:
+                m = YOLO(str(best)).val(data=job["data_yaml"], split="test", imgsz=int(job["imgsz"]),
+                                        device=job.get("device", "cpu"), plots=False, verbose=False)
+                box = getattr(m, "seg", None) if str(job.get("task", "")) == "segment" else None
+                box = box or getattr(m, "box", None)
+                p, r = float(box.mp), float(box.mr)
+                test = {"map50": round(float(box.map50), 4), "precision": round(p, 4), "recall": round(r, 4),
+                        "f1": round(2 * p * r / (p + r), 4) if p + r else 0.0}
+            except Exception as exc:  # noqa: BLE001 - the model is still good; say why there is no test score
+                test = {"error": f"Test evaluation failed: {exc}"}
+            (save_dir / "test_metrics.json").write_text(json.dumps(test, indent=2))
         _emit({
             "type": "canceled" if canceled["flag"] else "done",
             "best": str(best) if best.exists() else None,
+            "test": test,
             "results_csv": str(save_dir / "results.csv"),
             "save_dir": str(save_dir),
             "elapsed_s": round(time.time() - t0, 1),

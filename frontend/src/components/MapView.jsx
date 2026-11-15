@@ -6,7 +6,7 @@ import MapDrawTools from "./MapDrawTools.jsx";
 import AnnotationLayer from "./AnnotationTool.jsx";
 import ImageLibrary from "./ImageLibrary.jsx";
 import SettingsPanel from "./SettingsPanel.jsx";
-import { IconExpand, IconBasemap, IconLegend, IconGallery, IconGear, IconAnalysis, IconTrain, IconPerformance, IconEye, IconEyeOff } from "./Icons.jsx";
+import { IconExpand, IconBasemap, IconLegend, IconGallery, IconGear, IconAnalysis, IconTrain, IconPerformance, IconEye, IconEyeOff, IconDatabase } from "./Icons.jsx";
 
 const BASEMAPS = {
   satellite: {
@@ -49,7 +49,7 @@ const MAX_ZOOM = 24;
 function MapToolbar({
   layers, sourceImage, basemap, onBasemapChange, legendOpen, onLegendToggle,
   onOpenLibrary, onOpenSettings, analysisOpen, onToggleAnalysis, analysisCount,
-  detectionsVisible, onToggleDetections, trainOpen, onToggleTrain, perfOpen, onTogglePerf, editMenu,
+  detectionsVisible, onToggleDetections, trainOpen, onToggleTrain, perfOpen, onTogglePerf, libOpen, onToggleLib, editMenu,
 }) {
   const map = useMap();
   const toolbarRef = useRef(null);
@@ -114,6 +114,10 @@ function MapToolbar({
       <button className={`map-tool-btn ${trainOpen ? "active" : ""}`} data-tool="train" title="Train a model"
               aria-expanded={trainOpen} onClick={onToggleTrain}>
         <IconTrain />
+      </button>
+      <button className={`map-tool-btn ${libOpen ? "active" : ""}`} data-tool="samples" title="Sample library"
+              aria-expanded={libOpen} onClick={onToggleLib}>
+        <IconDatabase />
       </button>
       <button className="map-tool-btn" data-tool="settings" title="Settings" onClick={onOpenSettings}>
         <IconGear />
@@ -308,7 +312,7 @@ function L_boundsFromGeojson(geojson) {
 export default function MapView({
   layers, detectionsVisible = true, onToggleDetections,
   aoi, onAoiChange, measurement, onMeasurementChange,
-  trainOpen, onToggleTrain, onAnnotate, labels, trainPanel, perfOpen, onTogglePerf, perfPanel,
+  trainOpen, onToggleTrain, onAnnotate, labels, trainPanel, perfOpen, onTogglePerf, perfPanel, libOpen, onToggleLib, libPanel,
   onSelectLibraryImage, currentImageId, sourceImage,
   analysisOpen, onToggleAnalysis, analysisCount, analysisPanel, focusFeature = null,
 }) {
@@ -324,8 +328,8 @@ export default function MapView({
 
   // Legend and Analysis both open beside the toolbar: show one at a time.
   useEffect(() => {
-    if (analysisOpen || trainOpen || perfOpen) setLegendOpen(false);
-  }, [analysisOpen, trainOpen, perfOpen]);
+    if (analysisOpen || trainOpen || perfOpen || libOpen) setLegendOpen(false);
+  }, [analysisOpen, trainOpen, perfOpen, libOpen]);
 
   useEffect(() => {
     if (!legendOpen) return;
@@ -428,6 +432,8 @@ export default function MapView({
           onToggleTrain={onToggleTrain}
           perfOpen={perfOpen}
           onTogglePerf={onTogglePerf}
+          libOpen={libOpen}
+          onToggleLib={onToggleLib}
           editMenu={
             <MapDrawTools
               aoi={aoi}
@@ -437,7 +443,7 @@ export default function MapView({
               annotateOpen={false}
               onToggleAnnotate={onAnnotate}
               canAnnotate={Boolean(sourceImage?.image_id)}
-              otherPanelOpen={analysisOpen || trainOpen || perfOpen || legendOpen || settingsOpen}
+              otherPanelOpen={analysisOpen || trainOpen || perfOpen || libOpen || legendOpen || settingsOpen}
               onMenuOpen={() => {
                 setLegendOpen(false); setSettingsOpen(false);
                 if (analysisOpen) onToggleAnalysis?.();
@@ -457,6 +463,7 @@ export default function MapView({
       {analysisOpen && analysisPanel}
       {trainPanel}
       {perfPanel}
+      {libPanel}
       <ImageLibrary
         open={libraryOpen}
         onClose={() => setLibraryOpen(false)}

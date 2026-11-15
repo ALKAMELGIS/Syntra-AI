@@ -80,7 +80,7 @@ def test_import_links_the_file_and_never_changes_the_original(env):
     assert r.status_code == 200, r.text
     e = r.json()
     assert e["imported"] == "linked" and e["source_path"] == str(src.resolve())
-    lib = settings.UPLOAD_DIR / f"{e['image_id']}_scene-MUX.tiff"
+    lib = settings.UPLOAD_DIR / e['image_id'].replace('-', '')[:8] / "scene-MUX.tiff"
     assert lib.with_suffix(".xml").exists()                    # sensor sidecar came along
     # the background optimise has already run (TestClient runs background tasks):
     # it wrote overviews into the library file; run it again to be sure it is a no-op
@@ -96,7 +96,7 @@ def test_same_file_opened_twice_reuses_the_entry(env):
     c, folder, _ = env
     src = _tif(folder / "a.tif")
     first = c.post("/api/images/local", json={"path": str(src)}).json()
-    lib = env[2].UPLOAD_DIR / f"{first['image_id']}_a.tif"
+    lib = env[2].UPLOAD_DIR / first['image_id'].replace('-', '')[:8] / "a.tif"
     assert os.stat(lib).st_nlink == 2                          # small, nothing written: still one shared file
     again = c.post("/api/images/local", json={"path": str(src)}).json()
     assert again["image_id"] == first["image_id"] and again.get("reused") is True
@@ -141,7 +141,7 @@ def test_preview_is_cached_and_refreshed_when_the_file_changes(env, monkeypatch)
     second = c.get(url)                                        # a refresh: served from the disk cache
     assert second.content == first.content and len(calls) == 1
     assert c.get(url, headers={"If-None-Match": first.headers["etag"]}).status_code == 304
-    lib = settings.UPLOAD_DIR / f"{e['image_id']}_p.tif"
+    lib = settings.UPLOAD_DIR / e['image_id'].replace('-', '')[:8] / "p.tif"
     os.utime(lib, ns=(os.stat(lib).st_atime_ns, os.stat(lib).st_mtime_ns + 10**9))   # the file changed
     third = c.get(url)
     assert third.status_code == 200 and len(calls) == 2 and third.headers["etag"] != first.headers["etag"]

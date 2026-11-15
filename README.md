@@ -304,6 +304,33 @@ for when it is exposed to a network (all in `backend/.env.example`):
 - Upload filenames are sanitised and capped by `SYNTRA_MAX_UPLOAD_MB`.
 - Library Status install/repair/update (which runs `pip`) only works from
   the server itself unless `SYNTRA_ALLOW_ENV_ACTIONS=1`.
+- **Data folder by class (plan stage 4b).** `SYNTRA_DATA_DIR` is now
+  `images/<key>/<name>.tif` (one folder per image), `classes/<class>/labels/
+  <key>.geojson` (the owner's labels, GeoJSON with real coordinates; the
+  source of truth), `classes/_areas/<key>.geojson` (training and accuracy
+  areas), `datasets/<class>/vNNN/` (YOLO layout: `images/` and `labels/`
+  with train, val and test, plus `data.yaml` and `manifest.json`),
+  `models/<class>/vNNN/` and `models/<class>/approved.json`
+  (`app/core/layout.py`). An existing folder is moved once at start-up
+  (`app/core/migrate.py`): every move is listed in `migration.json`, old label
+  files are kept as `*.annotations.json.moved`. The split is now by area:
+  whole blocks of tiles go to val, train tiles touching them are dropped, and
+  accuracy areas are the test split with their own labels; a trained model is
+  scored on test (`test_metrics.json`). On an image too small for a one-tile
+  gap the gap is dropped and the manifest says so. Library (toolbar) shows
+  each class: samples against its target, areas, dataset versions with
+  train/val/test counts, models with their test or val score and
+  Approve / Roll back; Build vNNN tiles every image labelled with the class;
+  each version's Send menu trains here, backs up to Hugging Face (tiles packed
+  into tar shards of 2,000 files, plus the original GeoJSON labels) or trains
+  on a RunPod GPU (backing up first). Verified: `test_layout_offline.py` (4,
+  including the move of an old folder and a class built from two images with
+  the same file name), `test_spatial_split_offline.py` (3: no train tile
+  touches a val or test tile; accuracy areas become a labelled test split;
+  small-image fallback), shard staging and the pod unpacking shards; live on
+  this machine's data folder: the harbour image and its 14 labels moved, Build
+  v001 for boat gave 10 train / 1 val / 5 test tiles. Not run: Upload and
+  RunPod from the panel (no keys here), and a test score from a real training.
 - **Label tools and click-to-segment (plan stage 4).** Train > Label has
   six tools, one key each: Click (A, AI), Polygon (P), Rectangle (R: drag,
   Shift for a square, or three clicks for a rotated rectangle), Square (S,

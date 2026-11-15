@@ -177,7 +177,8 @@ def _watch(job_id, runpod, hf_token, store, factory, poll_s):
                 weights = run_dir / "run" / "weights"
                 weights.mkdir(parents=True, exist_ok=True)
                 for name, dest in (("best.pt", weights / "best.pt"), ("best.onnx", weights / "best.onnx"),
-                                   ("results.csv", run_dir / "run" / "results.csv")):
+                                   ("results.csv", run_dir / "run" / "results.csv"),
+                                   ("test_metrics.json", run_dir / "run" / "test_metrics.json")):
                     data = _read(api, repo, f"runs/{job_id}/{name}")
                     if data:
                         dest.write_bytes(data)

@@ -52,6 +52,8 @@ class ExportDatasetRequest(BaseModel):
     train_areas_px: list[list[list[float]]] | None = None   # tiles only from inside these (pixel rings)
     exclude_areas_px: list[list[list[float]]] | None = None # never trained on (accuracy areas)
     negative_areas_px: list[list[list[float]]] | None = None  # results rejected in review: written as background
+    test_areas_px: list[list[list[float]]] | None = None      # accuracy areas: the test split
+    test_annotations: list[AnnotationIn] | None = None        # their labels (objects inside them)
     augment: bool = True
     img_fmt: str = "jpg"
 
@@ -65,9 +67,18 @@ def _run_job(job_id: str, req: ExportDatasetRequest):
         from app.training.dataset_builder import DatasetBuilder
         from app.training.raster_window import RasterReader
 
+        from app.core import layout
+
         reader = RasterReader(req.image_path)
         anns = [{"cls": a.class_id, "pts": np.asarray(a.points_px, dtype=float)} for a in req.annotations]
-        out_dir = req.out_dir or str(settings.DATA_DIR / "datasets" / job_id)
+        test_anns = [{"cls": a.class_id, "pts": np.asarray(a.points_px, dtype=float)} for a in (req.test_annotations or [])]
+        if req.out_dir:
+            out_dir, group, version = req.out_dir, None, None
+        else:                                                  # datasets/<class>/vNNN (app.core.layout)
+            group = layout.group_slug(req.class_names)
+            version, path = layout.next_version(layout.datasets_dir() / group)
+            out_dir = str(path)
+            jobs.update(job_id, dataset_group=group, dataset_version=version, out_dir=out_dir)
 
         def progress(pct, message=None):
             fields = {"progress": round(pct, 1)}
@@ -87,15 +98,46 @@ def _run_job(job_id: str, req: ExportDatasetRequest):
         builder = DatasetBuilder(
             reader, anns, req.class_names, out_dir, tile_filter=tile_filter, area_bounds=area_bounds,
             negative_areas=req.negative_areas_px,
+            test_areas=req.test_areas_px, test_annotations=test_anns,
             tile=req.tile, overlap=req.overlap, val_split=req.val_split, neg_ratio=req.neg_ratio,
             task=req.task, augment=req.augment, img_fmt=req.img_fmt,
             progress=progress, canceled=canceled, log=log,
         )
         yaml_path, info = builder.run()
         reader.close()
+        if group:
+            write_manifest(Path(out_dir), group, version, req, info)
         jobs.update(job_id, status="completed", data_yaml=yaml_path, info=info)
     except Exception as exc:
         jobs.update(job_id, status="error", error=str(exc))
+
+
+def write_manifest(out: Path, group: str, version: str, req, info: dict) -> dict:
+    """manifest.json: what went into this dataset version, so it can be traced and rebuilt."""
+    import hashlib
+
+    from app.annotations import store
+    from app.core import layout
+
+    image = Path(req.image_path)
+    key = store.image_key_for(image)
+    label_files = sorted(layout.classes_dir().glob(f"*/labels/{key}.geojson")) + \
+        sorted(layout.classes_dir().glob(f"_areas/{key}.geojson"))
+    st = info.get("stats", {})
+    manifest = {
+        "dataset": group, "version": version, "created": info.get("created"),
+        "classes": info.get("classes"), "task": info.get("task"),
+        "tile": info.get("tile_size"), "overlap": info.get("overlap"),
+        "split": info.get("split"),
+        "counts": {s: {"images": st.get(f"{s}_images", 0), "objects": st.get(f"{s}_objects", 0)} for s in ("train", "val", "test")},
+        "class_counts": st.get("class_counts"), "buffer_dropped": st.get("buffer_dropped", 0),
+        "background_tiles": st.get("background_tiles", 0),
+        "sources": [{"image": key, "file": image.name, "bytes": image.stat().st_size if image.exists() else None}],
+        "labels": [{"file": str(f.relative_to(layout.classes_dir())),
+                    "sha256": hashlib.sha256(f.read_bytes()).hexdigest()} for f in label_files],
+    }
+    layout.write_json(out / "manifest.json", manifest)
+    return manifest
 
 
 def area_filter(train_areas, exclude_areas, tile: int, width: int, height: int):
@@ -151,6 +193,8 @@ def _resolve_from_image_id(req: ExportDatasetRequest) -> ExportDatasetRequest:
         "annotations": [AnnotationIn(**a) for a in annotations],
         "train_areas_px": [a["points_px"] for a in store.areas(anns, store.TRAIN_AREA)] or None,
         "exclude_areas_px": [a["points_px"] for a in store.areas(anns, store.CHECK_AREA)] or None,
+        "test_areas_px": [a["points_px"] for a in store.areas(anns, store.CHECK_AREA)] or None,
+        "test_annotations": [AnnotationIn(**a) for a in store.objects_for_test(anns, class_names)] or None,
         "negative_areas_px": [a["points_px"] for a in store.areas(anns, store.TRAIN_AREA)
                               if (a.get("source") or {}).get("decision") == "reject"] or None,
     })
@@ -227,8 +271,13 @@ def _run_train_job(job_id: str, req: TrainRequest):
     try:
         from app.training.trainer import build_job_config, run_training
 
-        out_dir = req.out_dir or str(settings.DATA_DIR / "training_runs" / job_id)
-        cancel_flag = str(settings.DATA_DIR / "training_runs" / job_id / "cancel.flag")
+        from app.core import layout
+
+        group, version, mdir = (None, None, None) if req.out_dir else layout.new_model_dir(req.data_yaml)
+        out_dir = req.out_dir or str(mdir or settings.DATA_DIR / "training_runs" / job_id)
+        cancel_flag = str(Path(out_dir) / "cancel.flag")
+        if group:
+            jobs.update(job_id, model_group=group, model_version=version, out_dir=out_dir)
         cfg = build_job_config(
             req.data_yaml, out_dir,
             num_train_images=_count_train_images(req.data_yaml),

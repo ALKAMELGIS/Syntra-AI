@@ -6,6 +6,7 @@ import MapView from "./components/MapView.jsx";
 import AnalysisPanel from "./components/AnalysisPanel.jsx";
 import TrainPanel from "./components/TrainPanel.jsx";
 import PerformancePanel from "./components/PerformancePanel.jsx";
+import LibraryPanel from "./components/LibraryPanel.jsx";
 import { IconMap, IconSliders } from "./components/Icons.jsx";
 import { api } from "./api/client.js";
 
@@ -37,10 +38,18 @@ export default function App({ user = null, onSignOut = null }) {
   const [trainOpen, setTrainOpenRaw] = useState(false);
   const [perfOpen, setPerfOpenRaw] = useState(false);
   const [perfModel, setPerfModel] = useState(null);
+  const [libOpen, setLibOpenRaw] = useState(false);
+  function setLibOpen(v) {
+    setLibOpenRaw((prev) => {
+      const next = typeof v === "function" ? v(prev) : v;
+      if (next) { setAnalysisOpenRaw(false); setTrainOpenRaw(false); setPerfOpenRaw(false); setDrawMode(null); setMobilePane("map"); }
+      return next;
+    });
+  }
   function setPerfOpen(v) {
     setPerfOpenRaw((prev) => {
       const next = typeof v === "function" ? v(prev) : v;
-      if (next) { setAnalysisOpenRaw(false); setTrainOpenRaw(false); setDrawMode(null); setMobilePane("map"); }
+      if (next) { setAnalysisOpenRaw(false); setTrainOpenRaw(false); setLibOpenRaw(false); setDrawMode(null); setMobilePane("map"); }
       return next;
     });
   }
@@ -56,14 +65,14 @@ export default function App({ user = null, onSignOut = null }) {
   function setAnalysisOpen(v) {
     setAnalysisOpenRaw((prev) => {
       const next = typeof v === "function" ? v(prev) : v;
-      if (next) { setTrainOpenRaw(false); setPerfOpenRaw(false); }
+      if (next) { setTrainOpenRaw(false); setPerfOpenRaw(false); setLibOpenRaw(false); }
       return next;
     });
   }
   function setTrainOpen(v) {
     setTrainOpenRaw((prev) => {
       const next = typeof v === "function" ? v(prev) : v;
-      if (next) { setAnalysisOpenRaw(false); setPerfOpenRaw(false); setMobilePane("map"); }
+      if (next) { setAnalysisOpenRaw(false); setPerfOpenRaw(false); setLibOpenRaw(false); setMobilePane("map"); }
       if (!next) setDrawMode(null);
       return next;
     });
@@ -388,6 +397,9 @@ export default function App({ user = null, onSignOut = null }) {
             }}
             perfOpen={perfOpen}
             onTogglePerf={() => setPerfOpen((v) => !v)}
+            libOpen={libOpen}
+            onToggleLib={() => setLibOpen((v) => !v)}
+            libPanel={<LibraryPanel open={libOpen} onClose={() => setLibOpen(false)} device={devices?.gpu_count > 0 ? "cuda:0" : "cpu"} />}
             perfPanel={<PerformancePanel open={perfOpen} onClose={() => setPerfOpen(false)} preferModelId={perfModel}
               image={image} models={models} checkAreas={annotations.filter((a) => a.class_name === "__check_area__").length}
               onChecked={refreshModels} />}

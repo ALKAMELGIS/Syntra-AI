@@ -114,7 +114,7 @@ async def import_local(body: LocalImport, request: Request, background_tasks: Ba
 
     filename = safe_filename(src.name)
     image_id = str(uuid.uuid4())
-    dest = settings.UPLOAD_DIR / f"{image_id}_{filename}"
+    dest = _library_path(image_id, filename)
 
     def _bring(a: Path, b: Path) -> str:
         try:
@@ -145,7 +145,7 @@ async def upload_image(file: UploadFile, background_tasks: BackgroundTasks, meta
         raise HTTPException(status_code=400, detail="Only GeoTIFF (.tif/.tiff) uploads are supported.")
 
     image_id = str(uuid.uuid4())
-    dest = settings.UPLOAD_DIR / f"{image_id}_{filename}"
+    dest = _library_path(image_id, filename)
     max_bytes = settings.MAX_UPLOAD_MB * 1024 * 1024
 
     # Both the disk copy and the rasterio metadata reads below are blocking
@@ -187,6 +187,15 @@ async def upload_image(file: UploadFile, background_tasks: BackgroundTasks, meta
         dest.with_suffix(".xml").write_bytes(xml_bytes)
 
     return await _register(dest, filename, image_id, background_tasks)
+
+
+def _library_path(image_id: str, filename: str) -> Path:
+    """images/<key>/<name>.tif: one folder per image (app.core.layout)."""
+    from app.core.layout import image_key
+
+    folder = settings.UPLOAD_DIR / image_key(image_id)
+    folder.mkdir(parents=True, exist_ok=True)
+    return folder / filename
 
 
 async def _register(dest: Path, filename: str, image_id: str, background_tasks: BackgroundTasks) -> dict:

@@ -77,6 +77,10 @@ export const api = {
   hfSave: (body) => request(`${BASE}/samples/hf`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).then(handle),
   pushSamples: (dataset_job_id) => request(`${BASE}/samples/push`, json({ dataset_job_id })).then(handle),
   pushStatus: (jobId) => request(`${BASE}/samples/push/${jobId}`).then(handle),
+  // --- sample library: classes, dataset versions, models (data/classes, datasets, models) ---
+  library: () => request(`${BASE}/library`).then(handle),
+  libraryBuild: (slug, body = {}) => request(`${BASE}/library/${encodeURIComponent(slug)}/build`, json(body)).then(handle),
+  libraryApprove: (group, version) => request(`${BASE}/library/${encodeURIComponent(group)}/approve`, json({ version })).then(handle),
   estimate: (body) => request(`${BASE}/predict/estimate`, json(body)).then(handle),
   browseLocal: (path) => request(`${BASE}/images/local/browse${path ? `?path=${encodeURIComponent(path)}` : ""}`).then(handle),
   importLocal: (path) => request(`${BASE}/images/local`, json({ path })).then(handle),

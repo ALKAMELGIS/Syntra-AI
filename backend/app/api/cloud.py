@@ -29,7 +29,7 @@ class KeyBody(BaseModel):
 
 
 class CloudTrain(BaseModel):
-    push_job_id: str                    # a finished "Save to Hugging Face" of the dataset
+    push_job_id: str | None = None      # a finished "Save to Hugging Face"; none: the version's pushed.json
     dataset_job_id: str                 # the export it came from (classes, task, local data.yaml)
     model_size: str = "nano"
     epochs: int | None = Field(default=None, ge=1, le=1000)
@@ -77,8 +77,13 @@ async def cloud_train(body: CloudTrain):
     if body.cloud not in CLOUDS or body.gpu not in cloud_train.GPUS:
         raise HTTPException(status_code=400, detail="Unknown GPU or cloud")
     store = get_store()
-    push = store.get(body.push_job_id) or {}
     export = store.get(body.dataset_job_id) or {}
+    push = store.get(body.push_job_id) or {} if body.push_job_id else {}
+    if not body.push_job_id and export.get("data_yaml"):
+        from app.core.layout import read_json
+        pushed = read_json(Path(export["data_yaml"]).parent / "pushed.json", None)
+        if pushed:
+            push = {"status": "completed", "result": pushed}
     if push.get("status") != "completed" or not (push.get("result") or {}).get("folder"):
         raise HTTPException(status_code=409, detail="Save the samples to Hugging Face first")
     data_yaml = export.get("data_yaml")
@@ -87,7 +92,12 @@ async def cloud_train(body: CloudTrain):
     n_train = sum(1 for _ in (Path(data_yaml).parent / "images" / "train").glob("*"))
     job_id = store.create(TRAIN_KIND, where="runpod", data_yaml=data_yaml, gpu=body.gpu, cloud=body.cloud,
                           max_hours=body.max_hours, dataset_job_id=body.dataset_job_id, push_job_id=body.push_job_id)
-    run_dir = settings.DATA_DIR / "training_runs" / job_id
+    from app.core import layout
+
+    group, version, mdir = layout.new_model_dir(data_yaml)
+    run_dir = mdir or settings.DATA_DIR / "training_runs" / job_id
+    if group:
+        store.update(job_id, model_group=group, model_version=version)
     cfg = build_job_config(data_yaml, str(run_dir), num_train_images=n_train, device="cuda:0",
                            model_size=body.model_size, free_vram_mb=24000,
                            overrides={"epochs": body.epochs, "workers": 8})

@@ -8,12 +8,13 @@ without any HTTP layer at all.
 """
 from __future__ import annotations
 
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import annotations, auth, cloud, samples, segment, benchmark, compute, datasets, environment, images, jobs, models, predict, results, training, usage
+from app.api import annotations, auth, cloud, samples, segment, library, benchmark, compute, datasets, environment, images, jobs, models, predict, results, training, usage
 from app.core.config import settings
 from app.core.jobs import get_store
 from app.core.auth import require_access
@@ -22,6 +23,11 @@ from app.core.auth import require_access
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     settings.ensure_dirs()
+    try:                                     # once: uploads/ -> images/<key>/, label files -> classes/
+        from app.core.migrate import migrate_layout
+        migrate_layout()
+    except Exception:  # noqa: BLE001 - never block start-up on this; files stay where they were
+        logging.getLogger(__name__).exception("Data folder migration failed")
     # Jobs a previous process left running can't still be running: their
     # worker threads died with it. Say so instead of showing them as live.
     get_store().mark_interrupted()
@@ -62,6 +68,7 @@ app.include_router(jobs.router, dependencies=_protected)
 app.include_router(samples.router, dependencies=_protected)
 app.include_router(cloud.router, dependencies=_protected)
 app.include_router(segment.router, dependencies=_protected)
+app.include_router(library.router, dependencies=_protected)
 
 
 @app.exception_handler(Exception)
