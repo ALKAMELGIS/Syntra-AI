@@ -23,7 +23,8 @@ function Slider({ label, value, min, max, step, onChange, fmt }) {
   return (
     <label className="lp-slider">
       <span>{label}</span>
-      <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(Number(e.target.value))} />
+      <input type="range" className="gauge" min={min} max={max} step={step} value={value}
+             style={{ "--fill": `${((value - min) / (max - min)) * 100}%` }} onChange={(e) => onChange(Number(e.target.value))} />
       <span className="mono lp-val">{fmt ? fmt(value) : value}</span>
     </label>
   );

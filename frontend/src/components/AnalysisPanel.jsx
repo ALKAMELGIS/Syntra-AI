@@ -98,7 +98,8 @@ export default function AnalysisPanel({ entries, colorFor, onClose, minScore = 0
       {hasScores && onMinScore && (
         <label className="analysis-score">
           <span>Min score</span>
-          <input type="range" min="0" max="0.95" step="0.05" value={minScore}
+          <input type="range" className="gauge" min="0" max="0.95" step="0.05" value={minScore}
+                 style={{ "--fill": `${(minScore / 0.95) * 100}%` }}
                  onChange={(e) => onMinScore(parseFloat(e.target.value))} aria-label="Minimum detection score" />
           <span className="mono">{minScore.toFixed(2)}</span>
         </label>
