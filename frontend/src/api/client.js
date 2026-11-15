@@ -177,7 +177,18 @@ export const api = {
   resultDownloadUrl: (jobId, modelId, format) =>
     withKey(format === "geojson" ? `${BASE}/results/${jobId}/${modelId}` : `${BASE}/results/${jobId}/${modelId}/${format}`),
   imagePreviewUrl: (imageId) => withKey(`${BASE}/images/${imageId}/preview.png`),
-  imageTileUrl: (imageId) => withKey(`${BASE}/images/${imageId}/tiles/{z}/{x}/{y}.png`),
+  // display = {bands: [r, g, b] | null, stretch: "2-98" | null}: the map's own choice, never the detector's
+  imageTileUrl: (imageId, display = null) => {
+    const q = [];
+    if (display?.bands?.length) q.push(`bands=${display.bands.join(",")}`);
+    if (display?.stretch) q.push(`stretch=${display.stretch}`);
+    return withKey(`${BASE}/images/${imageId}/tiles/{z}/{x}/{y}.png${q.length ? `?${q.join("&")}` : ""}`);
+  },
+  vectorRead: (file) => {
+    const form = new FormData();
+    form.append("file", file);
+    return request(`${BASE}/vector/read`, { method: "POST", body: form }).then(handle);
+  },
   // --- Model Setup wizard: Dataset export + Train steps ---
   exportDataset: (payload) =>
     request(`${BASE}/training/export-dataset`, {

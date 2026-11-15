@@ -1,6 +1,6 @@
 import React, { useMemo, useRef, useState } from "react";
 import { IconClose, IconDownload, IconZoomTo } from "./Icons.jsx";
-import { downloadGeojson, fieldsOf, fmtValue, inView } from "./layerUtils.js";
+import { downloadGeojson, fieldType, fieldsOf, fmtValue, inView } from "./layerUtils.js";
 
 // The attribute table of a results layer, docked under the map. One tab per
 // layer; click a header to sort, a row to select it (Ctrl / Shift add to the
@@ -21,6 +21,8 @@ export default function AttributeTable({ open, layers, activeKey, onActive, sele
   const sel = (layer && selection[layer.key]) || new Set();
 
   const fields = useMemo(() => (layer ? fieldsOf(layer.shown) : []), [layer]);
+  // numbers line up on the right, text on the left
+  const textCols = useMemo(() => new Set(fields.filter((k) => fieldType(layer?.shown || [], k) !== "number")), [fields, layer]);
   const rows = useMemo(() => {
     if (!layer) return [];
     const q = query.trim().toLowerCase();
@@ -99,7 +101,7 @@ export default function AttributeTable({ open, layers, activeKey, onActive, sele
             <tr>
               <th className={`left ${sort.key === "__oid" ? "sorted" : ""}`} onClick={() => setSort((s) => ({ key: "__oid", dir: s.key === "__oid" ? -s.dir : 1 }))}>OID</th>
               {fields.map((k) => (
-                <th key={k} className={`${k === "class" ? "left" : ""} ${sort.key === k ? "sorted" : ""}`}
+                <th key={k} className={`${textCols.has(k) ? "left" : ""} ${sort.key === k ? "sorted" : ""}`}
                     aria-sort={sort.key === k ? (sort.dir > 0 ? "ascending" : "descending") : "none"}
                     onClick={() => setSort((s) => ({ key: k, dir: s.key === k ? -s.dir : (k === "class" ? 1 : -1) }))}>
                   {k}{sort.key === k ? (sort.dir > 0 ? " ↑" : " ↓") : ""}
@@ -114,7 +116,7 @@ export default function AttributeTable({ open, layers, activeKey, onActive, sele
               return (
                 <tr key={f.id} className={sel.has(f.id) ? "sel" : ""} onClick={(e) => pick(e, f, i)} onDoubleClick={() => onZoom([f])}>
                   <td className="left mono">{f.id}</td>
-                  {fields.map((k) => <td key={k} className={k === "class" ? "left" : "mono"}>{fmtValue(k, f.properties?.[k])}</td>)}
+                  {fields.map((k) => <td key={k} className={textCols.has(k) ? "left" : "mono"}>{fmtValue(k, f.properties?.[k])}</td>)}
                 </tr>
               );
             })}

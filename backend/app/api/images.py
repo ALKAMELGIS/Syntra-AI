@@ -389,18 +389,28 @@ def _empty_png() -> bytes:
 
 
 @router.get("/{image_id}/tiles/{z}/{x}/{y}.png")
-def get_image_tile(image_id: str, z: int, x: int, y: int):
-    """Full-resolution XYZ tile (Web Mercator, 256 px) cut from the GeoTIFF."""
+def get_image_tile(image_id: str, z: int, x: int, y: int, bands: str | None = None, stretch: str | None = None):
+    """Full-resolution XYZ tile (Web Mercator, 256 px) cut from the GeoTIFF.
+
+    Optional display choice for the map only: `bands=4,3,2` and
+    `stretch=0.5-99.5` (percentiles). Detection never reads these."""
     if not (0 <= z <= 26 and 0 <= x < 2 ** z and 0 <= y < 2 ** z):
         raise HTTPException(status_code=400, detail="Tile out of range.")
+    try:
+        from app.engine.tiles import parse_display
+        disp_bands, disp_stretch = parse_display(bands, stretch)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
     entry = find_entry_by_image_id(settings.UPLOAD_DIR, image_id)
     if entry is None:
         raise HTTPException(status_code=404, detail=f"No library image with id '{image_id}'.")
     try:
         from app.engine.tiles import render_tile
-        png = render_tile(entry["path"], z, x, y)
+        png = render_tile(entry["path"], z, x, y, disp_bands, disp_stretch)
     except ImportError:
         raise HTTPException(status_code=503, detail="rasterio not installed.")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
     headers = {"Cache-Control": "private, max-age=3600"}
     return Response(content=png or _empty_png(), media_type="image/png", headers=headers)
 

@@ -1948,3 +1948,28 @@ path.focus-outline { stroke: #f4f5f7; }
   .gal-card { width: 180px; }
   .gal-thumb { height: 104px; }
 }
+
+/* Layers: add a layer, visible range, bands and stretch */
+.lp-add-btn {
+  display: flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: var(--radius-control);
+  border: 1px solid var(--border-strong); background: transparent; color: var(--text); font-size: 12px; cursor: pointer;
+}
+.lp-add-btn svg { width: 14px; height: 14px; }
+.lp-add-btn.on { background: var(--hover-bg); }
+.lp-add { display: flex; flex-direction: column; gap: 8px; margin: 4px 8px 8px; padding: 8px 12px 12px; border-radius: var(--radius-control); background: var(--hover-bg); }
+.lp-add-file {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 8px 10px; border-radius: var(--radius-control);
+  border: 1px dashed var(--border-strong); background: transparent; color: var(--text); font-size: 13px; cursor: pointer; text-align: left;
+}
+.lp-add-file .mono { font-size: 11px; color: var(--text-muted); }
+.lp-add-file:disabled { color: var(--text-muted); cursor: progress; }
+.lp-add-form { display: flex; flex-direction: column; gap: 6px; }
+.lp-add-form input { height: 30px; padding: 0 8px; border-radius: 6px; border: 1px solid var(--border-strong); background: var(--bg); color: var(--text); font-size: 12px; }
+.lp-add-go { height: 30px; border-radius: 6px; border: none; background: var(--primary-bg); color: var(--primary-fg); font-size: 12px; font-weight: 500; cursor: pointer; }
+.lp-error { margin: 0; font-size: 12px; color: var(--error); }
+.lp-range, .lp-bands { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12px; color: var(--text-dim); }
+.lp-range select, .lp-bands select {
+  height: 28px; padding: 0 6px; border-radius: 6px; border: 1px solid var(--border-strong); background: var(--bg); color: var(--text); font-size: 12px;
+}
+.lp-bands > span:first-child { width: 84px; flex: none; }
+.lp-range .lp-muted { margin-left: auto; }

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
-  IconArrowDown, IconArrowUp, IconClose, IconDownload, IconEye, IconEyeOff, IconInfo, IconMore,
+  IconPlus, IconArrowDown, IconArrowUp, IconClose, IconDownload, IconEye, IconEyeOff, IconInfo, IconMore,
   IconTable, IconTrash, IconZoomTo, IconEdit, IconChevronLeft, IconChevronDown,
 } from "./Icons.jsx";
 import { LAYER_COLOURS, downloadGeojson, featuresBounds, fieldType, fieldsOf, unitOf } from "./layerUtils.js";
@@ -36,7 +36,7 @@ function Swatch({ layer }) {
   return <span className={`lp-swatch ${layer.isArea ? "fill" : ""}`} style={style} aria-hidden="true" />;
 }
 
-function VectorOptions({ layer, onPatch, onZoom, onTable, onInfo, onMove, onRemove, first, last }) {
+function VectorOptions({ layer, onPatch, onZoom, onTable, onInfo, onMove, onRemove, first, last, zoom }) {
   const [renaming, setRenaming] = useState(false);
   const [name, setName] = useState(layer.name);
   const hasScore = layer.features.some((f) => typeof f.properties?.score === "number");
@@ -56,6 +56,17 @@ function VectorOptions({ layer, onPatch, onZoom, onTable, onInfo, onMove, onRemo
       </div>
       <Slider label="Transparency" value={Math.round((1 - layer.opacity) * 100)} min={0} max={90} step={5}
               onChange={(v) => onPatch({ opacity: 1 - v / 100 })} fmt={(v) => `${v} %`} />
+      <div className="lp-range">
+        <span>Visible from</span>
+        <select value={layer.minZoom ?? ""} onChange={(e) => onPatch({ minZoom: e.target.value === "" ? null : Number(e.target.value) })} aria-label="Visible from zoom">
+          <option value="">any</option>{ZOOMS.map((z) => <option key={z} value={z}>z {z}</option>)}
+        </select>
+        <span>to</span>
+        <select value={layer.maxZoom ?? ""} onChange={(e) => onPatch({ maxZoom: e.target.value === "" ? null : Number(e.target.value) })} aria-label="Visible to zoom">
+          <option value="">any</option>{ZOOMS.map((z) => <option key={z} value={z}>z {z}</option>)}
+        </select>
+        {zoom != null && <span className="mono lp-muted" title="The map's zoom now">now {zoom}</span>}
+      </div>
       <Toggle label="Labels" on={layer.labels} onChange={(v) => onPatch({ labels: v })} />
       <Toggle label="Pop-ups" on={layer.popups} onChange={(v) => onPatch({ popups: v })} />
       {hasScore && (<>
@@ -97,12 +108,13 @@ function LayerInfo({ layer, onBack, onClose }) {
         <dl className="lp-dl">
           {layer.modelId && (<><dt>Model</dt><dd className="mono">{layer.modelId}{layer.modelVersion ? ` · ${layer.modelVersion}` : ""}</dd></>)}
           {layer.ranAt && (<><dt>Run</dt><dd className="mono">{layer.ranAt}</dd></>)}
-          {layer.imageName && (<><dt>Image</dt><dd className="mono" title={layer.imageName}>{layer.imageName}</dd></>)}
+          {layer.imageName && (<><dt>{layer.modelId ? "Image" : "File"}</dt><dd className="mono" title={layer.imageName}>{layer.imageName}</dd></>)}
           <dt>Objects</dt><dd className="mono">{layer.features.length}</dd>
           <dt>Geometry</dt><dd className="mono">{geomTypes}</dd>
-          <dt>CRS</dt><dd className="mono">EPSG:4326 · WGS84</dd>
+          <dt>CRS</dt><dd className="mono">EPSG:4326 · WGS84{layer.sourceCrs && !/4326/.test(layer.sourceCrs) ? ` (from ${layer.sourceCrs})` : ""}</dd>
           {b && (<><dt>Extent</dt><dd className="mono">{b[0][1].toFixed(4)} – {b[1][1].toFixed(4)} E<br />{b[0][0].toFixed(4)} – {b[1][0].toFixed(4)} N</dd></>)}
         </dl>
+        {layer.note && <p className="lp-note" style={{ padding: "0 16px 8px" }}>{layer.note}</p>}
         <div className="lp-group-label">Fields</div>
         <ul className="lp-fields">
           {fields.map((k) => (
@@ -115,12 +127,68 @@ function LayerInfo({ layer, onBack, onClose }) {
   );
 }
 
+const ZOOMS = Array.from({ length: 22 }, (_, i) => i + 1);
+const STRETCHES = [["", "Auto (2–98 %)"], ["0.5-99.5", "0.5–99.5 %"], ["5-95", "5–95 %"], ["0-100", "Min – max"]];
+
+// Add > From a file (read by the server, reprojected to WGS84) or a map service (XYZ / WMS).
+function AddLayer({ onFile, onService, onDone }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const [kind, setKind] = useState("xyz");
+  const [name, setName] = useState("");
+  const [url, setUrl] = useState("");
+  const [wmsLayers, setWmsLayers] = useState("");
+  const fileRef = useRef(null);
+  async function file(e) {
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (!f) return;
+    setBusy(true); setError(null);
+    try { await onFile(f); onDone(); } catch (err) { setError(err.message); } finally { setBusy(false); }
+  }
+  function service(e) {
+    e.preventDefault();
+    const u = url.trim();
+    if (!/^https?:\/\//i.test(u)) { setError("The address must start with https:// or http://"); return; }
+    if (kind === "xyz" && !/\{z\}.*\{x\}.*\{y\}|\{z\}.*\{y\}.*\{x\}/.test(u)) { setError("An XYZ address needs {z}, {x} and {y}"); return; }
+    if (kind === "wms" && !wmsLayers.trim()) { setError("Name at least one WMS layer"); return; }
+    onService({ kind, url: u, name: name.trim() || (kind === "wms" ? wmsLayers.trim() : new URL(u.replace(/[{}]/g, "")).hostname), layers: wmsLayers.trim() });
+    onDone();
+  }
+  return (
+    <div className="lp-add">
+      <div className="lp-sec">From a file</div>
+      <input ref={fileRef} type="file" accept=".zip,.gpkg,.kml,.geojson,.json,.fgb" hidden onChange={file} />
+      <button type="button" className="lp-add-file" disabled={busy} onClick={() => fileRef.current?.click()}>
+        {busy ? "Reading…" : "Choose a file"}<span className="mono">SHP (.zip) · GPKG · KML · GeoJSON</span>
+      </button>
+      <div className="lp-sec">From a map service</div>
+      <form onSubmit={service} className="lp-add-form">
+        <div className="lp-seg" role="radiogroup" aria-label="Service type">
+          {[["xyz", "XYZ tiles"], ["wms", "WMS"]].map(([k, l]) => (
+            <button key={k} type="button" role="radio" aria-checked={kind === k} className={kind === k ? "on" : ""} onClick={() => setKind(k)}>{l}</button>
+          ))}
+        </div>
+        <input value={url} onChange={(e) => setUrl(e.target.value)} aria-label="Service address"
+               placeholder={kind === "xyz" ? "https://…/{z}/{x}/{y}.png" : "https://…/wms"} />
+        {kind === "wms" && <input value={wmsLayers} onChange={(e) => setWmsLayers(e.target.value)} placeholder="Layer names, comma separated" aria-label="WMS layers" />}
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name (optional)" aria-label="Layer name" maxLength={60} />
+        <button type="submit" className="lp-add-go">Add service</button>
+      </form>
+      <p className="lp-note">Use services you are licensed to use; they are shown for viewing only</p>
+      {error && <p className="lp-error">{error}</p>}
+    </div>
+  );
+}
+
 const BASEMAP_CHOICES = [["satellite", "Satellite"], ["streets", "Streets"], ["none", "None"]];
 
 export default function LayersPanel({
   open, onClose, layers, onPatch, onMove, onRemove, onZoom, onTable, allVisible, onToggleAll,
   aoi, aoiVisible, onAoiVisible, aoiLabel, image, imageLayer, onImageLayer, onZoomImage, basemap, onBasemap,
+  zoom, onAddFile, onAddService, services = [], onServicePatch, onServiceRemove,
 }) {
+  const [adding, setAdding] = useState(false);
   const [menu, setMenu] = useState(null);           // key whose options are open
   const [info, setInfo] = useState(null);           // key whose Information is shown
   const [rasterOpen, setRasterOpen] = useState(false);
@@ -135,7 +203,10 @@ export default function LayersPanel({
 
   if (!open) return null;
   const infoLayer = info && layers.find((l) => l.key === info);
-  const total = layers.length + (aoi ? 1 : 0) + (image?.image_id ? 1 : 0);
+  const total = layers.length + services.length + (aoi ? 1 : 0) + (image?.image_id ? 1 : 0);
+  const nBands = image?.bands || 0;
+  const display = imageLayer.displayFor === image?.image_id ? imageLayer : {};
+  const setDisplay = (p) => onImageLayer({ ...imageLayer, bands: display.bands || null, stretch: display.stretch || null, ...p, displayFor: image.image_id });
   const gsd = image?.health?.gsd_m || image?.gsd_x_m;
   const res = gsd ? (gsd < 1 ? `${Math.round(gsd * 100)} cm` : `${+gsd.toFixed(2)} m`) : null;
 
@@ -144,9 +215,12 @@ export default function LayersPanel({
       {infoLayer ? <LayerInfo layer={infoLayer} onBack={() => setInfo(null)} onClose={onClose} /> : (<>
         <header className="lp-head">
           <span className="lp-title">Layers</span><span className="lp-sub mono">{total || ""}</span>
+          <button type="button" className={`lp-add-btn ${adding ? "on" : ""}`} aria-expanded={adding} onClick={() => setAdding((a) => !a)}>
+            <IconPlus />Add</button>
           <button type="button" className="lp-icon" onClick={onClose} aria-label="Close layers"><IconClose /></button>
         </header>
         <div className="lp-body">
+          {adding && <AddLayer onFile={onAddFile} onService={onAddService} onDone={() => setAdding(false)} />}
           {layers.length > 0 && (
             <div className="lp-group">
               <div className="lp-group-label">
@@ -173,7 +247,38 @@ export default function LayersPanel({
                     <VectorOptions layer={l} first={i === 0} last={i === layers.length - 1}
                                    onPatch={(p) => onPatch(l.key, p)} onZoom={() => onZoom(l.shown)} onTable={() => onTable(l.key)}
                                    onInfo={() => { setInfo(l.key); setMenu(null); }} onMove={(d) => onMove(l.key, d)}
-                                   onRemove={() => { setMenu(null); onRemove(l.key); }} />
+                                   onRemove={() => { setMenu(null); onRemove(l.key); }} zoom={zoom} />
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {services.length > 0 && (
+            <div className="lp-group">
+              <div className="lp-group-label">Map services</div>
+              {services.map((sv) => (
+                <div key={sv.key} className={`lp-item ${menu === sv.key ? "open" : ""}`}>
+                  <div className="lp-row">
+                    <button type="button" className="lp-eye" onClick={() => onServicePatch(sv.key, { visible: !sv.visible })}
+                            aria-pressed={sv.visible} aria-label={sv.visible ? `Hide ${sv.name}` : `Show ${sv.name}`}>
+                      {sv.visible ? <IconEye /> : <IconEyeOff />}
+                    </button>
+                    <span className="lp-swatch raster" aria-hidden="true" />
+                    <span className={`lp-name ${sv.visible ? "" : "dim"}`} title={sv.url}>{sv.name}</span>
+                    <span className="mono lp-val">{sv.kind.toUpperCase()}</span>
+                    <button type="button" className="lp-icon" aria-expanded={menu === sv.key} aria-label={`Options for ${sv.name}`}
+                            onClick={() => setMenu((m) => (m === sv.key ? null : sv.key))}><IconMore /></button>
+                  </div>
+                  {menu === sv.key && (
+                    <div className="lp-options">
+                      <Slider label="Opacity" value={Math.round(sv.opacity * 100)} min={0} max={100} step={5}
+                              onChange={(v) => onServicePatch(sv.key, { opacity: v / 100 })} fmt={(v) => `${v} %`} />
+                      <p className="lp-note mono" style={{ overflowWrap: "anywhere" }}>{sv.url}</p>
+                      <div className="lp-actions">
+                        <button type="button" className="danger" onClick={() => { setMenu(null); onServiceRemove(sv.key); }}><IconTrash />Remove</button>
+                      </div>
+                    </div>
                   )}
                 </div>
               ))}
@@ -219,11 +324,32 @@ export default function LayersPanel({
                             onChange={(v) => onImageLayer({ ...imageLayer, contrast: v })} />
                     <Slider label="Brightness" value={imageLayer.brightness ?? 0} min={-50} max={100} step={5}
                             onChange={(v) => onImageLayer({ ...imageLayer, brightness: v })} />
-                    <p className="lp-note">Display only: detection always reads the original pixels</p>
+                    {nBands > 1 && (
+                      <div className="lp-bands">
+                        <span>Bands</span>
+                        <select value={display.bands ? "custom" : ""} aria-label="Band choice"
+                                onChange={(e) => setDisplay({ bands: e.target.value ? (display.bands || [Math.min(3, nBands), Math.min(2, nBands), 1]) : null })}>
+                          <option value="">Auto</option><option value="custom">Choose R G B</option>
+                        </select>
+                        {display.bands && ["R", "G", "B"].map((c, i) => (
+                          <select key={c} value={display.bands[i]} aria-label={`${c} band`}
+                                  onChange={(e) => { const b = [...display.bands]; b[i] = Number(e.target.value); setDisplay({ bands: b }); }}>
+                            {Array.from({ length: nBands }, (_, k) => <option key={k} value={k + 1}>{c} {k + 1}</option>)}
+                          </select>
+                        ))}
+                      </div>
+                    )}
+                    <div className="lp-bands">
+                      <span>Stretch</span>
+                      <select value={display.stretch || ""} onChange={(e) => setDisplay({ stretch: e.target.value || null })} aria-label="Stretch">
+                        {STRETCHES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                      </select>
+                    </div>
+                    <p className="lp-note">Display only: detection always reads the original pixels with its own bands and stretch</p>
                     <div className="lp-actions">
                       <button type="button" onClick={onZoomImage}><IconZoomTo />Zoom to</button>
-                      <button type="button" disabled={!imageLayer.contrast && !imageLayer.brightness}
-                              onClick={() => onImageLayer({ ...imageLayer, contrast: 0, brightness: 0 })}>Reset display</button>
+                      <button type="button" disabled={!imageLayer.contrast && !imageLayer.brightness && !display.bands && !display.stretch}
+                              onClick={() => onImageLayer({ ...imageLayer, contrast: 0, brightness: 0, bands: null, stretch: null })}>Reset display</button>
                     </div>
                   </div>
                 )}

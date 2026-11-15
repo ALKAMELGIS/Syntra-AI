@@ -202,8 +202,13 @@ def read_rgb(ds, plan: "RgbPlan", window=None, out_shape: tuple[int, int] | None
     return rgb, valid
 
 
-def plan_rgb(path: str | Path, override: list[int] | None = None, sample_dim: int = 2048) -> RgbPlan:
-    """Choose bands and a global stretch for a raster (one decimated read)."""
+def plan_rgb(path: str | Path, override: list[int] | None = None, sample_dim: int = 2048,
+             stretch: tuple[float, float] | None = None) -> RgbPlan:
+    """Choose bands and a global stretch for a raster (one decimated read).
+
+    `stretch` (low, high percentiles) is for the map's display only; detection
+    always uses the default 2-98 %.
+    """
     import rasterio
     from rasterio.enums import Resampling
 
@@ -233,8 +238,9 @@ def plan_rgb(path: str | Path, override: list[int] | None = None, sample_dim: in
         sample = ds.read(indexes=uniq, out_shape=shape, resampling=Resampling.nearest, masked=True)
 
     ordered = np.ma.stack([sample[uniq.index(b)] for b in bands])
-    if dtype == "uint8" and source != "override":
+    if dtype == "uint8" and source != "override" and stretch is None:
         lo, hi = [0.0, 0.0, 0.0], [255.0, 255.0, 255.0]   # already display-ready: leave as is
     else:
-        lo, hi = compute_stretch(ordered, nodata, valid=valid_pixels(ordered, nodata))
+        a, b = stretch or (2.0, 98.0)
+        lo, hi = compute_stretch(ordered, nodata, a, b, valid=valid_pixels(ordered, nodata))
     return RgbPlan(bands=bands, source=source, lo=lo, hi=hi, nodata=nodata, dtype=dtype)

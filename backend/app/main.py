@@ -14,7 +14,7 @@ from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import annotations, auth, cloud, samples, segment, library, benchmark, compute, datasets, environment, images, jobs, models, predict, results, training, usage
+from app.api import annotations, auth, cloud, samples, segment, library, benchmark, compute, datasets, environment, images, jobs, models, predict, results, training, usage, vector
 from app.core.config import settings
 from app.core.jobs import get_store
 from app.core.auth import require_access
@@ -55,6 +55,7 @@ app.include_router(auth.router)
 
 app.include_router(models.router, dependencies=_protected)
 app.include_router(images.router, dependencies=_protected)
+app.include_router(vector.router, dependencies=_protected)
 app.include_router(predict.router, dependencies=_protected)
 app.include_router(results.router, dependencies=_protected)
 app.include_router(compute.router, dependencies=_protected)

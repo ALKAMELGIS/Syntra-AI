@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
 import { api } from "../api/client";
-import { MapContainer, TileLayer, GeoJSON, ImageOverlay, Rectangle, Tooltip, Popup, useMap, useMapEvents } from "react-leaflet";
+import { MapContainer, TileLayer, WMSTileLayer, GeoJSON, ImageOverlay, Rectangle, Tooltip, Popup, useMap, useMapEvents } from "react-leaflet";
 import MapDrawTools from "./MapDrawTools.jsx";
 import AnnotationLayer from "./AnnotationTool.jsx";
 import ImageLibrary from "./ImageLibrary.jsx";
@@ -142,7 +142,7 @@ function MapToolbar({
 const PREVIEW_MAX_PX = 2048;
 const EARTH = 2 * Math.PI * 6378137;
 
-function SourceImage({ image, bounds, opacity = 1 }) {
+function SourceImage({ image, bounds, opacity = 1, display = null }) {
   const map = useMap();
   const [zoom, setZoom] = useState(map.getZoom());
   useMapEvents({ zoomend: () => setZoom(map.getZoom()) });
@@ -157,12 +157,14 @@ function SourceImage({ image, bounds, opacity = 1 }) {
   const nativeZoom = gsd ? Math.ceil(Math.log2((EARTH * cosLat) / 256 / gsd)) : null;
   // While the background optimise job runs, the file has no overviews yet and a
   // zoomed-in tile can take seconds: stay on the preview until it finishes.
-  const useTiles = tileZoom != null && zoom >= tileZoom && !image.optimize_job_id;
+  // A band or stretch choice is drawn by the tile server, so it uses tiles at every zoom.
+  const custom = Boolean(display?.bands?.length || display?.stretch);
+  const useTiles = !image.optimize_job_id && (custom || (tileZoom != null && zoom >= tileZoom));
   const ll = [[bounds.south, bounds.west], [bounds.north, bounds.east]];
   return useTiles ? (
     <TileLayer
-      key={`tiles-${image.image_id}`}
-      url={api.imageTileUrl(image.image_id)}
+      key={`tiles-${image.image_id}-${display?.bands?.join(",") || ""}-${display?.stretch || ""}`}
+      url={api.imageTileUrl(image.image_id, display)}
       bounds={ll}
       zIndex={10}
       maxZoom={MAX_ZOOM}
@@ -280,6 +282,8 @@ function L_boundsFromGeojson(geojson) {
   return [[minLat, minLng], [maxLat, maxLng]];
 }
 
+const ADDED_COLOURS = ["#2dd4bf", "#f472b6", "#c084fc", "#f06a6a", "#e8ebf0"];
+
 // One results layer on the map: its own colour, transparency and score
 // filter; optional labels; a click opens the object's pop-up and selects it
 // in the attribute table (unless a drawing or label tool owns the clicks).
@@ -325,7 +329,7 @@ function SelectionLayer({ features }) {
 // Keeps the visible map extent, for "Map extent only" and "in view".
 function ViewTracker({ onView }) {
   const map = useMap();
-  const push = () => { const b = map.getBounds(); onView({ south: b.getSouth(), west: b.getWest(), north: b.getNorth(), east: b.getEast() }); };
+  const push = () => { const b = map.getBounds(); onView({ south: b.getSouth(), west: b.getWest(), north: b.getNorth(), east: b.getEast(), zoom: map.getZoom() }); };
   useMapEvents({ moveend: push });
   useEffect(push, []); // eslint-disable-line react-hooks/exhaustive-deps
   return null;
@@ -383,20 +387,23 @@ export default function MapView({
   const [view, setView] = useState(null);
   const [popup, setPopup] = useState(null);              // {key, id, latlng}
   const [tableH, setTableH] = useState(260);
+  const [added, setAdded] = useState([]);                // files the user added: {key, name, color, geojson, value, version}
+  const [services, setServices] = useState([]);          // XYZ / WMS: {key, kind, url, layers, name, visible, opacity}
 
+  const allLayers = useMemo(() => [...layers, ...added], [layers, added]);
   useEffect(() => {
-    const keys = layers.map((l) => l.key);
+    const keys = allLayers.map((l) => l.key);
     setOrder((o) => [...keys.filter((k) => !o.includes(k)), ...o.filter((k) => keys.includes(k))]);
-  }, [layers]);
+  }, [allLayers]);
 
   const featuresByKey = useMemo(() => {
     const out = {};
-    for (const l of layers) out[l.key] = (l.geojson?.features || []).map((f, i) => ({ ...f, id: i + 1 }));
+    for (const l of allLayers) out[l.key] = (l.geojson?.features || []).map((f, i) => ({ ...f, id: i + 1 }));
     return out;
-  }, [layers]);
+  }, [allLayers]);
 
   const vlayers = useMemo(() => order
-    .map((k) => layers.find((l) => l.key === k))
+    .map((k) => allLayers.find((l) => l.key === k))
     .filter((l) => l && l.geojson && removed[l.key] !== l.geojson)
     .map((l) => {
       const st = layerState[l.key] || {};
@@ -406,10 +413,11 @@ export default function MapView({
       return {
         ...l, baseName: l.name, name: st.name || l.name, color: st.color || l.color,
         visible: st.visible ?? true, opacity: st.opacity ?? 1, minScore, labels: st.labels ?? false, popups: st.popups ?? true,
+        minZoom: st.minZoom ?? null, maxZoom: st.maxZoom ?? null,
         isArea: l.key.endsWith("vegetation_index"), features, shown, count: shown.length,
         value: /ha$/.test(l.value || "") ? l.value : String(shown.length),
       };
-    }), [order, layers, layerState, removed, featuresByKey]);
+    }), [order, allLayers, layerState, removed, featuresByKey]);
 
   const patchLayer = (key, p) => setLayerState((s) => ({ ...s, [key]: { ...(s[key] || {}), ...p } }));
   const moveLayer = (key, d) => setOrder((o) => {
@@ -420,7 +428,8 @@ export default function MapView({
     return [...next, ...o.filter((k) => !vis.includes(k))];
   });
   const removeLayer = (key) => {
-    const l = layers.find((x) => x.key === key);
+    if (key.startsWith("added:")) setAdded((a) => a.filter((x) => x.key !== key));
+    const l = allLayers.find((x) => x.key === key);
     if (l) setRemoved((r) => ({ ...r, [key]: l.geojson }));
     setSelection((s) => ({ ...s, [key]: new Set() }));
     if (popup?.key === key) setPopup(null);
@@ -429,6 +438,21 @@ export default function MapView({
     const b = featuresBounds(features);
     if (map && b) map.flyToBounds(b, { padding: [48, 48], maxZoom: 19, duration: 0.4 });
   };
+  const zoomNow = view?.zoom ?? null;
+  const inRange = (l) => zoomNow == null || ((l.minZoom == null || zoomNow >= l.minZoom) && (l.maxZoom == null || zoomNow <= l.maxZoom));
+  async function addFile(file) {
+    const r = await api.vectorRead(file);
+    const n = added.length;
+    const key = `added:${Date.now()}`;
+    const features = r.geojson?.features || [];
+    setAdded((a) => [...a, { key, name: r.name, color: ADDED_COLOURS[n % ADDED_COLOURS.length], geojson: r.geojson,
+                             value: String(r.count), version: 0, modelId: null, imageName: file.name,
+                             ranAt: null, sourceCrs: r.source_crs, note: r.note }]);
+    zoomTo(features);
+  }
+  const addService = (sv) => setServices((s) => [...s, { ...sv, key: `svc:${Date.now()}`, visible: true, opacity: 1 }]);
+  const patchService = (key, p) => setServices((s) => s.map((x) => (x.key === key ? { ...x, ...p } : x)));
+  const removeService = (key) => setServices((s) => s.filter((x) => x.key !== key));
   const openTable = (key) => { setTableKey(key); setTableOpen(true); };
   const onPick = (key, id, latlng) => {
     const l = vlayers.find((x) => x.key === key);
@@ -478,12 +502,16 @@ export default function MapView({
             tileerror: () => setTiles((t) => ({ ...t, failed: t.failed + 1 })),
           }}
         />}
-        {overlayBounds && sourceImage?.image_id && imageLayer.visible && <SourceImage image={sourceImage} bounds={overlayBounds} opacity={imageLayer.opacity} />}
+        {overlayBounds && sourceImage?.image_id && imageLayer.visible && <SourceImage image={sourceImage} bounds={overlayBounds} opacity={imageLayer.opacity}
+                       display={imageLayer.displayFor === sourceImage.image_id ? { bands: imageLayer.bands || null, stretch: imageLayer.stretch || null } : null} />}
         <ImageFootprint image={sourceImage} />
         <FocusFeature feature={focusFeature} />
         <AutoFitSourceImage sourceImage={sourceImage} />
         {detectionsVisible &&
-          [...vlayers].reverse().map((l) => (l.visible ? <VectorLayer key={l.key} layer={l} onPick={onPick} /> : null))}
+          [...vlayers].reverse().map((l) => (l.visible && inRange(l) ? <VectorLayer key={l.key} layer={l} onPick={onPick} /> : null))}
+        {services.filter((sv) => sv.visible).map((sv, i) => (sv.kind === "wms"
+          ? <WMSTileLayer key={sv.key} url={sv.url} params={{ layers: sv.layers, format: "image/png", transparent: true }} opacity={sv.opacity} zIndex={20 + i} maxZoom={MAX_ZOOM} />
+          : <TileLayer key={sv.key} url={sv.url} opacity={sv.opacity} zIndex={20 + i} maxZoom={MAX_ZOOM} />))}
         <SelectionLayer features={selectedFeatures} />
         <ViewTracker onView={setView} />
         {popFeature && (
@@ -592,6 +620,8 @@ export default function MapView({
         image={sourceImage} imageLayer={imageLayer} onImageLayer={setImageLayer}
         onZoomImage={() => { const b = sourceImage?.bounds_wgs84; if (map && b) map.flyToBounds([[b.south, b.west], [b.north, b.east]], { padding: [40, 40], duration: 0.4 }); }}
         basemap={basemap} onBasemap={setBasemap}
+        zoom={zoomNow} onAddFile={addFile} onAddService={addService}
+        services={services} onServicePatch={patchService} onServiceRemove={removeService}
       />
       <AttributeTable
         open={tableOpen && vlayers.length > 0} layers={vlayers} activeKey={tableKey} onActive={setTableKey}

@@ -33,16 +33,36 @@ def tile_bounds_3857(z: int, x: int, y: int) -> tuple[float, float, float, float
 
 
 @lru_cache(maxsize=32)
-def _plan(path: str, mtime: float):
+def _plan(path: str, mtime: float, bands: tuple[int, ...] | None = None, stretch: tuple[float, float] | None = None):
     from app.engine.raster_prep import plan_rgb
 
-    return plan_rgb(path)
+    if bands is None and stretch is None:
+        return plan_rgb(path)                     # the detector's own choice
+    return plan_rgb(path, override=list(bands) if bands else None, stretch=stretch)
+
+
+def parse_display(bands: str | None, stretch: str | None) -> tuple[tuple[int, ...] | None, tuple[float, float] | None]:
+    """The map's display choice from query text: bands "3,2,1" (1-based, one
+    or three) and stretch "2-98" (low-high percentiles). Raises ValueError."""
+    b = None
+    if bands:
+        parts = [int(v) for v in bands.split(",")]
+        if len(parts) not in (1, 3) or not all(1 <= v <= 64 for v in parts):
+            raise ValueError("bands must be one or three band numbers from 1")
+        b = tuple(parts * 3 if len(parts) == 1 else parts)
+    st = None
+    if stretch:
+        lo, hi = (float(v) for v in stretch.split("-", 1))
+        if not (0 <= lo < hi <= 100):
+            raise ValueError("stretch must be low-high percentiles, 0 <= low < high <= 100")
+        st = (lo, hi)
+    return b, st
 
 
 _PLAN_LOCK = threading.Lock()
 
 
-def plan_for(path: str):
+def plan_for(path: str, bands: tuple[int, ...] | None = None, stretch: tuple[float, float] | None = None):
     """The scene-wide stretch, computed once per file version.
 
     A map view asks for ~30 tiles at once; lru_cache alone lets every one of them
@@ -52,10 +72,11 @@ def plan_for(path: str):
     """
     mtime = os.path.getmtime(path)
     with _PLAN_LOCK:
-        return _plan(path, mtime)
+        return _plan(path, mtime, bands, stretch)
 
 
-def render_tile(path: str, z: int, x: int, y: int) -> bytes | None:
+def render_tile(path: str, z: int, x: int, y: int, bands: tuple[int, ...] | None = None,
+                stretch: tuple[float, float] | None = None) -> bytes | None:
     """PNG bytes, or None when the tile does not touch the image."""
     import rasterio
     from PIL import Image
@@ -64,11 +85,13 @@ def render_tile(path: str, z: int, x: int, y: int) -> bytes | None:
     from app.engine.raster_io import _preview_vrt
     from app.engine.raster_prep import read_rgb
 
-    plan = plan_for(path)
+    plan = plan_for(path, bands, stretch)
     left, bottom, right, top = tile_bounds_3857(z, x, y)
     with rasterio.open(path) as ds:
         if ds.crs is None:
             return None
+        if bands and max(bands) > ds.count:
+            raise ValueError(f"this image has {ds.count} band(s)")
         with _preview_vrt(ds) as vrt:
             vb = vrt.bounds
             il, ib, ir, it = max(left, vb.left), max(bottom, vb.bottom), min(right, vb.right), min(top, vb.top)

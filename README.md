@@ -498,10 +498,22 @@ for when it is exposed to a network (all in `backend/.env.example`):
   selects it; the attribute table docks under the map with a tab per layer,
   sort, search, map extent only, selected only, Ctrl / Shift selection
   outlined on the map, zoom to selection, export, and sum / mean of the
-  sorted column. Not yet: band choice and stretch (need server-side
-  rendering), visible range, adding outside layers (files, WMS / XYZ).
-  Verified live with sample result layers (panel, options, labels, table,
-  pop-up, information) and `vite build`.
+  sorted column. Verified live with sample result layers (panel, options,
+  labels, table, pop-up, information) and `vite build`.
+- **More layer controls.** Visible range per layer (from / to zoom). Image
+  bands (Auto, or any R G B) and stretch (2–98 %, 0.5–99.5 %, 5–95 %,
+  min–max) drawn by the tile server (`tiles/{z}/{x}/{y}.png?bands=4,3,2&stretch=0.5-99.5`)
+  for the map only: detection keeps its own bands and 2–98 % stretch; a
+  choice belongs to the image it was made for. Add > From a file: a
+  Shapefile (.zip), GeoPackage, KML, GeoJSON or FlatGeobuf is read by the
+  server (`POST /api/vector/read`, geopandas), reprojected to WGS84 and shown
+  as a layer with the same options and attribute table; nothing is kept on
+  the server. Add > Map service: XYZ tiles or WMS, for viewing. Verified:
+  `test_vector_and_display_offline.py` (13: wrong type, zip pointing outside
+  itself, empty zip, nothing left behind, UTM GeoJSON to WGS84, display
+  parameters), a real 4-band GeoTIFF rendered with bands 4,4,4 and min–max,
+  and live in the browser: a UTM Shapefile zip placed correctly with its
+  attribute table, an XYZ service row, the range and band controls.
 - **Image gallery.** The Images dock shows each image's own preview with a
   short name read from the file name (sensor and product, e.g. SuperView
   Neo-3 PAN), the capture date when the name carries one, resolution and

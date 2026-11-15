@@ -160,3 +160,6 @@ export const IconDownload = (p) => (
 export const IconFilter = (p) => (
   <svg {...base} {...p}><path d="M4 5h16l-6 7v6l-4 2v-8L4 5Z" /></svg>
 );
+export const IconPlus = (p) => (
+  <svg {...base} {...p}><path d="M12 5v14M5 12h14" /></svg>
+);
