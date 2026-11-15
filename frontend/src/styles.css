@@ -1536,3 +1536,14 @@ path.image-footprint.empty { stroke: var(--error); stroke-opacity: 1; }
 .analysis-review { margin-left: auto; font-size: 11px; }
 path.focus-halo { stroke: rgba(0, 0, 0, 0.55); }
 path.focus-outline { stroke: #f4f5f7; }
+
+/* --- Training samples on Hugging Face (Settings, Train) --- */
+.hf-settings { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
+.hf-status { display: flex; align-items: center; gap: 8px; margin: 0; height: 32px; font-size: 13px; }
+.hf-status .link-button { margin-left: auto; font-size: 12px; }
+.hf-row { display: flex; gap: 8px; }
+.hf-input { flex: 1 1 auto; min-width: 0; height: 32px; padding: 0 8px; border-radius: var(--radius-control);
+  background: var(--bg); color: var(--text); border: 1px solid var(--border-strong); font-size: 12px; }
+.hf-input:focus { outline: none; border-color: var(--accent); }
+.save-samples { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.save-samples a { color: var(--text); overflow-wrap: anywhere; font-size: 12px; }

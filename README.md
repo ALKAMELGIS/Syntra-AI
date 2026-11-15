@@ -304,6 +304,20 @@ for when it is exposed to a network (all in `backend/.env.example`):
 - Upload filenames are sanitised and capped by `SYNTRA_MAX_UPLOAD_MB`.
 - Library Status install/repair/update (which runs `pip`) only works from
   the server itself unless `SYNTRA_ALLOW_ENV_ACTIONS=1`.
+- **Samples saved to Hugging Face (plan stage 2).** Settings > Training
+  samples: paste a Write token once; the engine checks it, keeps it in
+  `SYNTRA_DATA_DIR/secrets.json` and never sends it back. After Train >
+  Build dataset, Save to Hugging Face uploads the YOLO export as one folder
+  per push (`<date>_<image>_<task>/`, one git commit each) in a private
+  dataset repo (default `<user>/syntra-samples`), with
+  `syntra_source.json` (image, CRS, bounds, GSD, classes, counts). A new
+  repo is created private; a push into a public repo is refused. Folders at
+  the Hub's 10,000-file limit are refused before upload. Errors say whether
+  the token or the network is at fault. Verified by
+  `test_samples_hf_offline.py` (6 tests, Hugging Face replaced by a
+  recorder). Not run against huggingface.co: this build machine's proxy
+  blocks it, which the live check showed as "a proxy or firewall blocks
+  huggingface.co".
 - **Review results, then train on the review (plan stage 2).** Analysis >
   Review on a finished run lists its objects least sure first. Accept (A) or
   reject (R) each one; the map flies to it, outlined, clear of the panel; the

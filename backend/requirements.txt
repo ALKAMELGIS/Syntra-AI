@@ -34,4 +34,5 @@ onnxruntime==1.20.1            # optional faster inference path
 
 # Utilities
 pyyaml==6.0.2
+huggingface_hub>=0.26        # save training samples to a private Hugging Face dataset repo
 python-dotenv==1.0.1

@@ -75,13 +75,28 @@ Write-Host "Python: $py"
 # Windows PowerShell 5.1 turns a redirected stderr line into a terminating error
 # under "Stop", so this probe runs with "Continue".
 $ErrorActionPreference = "Continue"
-& $py -c "import fastapi, uvicorn, multipart, rasterio, cv2, onnxruntime, yaml" 2>$null
+& $py -c "import fastapi, uvicorn, multipart, rasterio, cv2, onnxruntime, yaml, huggingface_hub" 2>$null
 $missing = $LASTEXITCODE -ne 0
 $ErrorActionPreference = "Stop"
 if ($missing) {
     Write-Host "Installing Python packages..."
-    & $py -m pip install fastapi "uvicorn[standard]" python-multipart numpy opencv-python-headless pillow onnxruntime pyyaml python-dotenv
+    & $py -m pip install fastapi "uvicorn[standard]" python-multipart numpy opencv-python-headless pillow onnxruntime pyyaml python-dotenv huggingface_hub
     if ($LASTEXITCODE -ne 0) { throw "pip install failed; see the messages above." }
+}
+
+# An NVIDIA card is only used when onnxruntime has CUDA support: say so once,
+# with the command, instead of running on the processor without a word.
+if (Get-Command nvidia-smi -ErrorAction SilentlyContinue) {
+    $ErrorActionPreference = "Continue"
+    $gpuOk = & $py -c "import onnxruntime as o; print(int('CUDAExecutionProvider' in o.get_available_providers()))" 2>$null
+    $ErrorActionPreference = "Stop"
+    if ("$gpuOk".Trim() -ne "1") {
+        $card = (& nvidia-smi --query-gpu=name --format=csv,noheader 2>$null | Select-Object -First 1)
+        Write-Host ""
+        Write-Host "NVIDIA card found ($card) but Syntra runs on the processor. To use the card, run once:" -ForegroundColor Yellow
+        Write-Host "  & `"$py`" -m pip uninstall -y onnxruntime; & `"$py`" -m pip install `"onnxruntime-gpu[cuda,cudnn]`"" -ForegroundColor Yellow
+        Write-Host ""
+    }
 }
 
 $ApiPort = Get-FreePort $ApiPort

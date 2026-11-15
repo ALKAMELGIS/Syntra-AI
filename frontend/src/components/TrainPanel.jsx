@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { SaveSamples } from "./SamplesStore.jsx";
 import { api } from "../api/client.js";
 import { classColor, isArea, TRAIN_AREA, CHECK_AREA } from "./AnnotationTool.jsx";
 import { IconClose, IconRectangle, IconPolygon, IconTrash, IconUpload } from "./Icons.jsx";
@@ -254,8 +255,11 @@ export default function TrainPanel({
               {ds && !["completed", "error"].includes(ds.status) ? `Building… ${ds.progress ?? 0}%` : dsDone ? "Build again" : "Build dataset"}
             </button>
             {dsDone && (
-              <p className="train-ok"><span className="mono">{ds.info?.stats?.train_images ?? "–"}</span> training tiles ·{" "}
-                <span className="mono">{ds.info?.stats?.val_images ?? "–"}</span> for checking</p>
+              <>
+                <p className="train-ok"><span className="mono">{ds.info?.stats?.train_images ?? "–"}</span> training tiles ·{" "}
+                  <span className="mono">{ds.info?.stats?.val_images ?? "–"}</span> for checking</p>
+                <SaveSamples datasetJobId={ds.job_id} />
+              </>
             )}
             {ds?.status === "error" && <p className="train-error">{ds.error}</p>}
           </>

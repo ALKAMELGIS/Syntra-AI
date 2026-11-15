@@ -167,7 +167,8 @@ def export_dataset(req: ExportDatasetRequest, background_tasks: BackgroundTasks)
     if req.overlap >= req.tile:
         raise HTTPException(status_code=400, detail="overlap must be smaller than tile.")
 
-    job_id = get_store().create(EXPORT_KIND, progress=0.0, image_id=req.image_id)
+    job_id = get_store().create(EXPORT_KIND, progress=0.0, image_id=req.image_id, task=req.task,
+                                class_names=req.class_names, image_name=Path(req.image_path).name)
     background_tasks.add_task(_run_job, job_id, req)
     return {"job_id": job_id, "status": "queued"}
 

@@ -55,6 +55,12 @@ real, what is written but unrun, and how it was verified.
   MapView) and fetch everything heavy back from the server. Anything
   expensive to render (previews) is cached on disk keyed by file size and
   mtime, with an ETag.
+- Credentials (Hugging Face, later RunPod) go through `app/core/secrets.py`:
+  stored in the data folder, never returned by any endpoint, never in
+  `.env` or the repo. Anything uploaded from licensed imagery goes to a
+  private destination; refuse a public one unless the user explicitly asks.
+- A network error message says whose fault it is (bad token vs blocked
+  network): the fixes are different.
 - Single-letter map shortcuts (MapDrawTools) are global; a panel with its
   own keys puts `data-own-keys` on its root so they are not taken by the map
   (the review list's A / R once opened the Train panel instead).
