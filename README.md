@@ -321,9 +321,13 @@ for when it is exposed to a network (all in `backend/.env.example`):
   each class: samples against its target, areas, dataset versions with
   train/val/test counts, models with their test or val score and
   Approve / Roll back; Build vNNN tiles every image labelled with the class;
-  each version's Send menu trains here, backs up to Hugging Face (tiles packed
-  into tar shards of 2,000 files, plus the original GeoJSON labels) or trains
-  on a RunPod GPU (backing up first). Verified: `test_layout_offline.py` (4,
+  each version shows three steps, saved here -> backed up -> trained, and the
+  next step is its only button: Upload to Hugging Face (tiles packed into tar
+  shards of 2,000 files, plus the original GeoJSON labels), then Train here or
+  on a RunPod GPU; a click on the version opens its split, notes and folders.
+  Only the owner (the first, admin account) can build, back up, train and
+  approve; other accounts see the library read-only (`is_owner`,
+  `test_only_the_owner_builds_and_approves`). Verified: `test_layout_offline.py` (4,
   including the move of an old folder and a class built from two images with
   the same file name), `test_spatial_split_offline.py` (3: no train tile
   touches a val or test tile; accuracy areas become a labelled test split;

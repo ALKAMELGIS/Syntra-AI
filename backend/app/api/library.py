@@ -16,7 +16,7 @@ import math
 import shutil
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from app.core import layout
@@ -110,8 +110,9 @@ def library() -> dict:
 
 
 @router.get("")
-def get_library():
-    return library()
+def get_library(request: Request):
+    from app.core.auth import is_owner
+    return {**library(), "owner": is_owner(request)}
 
 
 class BuildRequest(BaseModel):
@@ -257,7 +258,12 @@ def _label_hashes(key: str) -> list[dict]:
     return [{"file": str(f.relative_to(root)).replace("\\", "/"), "sha256": hashlib.sha256(f.read_bytes()).hexdigest()} for f in files]
 
 
-@router.post("/{slug}/build")
+def _owner(request: Request):
+    from app.core.auth import require_owner
+    require_owner(request)
+
+
+@router.post("/{slug}/build", dependencies=[Depends(_owner)])
 def build(slug: str, req: BuildRequest, background_tasks: BackgroundTasks):
     if slug != layout.class_slug(slug) or not (layout.classes_dir() / slug).is_dir():
         raise HTTPException(status_code=404, detail="No such class in the library")
@@ -276,7 +282,7 @@ class ApproveRequest(BaseModel):
     version: str | None
 
 
-@router.post("/{group}/approve")
+@router.post("/{group}/approve", dependencies=[Depends(_owner)])
 def approve(group: str, body: ApproveRequest):
     if not all(part == layout.class_slug(part) for part in group.split("+")):
         raise HTTPException(status_code=404, detail="No such model group")

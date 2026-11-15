@@ -224,6 +224,24 @@ def current_user(request: Request) -> User | None:
     return get_auth_store().user_for(request.cookies.get(COOKIE))
 
 
+def is_owner(request: Request) -> bool:
+    """The installation's owner: the first (admin) account, an API-key caller,
+    or anyone when sign-in is turned off (one person on one machine)."""
+    if _key_ok(request):
+        return True
+    if not auth_enabled():
+        return True
+    user = current_user(request)
+    if user is None and _key_ok(request) is None and get_auth_store().count() == 0 and is_loopback(request):
+        return True     # first run on this machine, before the owner's account exists
+    return bool(user and user.is_admin)
+
+
+def require_owner(request: Request) -> None:
+    if not is_owner(request):
+        raise HTTPException(status_code=403, detail="Only the owner can do this")
+
+
 def require_access(request: Request) -> None:
     key = _key_ok(request)
     if key:

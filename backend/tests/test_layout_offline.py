@@ -147,3 +147,22 @@ def test_library_builds_a_class_from_every_image_and_approves_only_trained_versi
     palm = next(x for x in c.get("/api/library").json()["classes"] if x["slug"] == "palm")
     assert palm["models"][0]["approved"] is True
     assert c.post("/api/library/..%2Fx/approve", json={"version": None}).status_code == 404
+
+
+def test_only_the_owner_builds_and_approves(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+
+    monkeypatch.delenv("SYNTRA_AUTH", raising=False)
+    monkeypatch.delenv("SYNTRA_API_KEY", raising=False)
+    monkeypatch.delenv("SYNTRA_ALLOW_SIGNUP", raising=False)
+    c = TestClient(app)
+    r = c.post("/api/auth/signup", json={"name": "Owner", "email": "o@example.com", "password": "owner-pass-1"})
+    assert r.status_code == 200, r.text
+    assert c.get("/api/library").json()["owner"] is True
+    c.post("/api/auth/signout")
+    assert c.post("/api/auth/signup", json={"name": "User", "email": "u@example.com", "password": "user-pass-12"}).status_code == 200
+    assert c.get("/api/library").json()["owner"] is False
+    assert c.post("/api/library/ship/build", json={}).status_code == 403
+    assert c.post("/api/library/ship/approve", json={"version": None}).status_code == 403

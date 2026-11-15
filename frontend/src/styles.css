@@ -1660,3 +1660,43 @@ path.focus-outline { stroke: #f4f5f7; }
   .lib-classes { flex-direction: row; overflow-x: auto; border-right: none; border-bottom: 1px solid var(--panel-border); }
   .send-menu { width: min(360px, 80vw); }
 }
+
+/* Library: each dataset version as saved -> backed up -> trained */
+.vers { display: flex; flex-direction: column; gap: 12px; }
+.ver { display: flex; flex-direction: column; gap: 6px; }
+.ver-head {
+  display: flex; align-items: baseline; gap: 10px; padding: 0; background: transparent; border: none;
+  color: var(--text); font-size: 13px; cursor: pointer; text-align: left;
+}
+.ver-head:hover .ver-v { color: var(--accent); }
+.ver-v { font-size: 13px; transition: color 0.12s var(--ease); }
+.pipe { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
+.step {
+  display: flex; flex-direction: column; gap: 2px; min-height: 64px; padding: 8px 10px;
+  border: 1px solid var(--panel-border); border-radius: var(--radius-control); font-size: 12px; min-width: 0;
+}
+.step b { display: flex; align-items: center; gap: 6px; font-weight: 500; font-size: 12.5px; }
+.step b::before { content: ""; width: 8px; height: 8px; border-radius: 50%; flex: none; box-sizing: border-box; border: 1.5px solid var(--text-muted); }
+.step .mono { font-size: 11px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.step.done b::before { background: var(--ready); border-color: var(--ready); }
+.step.next { border-color: var(--accent); }
+.step.next b::before { border-color: var(--accent); }
+.step.busy b::before { border-color: var(--accent); border-right-color: transparent; animation: job-spin 0.9s linear infinite; }
+.step.wait { color: var(--text-muted); }
+.step-btns { display: flex; gap: 4px; margin-top: 4px; }
+.step-btn {
+  align-self: flex-start; height: 24px; padding: 0 8px; margin-top: 4px; font-size: 11.5px; border-radius: 6px; cursor: pointer;
+  background: transparent; color: var(--text); border: 1px solid var(--border-strong);
+  transition: background-color 0.12s var(--ease);
+}
+.step-btns .step-btn { margin-top: 0; }
+.step-btn:hover:not(:disabled) { background: var(--hover-bg); }
+.step-btn:disabled { opacity: 0.45; cursor: default; }
+.ver-detail {
+  display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; font-size: 12px;
+  border: 1px solid var(--panel-border); border-radius: var(--radius-control);
+}
+.ver-detail > div { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 8px; }
+.ver-detail > div > span:first-child { color: var(--text-dim); }
+.ver-detail a { color: var(--accent); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (prefers-reduced-motion: reduce) { .step.busy b::before { animation: none; } }
