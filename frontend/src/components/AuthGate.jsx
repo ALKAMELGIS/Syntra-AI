@@ -1,10 +1,12 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { auth, SIGNED_OUT } from "../api/client.js";
 import { IconEye, IconEyeOff } from "./Icons.jsx";
+import EarthGlobe from "./EarthGlobe.jsx";
 
 // Sign in / Create account, shown in place of the app until a session exists.
-// One card on the survey-grid ground; the engine's status sits under it as a
-// mono readout. The first account on a fresh install becomes the admin and can
+// The real Earth turns on the left (EarthGlobe); the form sits on the right
+// with the engine's status under it as a mono readout. Signing in leads with
+// what Syntra does; creating an account keeps its own plain title. The first account on a fresh install becomes the admin and can
 // only be made on the computer running Syntra (the server enforces both).
 
 function Field({ id, label, error, children, hint }) {
@@ -68,9 +70,12 @@ function AuthCard({ status, onSignedIn }) {
         <span className="brand-name">Syntra AI</span>
       </div>
 
-      <h1 className="auth-title">
-        {firstRun ? "Create the admin account" : signup ? "Create account" : "Sign in"}
-      </h1>
+      {firstRun || signup ? (
+        <h1 className="auth-title">{firstRun ? "Create the admin account" : "Create account"}</h1>
+      ) : (<>
+        <h1 className="auth-headline">Every object on the ground, as a layer you can use</h1>
+        <p className="auth-lede">Satellite and drone GeoTIFFs in, GeoJSON, KML and Shapefile out</p>
+      </>)}
       {firstRun && <p className="auth-lede">The first account manages this installation</p>}
 
       {blockedFirstRun ? (
@@ -168,7 +173,8 @@ export default function AuthGate({ children }) {
     return children({ user: status.user, onSignOut: status.enabled ? signOut : null });
   }
   return (
-    <main className="auth-screen">
+    <main className="auth-screen auth-split">
+      <EarthGlobe />
       <div className="auth-stack">
         {status.offline
           ? <div className="auth-card"><div className="auth-brand"><span className="brand-mark" aria-hidden="true" /><span className="brand-name">Syntra AI</span></div>

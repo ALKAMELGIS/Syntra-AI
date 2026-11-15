@@ -486,6 +486,15 @@ for when it is exposed to a network (all in `backend/.env.example`):
   hash in `syntra.db`. Five wrong passwords lock an email or address for ten
   minutes. `SYNTRA_AUTH=off` restores open access. Verified by
   `test_auth_offline.py` (9 tests) and a live browser run at four screen sizes.
+- **Sign-in globe.** The sign-in page shows a real Earth turning on the left
+  (`components/EarthGlobe.jsx`): NASA Blue Marble on an orthographic sphere,
+  lit from the upper left with NASA city lights on the night side, a satellite
+  on its orbit, and the imaged place nearest the viewer named with its real
+  coordinates. Textures are public domain, taken from the MIT `three-globe`
+  package (`src/assets/earth/SOURCE.md`), and ship with the app, so it works
+  offline. Still when the system asks for reduced motion; on a phone the globe
+  sits above the form. Verified live: first-run and sign-in pages at
+  1280 x 760 and 390 x 844, no page errors.
 - `SYNTRA_API_KEY` turns on a shared key for every `/api/*` route except
   `/api/health`; set `VITE_API_KEY` in `frontend/.env` to match. This is a
   shared key for scripts and QGIS; people sign in with accounts (above).
