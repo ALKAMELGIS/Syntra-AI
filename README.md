@@ -335,6 +335,17 @@ for when it is exposed to a network (all in `backend/.env.example`):
   this machine's data folder: the harbour image and its 14 labels moved, Build
   v001 for boat gave 10 train / 1 val / 5 test tiles. Not run: Upload and
   RunPod from the panel (no keys here), and a test score from a real training.
+- **Approved model in detection.** Approving a version in the Library adds
+  one detection model per class, `class_<class>` (e.g. "Boat", version
+  "v001 approved"), to Detection models; Roll back removes it, and approving
+  a newer version keeps the same id, so a saved selection runs what is
+  approved now. It is "Unvalidated" until that version has a test score
+  from your accuracy areas, then Ready with its F1 in the notes. Each run
+  records the version it used, and a run already started keeps its version
+  if another is approved meanwhile (`app/models/approved.py`). Verified:
+  `test_approved_model_offline.py` (4), and live: an approved stand-in
+  version shows as "Boat" in the list. Not run: detection with real trained
+  class weights (none trained yet).
 - **Label tools and click-to-segment (plan stage 4).** Train > Label has
   six tools, one key each: Click (A, AI), Polygon (P), Rectangle (R: drag,
   Shift for a square, or three clicks for a rotated rectangle), Square (S,

@@ -215,6 +215,10 @@ direction in a comment. Work inside them:
   records every move and keeps the old label files.
 - Tests never write to `backend/data`: `tests/conftest.py` gives each test its
   own data folder.
+- The approved version of a class reaches detection only through
+  `app/models/approved.py` as `class_<class>`; never copy weights into the
+  catalog by hand. Its status is Ready only when that version has a test F1,
+  and each predict job stores `model_version` so a result names what made it.
 
 ## 5. Shipping a change
 

@@ -399,7 +399,7 @@ export default function App({ user = null, onSignOut = null }) {
             onTogglePerf={() => setPerfOpen((v) => !v)}
             libOpen={libOpen}
             onToggleLib={() => setLibOpen((v) => !v)}
-            libPanel={<LibraryPanel open={libOpen} onClose={() => setLibOpen(false)} device={devices?.gpu_count > 0 ? "cuda:0" : "cpu"} />}
+            libPanel={<LibraryPanel open={libOpen} onClose={() => setLibOpen(false)} device={devices?.gpu_count > 0 ? "cuda:0" : "cpu"} onModelsChanged={refreshModels} />}
             perfPanel={<PerformancePanel open={perfOpen} onClose={() => setPerfOpen(false)} preferModelId={perfModel}
               image={image} models={models} checkAreas={annotations.filter((a) => a.class_name === "__check_area__").length}
               onChecked={refreshModels} />}

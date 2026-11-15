@@ -424,6 +424,34 @@ def _custom_catalog() -> dict[str, ModelMetadata]:
     return out
 
 
+def _approved_catalog() -> dict[str, ModelMetadata]:
+    """The owner's approved model per class (app.models.approved), re-read on
+    every call so Approve / Roll back in the Library shows at once."""
+    from app.models.approved import list_approved
+
+    out: dict[str, ModelMetadata] = {}
+    for m in list_approved():
+        f1 = (m.test or {}).get("f1")
+        title = " + ".join(n.replace("_", " ").capitalize() for n in m.class_names.values())
+        out[m.model_id] = ModelMetadata(
+            model_id=m.model_id,
+            name=title,
+            model_type="segmentation" if m.task == "segment" else "detection",
+            version=f"{m.version} approved",
+            supported_gsd=GsdRange(0.02, 5.0),
+            supported_image_sources=["satellite", "drone"],
+            supported_formats=["GeoTIFF", "COG"],
+            status=ModelStatus.READY if f1 is not None else ModelStatus.VALIDATION,
+            hardware_compatibility=["cpu", "cuda"],
+            default_confidence_threshold=0.25,
+            class_names=m.class_names,
+            notes=(f"Approved in the Library: {m.version}, trained on dataset {m.dataset_version or '?'}. "
+                   + (f"F1 {f1:.2f} on your accuracy areas (test)." if f1 is not None
+                      else "No test score yet: draw an accuracy area and train again to measure it.")),
+        )
+    return out
+
+
 def _with_pack(meta: ModelMetadata) -> ModelMetadata:
     """Categories backed by an installable pack (app.models.packs) report
     whether the weights are on disk instead of a fixed status."""
@@ -443,7 +471,8 @@ def _with_pack(meta: ModelMetadata) -> ModelMetadata:
 
 
 def list_catalog() -> list[ModelMetadata]:
-    return [_with_pack(m) for m in CATALOG.values()] + list(_custom_catalog().values())
+    return ([_with_pack(m) for m in CATALOG.values()] + list(_approved_catalog().values())
+            + list(_custom_catalog().values()))
 
 
 def get_metadata(model_id: str) -> ModelMetadata:
@@ -452,4 +481,7 @@ def get_metadata(model_id: str) -> ModelMetadata:
     custom = _custom_catalog()
     if model_id in custom:
         return custom[model_id]
+    approved = _approved_catalog()
+    if model_id in approved:
+        return approved[model_id]
     raise KeyError(f"Unknown model_id '{model_id}'. Known: {list(CATALOG) + list(custom)}")

@@ -10,7 +10,7 @@ from app.models.base import DetectionModel, ModelStatus
 from app.models.registry import get_metadata
 
 
-def build_model(model_id: str) -> DetectionModel:
+def build_model(model_id: str, version: str | None = None) -> DetectionModel:
     from app.core.config import settings
     from app.models.custom_registry import get_custom_model
 
@@ -18,6 +18,16 @@ def build_model(model_id: str) -> DetectionModel:
     if custom_entry is not None:
         from app.models.custom_detector import CustomYoloDetector
         return CustomYoloDetector(get_metadata(model_id), weights_path=custom_entry.weights_path)
+
+    from app.models.approved import get_approved
+
+    approved = get_approved(model_id)
+    if approved is not None:                      # the Library's approved version of a class
+        from app.models.approved import weights_of
+        from app.models.custom_detector import CustomYoloDetector
+        # a run keeps the version it was started with, even if the owner approves another meanwhile
+        weights = weights_of(approved.group, version) if version and version != approved.version else approved.weights
+        return CustomYoloDetector(get_metadata(model_id), weights_path=weights or approved.weights)
 
     metadata = get_metadata(model_id)
 

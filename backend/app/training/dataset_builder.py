@@ -81,7 +81,11 @@ def read_data_yaml_names(path: str) -> list[str]:
             m = re.match(r"^\s+(\d+):\s*(.+?)\s*$", line)
             if not m:
                 break
-            names[int(m.group(1))] = json.loads(m.group(2))
+            raw = m.group(2)
+            try:                                  # quoted by write_data_yaml; plain if edited by hand
+                names[int(m.group(1))] = json.loads(raw)
+            except ValueError:
+                names[int(m.group(1))] = raw.strip("'\"")
     return [names[i] for i in sorted(names)]
 
 

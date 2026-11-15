@@ -63,7 +63,8 @@ def _run_job(job_id: str, req: PredictRequest):
         from app.engine.raster_prep import plan_rgb
         from app.models.factory import build_model
 
-        model = build_model(req.model_id)
+        pinned = ((get_store().get(job_id) or {}).get("model_version") or "").split(" ")[0] or None
+        model = build_model(req.model_id, version=pinned)
         engine = DetectionEngine(model)
 
         processed, skipped = {"n": 0}, {"n": 0}
@@ -320,8 +321,12 @@ def start_prediction(req: PredictRequest, background_tasks: BackgroundTasks):
         except AoiError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
 
+    try:                                            # the version that runs, shown with the result
+        model_version = get_metadata(req.model_id).version
+    except KeyError:
+        model_version = None
     job_id = get_store().create(
-        KIND, model_id=req.model_id, image_id=req.image_id,
+        KIND, model_id=req.model_id, image_id=req.image_id, model_version=model_version,
         image_name=_display_name(req.image_path), tiles_processed=0, has_aoi=req.aoi is not None,
     )
     background_tasks.add_task(_run_job, job_id, req)

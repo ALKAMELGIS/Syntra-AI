@@ -72,7 +72,7 @@ function VersionPipeline({ ds, models, hf, rp, jobs, onUpload, onTrainHere, onTr
   );
 }
 
-export default function LibraryPanel({ open, onClose, device = "cpu" }) {
+export default function LibraryPanel({ open, onClose, device = "cpu", onModelsChanged }) {
   const [lib, setLib] = useState(null);
   const [sel, setSel] = useState(null);
   const [hf, setHf] = useState(null);
@@ -164,7 +164,7 @@ export default function LibraryPanel({ open, onClose, device = "cpu" }) {
   }
   async function approve(m, version) {
     setErr(null);
-    try { await api.libraryApprove(m.group, version); load(); } catch (e) { setErr(e.detail?.message || e.detail || e.message); }
+    try { await api.libraryApprove(m.group, version); load(); onModelsChanged?.(); } catch (e) { setErr(e.detail?.message || e.detail || e.message); }
   }
   async function toggleAuto() {
     try { setHf(await api.hfSave({ auto_backup: !hf?.auto_backup })); } catch (e) { setErr(e.detail?.message || e.message); }
