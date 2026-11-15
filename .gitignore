@@ -22,6 +22,7 @@ weights/*.pt
 weights/*.onnx
 **/weights/**/*.onnx
 **/weights/**/*.pt
+backend/data/syntra.db
 backend/data/syntra.db-shm
 backend/data/syntra.db-wal
 backend/data/uploads/
