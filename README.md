@@ -304,6 +304,30 @@ for when it is exposed to a network (all in `backend/.env.example`):
 - Upload filenames are sanitised and capped by `SYNTRA_MAX_UPLOAD_MB`.
 - Library Status install/repair/update (which runs `pip`) only works from
   the server itself unless `SYNTRA_ALLOW_ENV_ACTIONS=1`.
+- **Label tools and click-to-segment (plan stage 4).** Train > Label has
+  six tools, one key each: Click (A, AI), Polygon (P), Rectangle (R: drag,
+  Shift for a square, or three clicks for a rotated rectangle), Square (S,
+  Alt from the centre), Circle (C, saved as 64 points) and Freehand (F).
+  Classes switch with 1-9; lengths show in metres while drawing; an exact
+  size in metres places a rectangle, square or circle with one click.
+  Shapes outside the image are refused. Click runs SAM 2.1 tiny (Apache 2.0)
+  as two ONNX graphs on this computer: the visible view is encoded once and
+  cached, each click only runs the decoder; Alt+click or right-click
+  removes, Enter saves, Esc discards, Backspace undoes a click. The mask is
+  then fitted to the class's shape (`app/engine/shapes.py`): buildings get
+  right angles, panels and vehicles a rotated rectangle, tanks a circle,
+  trees a smooth edge, with a quality gate that keeps the traced outline
+  when the fit strays (IoU floor 0.85-0.90, area ratio 0.7-1.43). Verified:
+  `test_shapes_offline.py` (9 tests; a rotated L-shaped roof comes back with
+  6 corners of 90° at IoU > 0.96), `test_click_segment_offline.py` (6 tests,
+  including two tiny ONNX graphs with the SAM 2.1 export's tensor names, a
+  zip-slip check on the model download and view caching), live in the
+  browser: all six tools saved labels on the Dubai harbour image, a 10 m
+  exact square measured 33 px at 30 cm. On the real roofs (colour mask as a
+  stand-in) single roofs went 479 -> 6 corners at IoU 0.97, merged roofs
+  were refused by the gate. **Not yet run with the real SAM weights**:
+  huggingface.co is blocked in the build environment; on your machine
+  Click > Install click tool downloads about 120 MB once.
 - **Train on a RunPod GPU (plan stage 3).** Settings > GPU training: paste
   a RunPod API key (checked, kept in `secrets.json`). Train > Where: RunPod
   GPU (RTX 4090 / 5090, L40S, A40; Community or Secure; a stop-after limit in

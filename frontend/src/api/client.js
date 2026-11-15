@@ -210,6 +210,17 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     }).then(handle),
+  // --- click to segment (SAM 2.1, local) and outline fitting ---
+  segmentStatus: () => request(`${BASE}/segment/status`).then(handle),
+  segmentInstall: (model = "sam2.1_tiny") =>
+    request(`${BASE}/segment/install`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model }),
+    }).then(handle),
+  segmentInstallStatus: (jobId) => request(`${BASE}/segment/install/${jobId}`).then(handle),
+  segmentClick: (imageId, payload) =>
+    request(`${BASE}/images/${imageId}/segment`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+    }).then(handle),
   deleteAnnotation: (imageId, annotationId) =>
     request(`${BASE}/images/${imageId}/annotations/${annotationId}`, { method: "DELETE" }).then(handle),
   clearAnnotations: (imageId) =>

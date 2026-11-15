@@ -47,6 +47,12 @@ export const IconEyeOff = (p) => (
 export const IconRectangle = (p) => (
   <svg {...base} {...p}><rect x="4" y="6" width="16" height="12" rx="1.5" /></svg>
 );
+export const IconSquare = (p) => (
+  <svg {...base} {...p}><rect x="5" y="5" width="14" height="14" rx="1.5" /></svg>
+);
+export const IconClickAI = (p) => (
+  <svg {...base} {...p}><path d="M9 4.5 9 17l3.2-3 2.3 5 2-.9-2.3-5H19Z" /><path d="M4 4l1.5 1.5M3 9h2M9 2v2" /></svg>
+);
 export const IconCircle = (p) => (
   <svg {...base} {...p}><circle cx="12" cy="12" r="8" /></svg>
 );

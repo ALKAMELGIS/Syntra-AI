@@ -128,6 +128,7 @@ export default function MapDrawTools({
   useEffect(() => {
     function onKey(e) {
       if (e.metaKey || e.ctrlKey || e.altKey || isTypingTarget(e.target)) return;
+      if (document.body.dataset.labelling === "1") return;      // the label tools own the keys
       if (e.key === "Escape") {
         if (menuOpen) setMenuOpen(false);
         else if (mode) {

@@ -13,7 +13,7 @@ from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import annotations, auth, cloud, samples, benchmark, compute, datasets, environment, images, jobs, models, predict, results, training, usage
+from app.api import annotations, auth, cloud, samples, segment, benchmark, compute, datasets, environment, images, jobs, models, predict, results, training, usage
 from app.core.config import settings
 from app.core.jobs import get_store
 from app.core.auth import require_access
@@ -61,6 +61,7 @@ app.include_router(annotations.router, dependencies=_protected)
 app.include_router(jobs.router, dependencies=_protected)
 app.include_router(samples.router, dependencies=_protected)
 app.include_router(cloud.router, dependencies=_protected)
+app.include_router(segment.router, dependencies=_protected)
 
 
 @app.exception_handler(Exception)

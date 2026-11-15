@@ -1,12 +1,14 @@
 import React, { useEffect, useRef, useState } from "react";
 import { SaveSamples } from "./SamplesStore.jsx";
 import { api } from "../api/client.js";
-import { classColor, isArea, TRAIN_AREA, CHECK_AREA } from "./AnnotationTool.jsx";
-import { IconClose, IconRectangle, IconPolygon, IconTrash, IconUpload } from "./Icons.jsx";
+import { classColor, isArea, CHECK_AREA } from "./AnnotationTool.jsx";
+import LabelTools from "./LabelTools.jsx";
+import { IconClose, IconUpload } from "./Icons.jsx";
 
 // Train your own model, beside the map, in five steps:
 //   Data     the GeoTIFF to learn from (upload, or pick from the library) and its classes
-//   Label    draw boxes / polygons on the map for each class
+//   Label    draw on the map (polygon, rectangle, square, circle, freehand) or click
+//            an object and let SAM 2.1 outline it (LabelTools.jsx)
 //   Dataset  tile the image and labels into a YOLO dataset
 //   Train    fine-tune YOLO11 on it (a background job; the panel can close)
 //   Use      name it, add it to the model list and run it on the current image
@@ -32,6 +34,7 @@ function usePoll(fn, active, ms) {
 export default function TrainPanel({
   open, onClose, step, onStep, image, onImageChange,
   annotations, classes, onAddClass, activeClass, onActiveClass, mode, onMode, onClearAnnotations, labelError,
+  outline, onOutline, exact, onExact, segPreview,
   device = "cpu", onModelsChanged, onRunModel, onCheckModel,
 }) {
   const [images, setImages] = useState([]);
@@ -74,7 +77,6 @@ export default function TrainPanel({
   const counts = {};
   for (const a of annotations) counts[a.class_name] = (counts[a.class_name] || 0) + 1;
   const objects = annotations.filter((a) => !isArea(a.class_name));
-  const drawingArea = isArea(activeClass || "");
   const labelled = objects.length;
   const dsDone = ds?.status === "completed";
   const trDone = tr && ["completed", "done"].includes(tr.status) && tr.result?.best;
@@ -206,56 +208,10 @@ export default function TrainPanel({
         )}
 
         {step === 1 && (
-          <>
-            <p className="train-label">Class</p>
-            <ul className="train-classes train-classes-pick">
-              {classes.map((c) => (
-                <li key={c}>
-                  <button type="button" className={c === activeClass ? "selected" : ""} onClick={() => { onActiveClass(c); if (drawingArea) onMode(null); }}>
-                    <span className="train-swatch" style={{ background: classColor(c) }} />{c}
-                    <span className="mono train-dim">{counts[c] || 0}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-            <div className="train-row">
-              <button type="button" className={`train-tool ${mode === "rect" && !drawingArea ? "active" : ""}`}
-                      onClick={() => { if (drawingArea) onActiveClass(classes[0]); onMode(mode === "rect" && !drawingArea ? null : "rect"); }} disabled={!classes.length}>
-                <IconRectangle /> Box
-              </button>
-              <button type="button" className={`train-tool ${mode === "polygon" && !drawingArea ? "active" : ""}`}
-                      onClick={() => { if (drawingArea) onActiveClass(classes[0]); onMode(mode === "polygon" && !drawingArea ? null : "polygon"); }} disabled={!classes.length}>
-                <IconPolygon /> Polygon
-              </button>
-            </div>
-            <p className="train-label">Areas</p>
-            <div className="train-row">
-              <button type="button" className={`train-tool train-tool-area ${activeClass === TRAIN_AREA && mode ? "active" : ""}`}
-                      onClick={() => { onActiveClass(TRAIN_AREA); onMode(activeClass === TRAIN_AREA && mode ? null : "rect"); }}>
-                <span className="train-swatch train-swatch-dash" style={{ borderColor: classColor(TRAIN_AREA) }} /> Training
-                <span className="mono train-dim">{counts[TRAIN_AREA] || 0}</span>
-              </button>
-              <button type="button" className={`train-tool train-tool-area ${activeClass === CHECK_AREA && mode ? "active" : ""}`}
-                      onClick={() => { onActiveClass(CHECK_AREA); onMode(activeClass === CHECK_AREA && mode ? null : "rect"); }}>
-                <span className="train-swatch train-swatch-dash" style={{ borderColor: classColor(CHECK_AREA) }} /> Accuracy
-                <span className="mono train-dim">{counts[CHECK_AREA] || 0}</span>
-              </button>
-            </div>
-            <p className="train-dim">
-              {activeClass === TRAIN_AREA && mode ? "Drag a rectangle, then label every object inside it. Only these areas are learned from."
-                : activeClass === CHECK_AREA && mode ? "Drag a rectangle and label every object inside it. It is kept out of training and used to score models."
-                : mode === "rect" ? "Drag on the map. The tool stays on for the next object."
-                : mode === "polygon" ? "Click the corners, double-click to finish."
-                : classes.length ? "Pick a tool. Click a saved shape to delete it." : "Add a class in step 1 first."}
-            </p>
-            {labelError && <p className="train-error">{labelError}</p>}
-            <div className="train-row train-row-split">
-              <span className="train-dim"><span className="mono">{objects.length}</span> labelled · aim for 50+ per class</span>
-              {annotations.length > 0 && (
-                <button type="button" className="link-button" onClick={onClearAnnotations}><IconTrash /> Clear</button>
-              )}
-            </div>
-          </>
+          <LabelTools open={open && step === 1} classes={classes} counts={counts} activeClass={activeClass}
+                      onActiveClass={onActiveClass} mode={mode} onMode={onMode} annotations={annotations}
+                      onClearAnnotations={onClearAnnotations} labelError={labelError}
+                      outline={outline} onOutline={onOutline} exact={exact} onExact={onExact} segPreview={segPreview} />
         )}
 
         {step === 2 && (

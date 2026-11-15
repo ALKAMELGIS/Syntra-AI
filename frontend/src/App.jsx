@@ -48,6 +48,9 @@ export default function App({ user = null, onSignOut = null }) {
   const [annotations, setAnnotations] = useState([]);
   const [extraClasses, setExtraClasses] = useState([]);
   const [activeClass, setActiveClass] = useState(null);
+  const [outline, setOutline] = useState({ shape: "auto", simplify_m: 0.6, grow_m: 0 });
+  const [exactSize, setExactSize] = useState(null);       // {w, h} | {s} | {r} in metres: one click places it
+  const [segPreview, setSegPreview] = useState(null);
   const [drawMode, setDrawMode] = useState(null);
   const [labelError, setLabelError] = useState(null);
   function setAnalysisOpen(v) {
@@ -249,18 +252,31 @@ export default function App({ user = null, onSignOut = null }) {
     if (!activeClass && trainClasses.length) setActiveClass(trainClasses[0]);
   }, [trainClasses.join("|")]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function saveLabel(latlngs) {
+  async function saveLabel(latlngs, meta = {}) {
     if (!image?.image_id || !activeClass) return;
     setLabelError(null);
     try {
       const saved = await api.addAnnotation(image.image_id, {
         class_name: activeClass, points_lonlat: latlngs.map((p) => [p.lng, p.lat]),
+        shape: meta.shape || null, tool: meta.tool || null,
       });
       setAnnotations((list) => [...list, saved]);
     } catch (err) {
       setLabelError(err.detail?.message || err.message);
     }
   }
+  // click to segment: the outline comes from the engine, fitted to the class's shape
+  const segmentClick = (clicks, view) => api.segmentClick(image.image_id, {
+    clicks, view, class_name: activeClass || "",
+    shape: outline.shape === "auto" ? null : outline.shape,
+    simplify_m: outline.simplify_m, grow_m: outline.grow_m,
+  });
+  const labelling = trainOpen && trainStep === 1;
+  useEffect(() => {
+    // the map's own letter shortcuts (R, C, F, M, A) pause while label tools own the keys
+    document.body.dataset.labelling = labelling ? "1" : "";
+  }, [labelling]);
+
   async function deleteLabel(id) {
     try {
       await api.deleteAnnotation(image.image_id, id);
@@ -368,6 +384,7 @@ export default function App({ user = null, onSignOut = null }) {
               mode: trainOpen && trainStep === 1 ? drawMode : null,
               className: activeClass, annotations,
               onDrawn: saveLabel, onShapeClick: deleteLabel,
+              onSegment: segmentClick, onPreview: setSegPreview, exact: exactSize,
             }}
             perfOpen={perfOpen}
             onTogglePerf={() => setPerfOpen((v) => !v)}
@@ -382,7 +399,9 @@ export default function App({ user = null, onSignOut = null }) {
                 annotations={annotations} classes={trainClasses}
                 onAddClass={(c) => { setExtraClasses((l) => (l.includes(c) ? l : [...l, c])); setActiveClass(c); }}
                 activeClass={activeClass} onActiveClass={setActiveClass}
-                mode={drawMode} onMode={setDrawMode}
+                mode={drawMode} onMode={(m) => { setDrawMode(m); setExactSize(null); }}
+                outline={outline} onOutline={setOutline}
+                exact={exactSize} onExact={setExactSize} segPreview={segPreview}
                 onClearAnnotations={clearLabels} labelError={labelError}
                 device={devices?.gpu_count > 0 ? "cuda:0" : "cpu"}
                 onModelsChanged={refreshModels}

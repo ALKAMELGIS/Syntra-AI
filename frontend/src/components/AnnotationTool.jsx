@@ -3,9 +3,21 @@ import { useMap } from "react-leaflet";
 import L from "leaflet";
 
 // Training labels on the map. Lives inside <MapContainer>; it has no UI of
-// its own: the Train panel picks the class and the tool (box / polygon) and
-// owns the saved list. This layer draws the saved shapes and turns mouse
-// gestures into a shape, which it hands back through onDrawn.
+// its own: the Train panel picks the class and the tool and owns the saved
+// list. This layer draws the saved shapes and turns mouse gestures into a
+// shape, which it hands back through onDrawn(latlngs, {tool, shape}).
+//
+// Tools
+//   polygon   click corners; double-click or Enter closes; Backspace undoes a corner
+//   rect      drag corner to corner (Shift: square), or click three times for a
+//             rotated rectangle: two clicks set one edge, the third its width
+//   square    drag from a corner (Alt: from the centre)
+//   circle    drag from the centre; saved as a 64-point polygon
+//   freehand  press and draw
+//   click     AI: click inside an object (Alt or right-click: remove), Enter
+//             saves the outline, Esc discards, Backspace removes the last click
+// With an exact size set in the panel, one click places the shape there.
+// Lengths shown while drawing are geodesic metres (map.distance).
 
 const PALETTE = ["#ffcf5c", "#5b8cff", "#5fd98a", "#ff7a7a", "#c792ea", "#4fd1c5", "#f5a623", "#ec6ea0"];
 
@@ -22,16 +34,44 @@ export function classColor(className) {
   return PALETTE[h % PALETTE.length];
 }
 
-function rectLatLngs(bounds) {
-  const sw = bounds.getSouthWest(), ne = bounds.getNorthEast();
-  return [sw, L.latLng(ne.lat, sw.lng), ne, L.latLng(sw.lat, ne.lng)];
+const CIRCLE_POINTS = 64;
+const EDIT = { color: "#ffffff", weight: 2, fillColor: "#ffffff", fillOpacity: 0.14 };
+const HALO = { color: "#0d0f12", weight: 5, fill: false, interactive: false };
+
+export const fmtM = (m) => (m >= 1000 ? `${(m / 1000).toFixed(2)} km` : m >= 100 ? `${Math.round(m)} m` : `${m.toFixed(1)} m`);
+
+// metres <-> degrees around a latitude (exact enough for one object)
+function offset(ll, dxM, dyM) {
+  const lat = ll.lat + dyM / 111320;
+  const lng = ll.lng + dxM / (111320 * Math.cos((ll.lat * Math.PI) / 180));
+  return L.latLng(lat, lng);
 }
 
-export default function AnnotationLayer({ visible, mode, className, annotations = [], onDrawn, onShapeClick }) {
-  const map = useMap();
-  const draw = useRef({ overlay: null, start: null, points: [] });
-  const group = useRef(null);
+function ringArea(map, latlngs) {
+  // planar area in m² from local metres (fine at object scale)
+  const o = latlngs[0];
+  const k = 111320 * Math.cos((o.lat * Math.PI) / 180);
+  const pts = latlngs.map((p) => [(p.lng - o.lng) * k, (p.lat - o.lat) * 111320]);
+  let a = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const [x1, y1] = pts[i], [x2, y2] = pts[(i + 1) % pts.length];
+    a += x1 * y2 - x2 * y1;
+  }
+  return Math.abs(a) / 2;
+}
 
+export const fmtArea = (m2) => (m2 >= 1e6 ? `${(m2 / 1e6).toFixed(2)} km²` : `${Math.round(m2).toLocaleString()} m²`);
+
+export default function AnnotationLayer({
+  visible, mode, className, annotations = [], onDrawn, onShapeClick, onSegment, exact, onPreview,
+}) {
+  const map = useMap();
+  const st = useRef({});
+  const group = useRef(null);
+  const live = useRef({ onDrawn, onSegment, onPreview, exact });
+  live.current = { onDrawn, onSegment, onPreview, exact };
+
+  // saved labels
   useEffect(() => {
     if (group.current) { map.removeLayer(group.current); group.current = null; }
     if (!visible || !annotations.length) return;
@@ -39,10 +79,13 @@ export default function AnnotationLayer({ visible, mode, className, annotations 
     for (const a of annotations) {
       const color = classColor(a.class_name);
       const area = isArea(a.class_name);
+      // while a tool is on, saved shapes let clicks through: you often label next to (or inside) one
       const poly = L.polygon(a.points_lonlat.map(([lon, lat]) => L.latLng(lat, lon)),
-        area ? { color, weight: 2, dashArray: "8 6", fill: false } : { color, weight: 2, fillOpacity: 0.15 });
-      poly.bindTooltip(AREA_LABEL[a.class_name] || a.class_name, { direction: "center" });
-      poly.on("click", (e) => { L.DomEvent.stopPropagation(e); if (!mode) onShapeClick?.(a.id); });
+        { ...(area ? { color, weight: 2, dashArray: "8 6", fill: false } : { color, weight: 2, fillOpacity: 0.18 }), interactive: !mode });
+      if (!mode) {
+        poly.bindTooltip(AREA_LABEL[a.class_name] || a.class_name, { direction: "center" });
+        poly.on("click", (e) => { L.DomEvent.stopPropagation(e); onShapeClick?.(a.id); });
+      }
       g.addLayer(poly);
     }
     g.addTo(map);
@@ -50,49 +93,264 @@ export default function AnnotationLayer({ visible, mode, className, annotations 
     return () => { if (group.current) map.removeLayer(group.current); };
   }, [visible, annotations, map, mode, onShapeClick]);
 
+  // drawing
   useEffect(() => {
-    const st = draw.current;
-    function clear() { if (st.overlay) { map.removeLayer(st.overlay); st.overlay = null; } }
-    st.points = []; st.start = null; clear();
+    const s = { layers: [], points: [], start: null, drag: false, clicks: [], preview: null, busy: false, seq: 0 };
+    st.current = s;
     if (!visible || !mode) return;
     const color = classColor(className || "object");
+    const container = map.getContainer();
     map.dragging.disable();
     map.doubleClickZoom.disable();
-    map.getContainer().style.cursor = "crosshair";
+    container.style.cursor = "crosshair";
+    const tip = L.tooltip({ permanent: true, direction: "right", offset: [14, 0], className: "draw-readout" });
 
+    const clear = () => { s.layers.forEach((l) => map.removeLayer(l)); s.layers = []; };
+    const add = (l) => { l.addTo(map); s.layers.push(l); return l; };
+    const say = (ll, text) => {
+      if (!text) { map.removeLayer(tip); return; }
+      tip.setLatLng(ll).setContent(text);
+      if (!map.hasLayer(tip)) tip.addTo(map);
+    };
+    const finish = (latlngs, meta) => {
+      clear(); say(null); s.points = []; s.start = null; s.drag = false;
+      if (latlngs && latlngs.length >= 3) live.current.onDrawn?.(latlngs, meta);
+    };
+    const shape = (latlngs, fillOnly) => {
+      add(L.polygon(latlngs, { ...HALO, interactive: false }));
+      return add(L.polygon(latlngs, { ...EDIT, color: fillOnly ? color : "#ffffff", interactive: false }));
+    };
+    const px = (ll) => map.latLngToContainerPoint(ll);
+    const ll = (p) => map.containerPointToLatLng(p);
+
+    function rectFrom(a, b, square, fromCentre) {
+      let dx = b.x - a.x, dy = b.y - a.y;
+      if (square) { const m = Math.max(Math.abs(dx), Math.abs(dy)); dx = Math.sign(dx || 1) * m; dy = Math.sign(dy || 1) * m; }
+      const p0 = fromCentre ? L.point(a.x - dx, a.y - dy) : a;
+      const p2 = L.point(a.x + dx, a.y + dy);
+      return [p0, L.point(p2.x, p0.y), p2, L.point(p0.x, p2.y)].map(ll);
+    }
+    function rotatedRect(p1, p2, p3) {
+      const ex = p2.x - p1.x, ey = p2.y - p1.y;
+      const len = Math.hypot(ex, ey) || 1;
+      const nx = -ey / len, ny = ex / len;
+      const h = (p3.x - p1.x) * nx + (p3.y - p1.y) * ny;
+      return [p1, p2, L.point(p2.x + nx * h, p2.y + ny * h), L.point(p1.x + nx * h, p1.y + ny * h)].map(ll);
+    }
+    function circleAround(c, edge) {
+      const r = c.distanceTo(edge);
+      const out = [];
+      for (let i = 0; i < CIRCLE_POINTS; i++) {
+        const t = (2 * Math.PI * i) / CIRCLE_POINTS;
+        out.push(ll(L.point(c.x + r * Math.cos(t), c.y + r * Math.sin(t))));
+      }
+      return out;
+    }
+    const sizeText = (pts) => `${fmtM(map.distance(pts[0], pts[1]))} × ${fmtM(map.distance(pts[1], pts[2]))}`;
+
+    function placeExact(at) {
+      const ex = live.current.exact;
+      if (!ex) return false;
+      if (mode === "circle" && ex.r > 0) {
+        const pts = [];
+        for (let i = 0; i < CIRCLE_POINTS; i++) {
+          const t = (2 * Math.PI * i) / CIRCLE_POINTS;
+          pts.push(offset(at, ex.r * Math.cos(t), ex.r * Math.sin(t)));
+        }
+        finish(pts, { tool: "circle", shape: "circle" });
+        return true;
+      }
+      const w = mode === "square" ? ex.s : ex.w, h = mode === "square" ? ex.s : ex.h;
+      if ((mode === "rect" || mode === "square") && w > 0 && h > 0) {
+        finish([offset(at, -w / 2, h / 2), offset(at, w / 2, h / 2), offset(at, w / 2, -h / 2), offset(at, -w / 2, -h / 2)],
+          { tool: mode, shape: mode === "square" ? "square" : "rectangle" });
+        return true;
+      }
+      return false;
+    }
+
+    // ----- click to segment -----
+    async function segment() {
+      const seq = ++s.seq;
+      clear();
+      for (const c of s.clicks) {
+        add(L.circleMarker(c.ll, { radius: 6, color: "#0d0f12", weight: 2, fillColor: c.label ? "#4cc38a" : "#f06a6a", fillOpacity: 1, interactive: false }));
+      }
+      if (!s.clicks.some((c) => c.label)) { s.preview = null; live.current.onPreview?.(null); return; }
+      s.busy = true;
+      live.current.onPreview?.({ busy: true });
+      container.style.cursor = "progress";
+      try {
+        const b = map.getBounds();
+        const res = await live.current.onSegment?.(s.clicks.map((c) => [c.ll.lng, c.ll.lat, c.label]),
+          [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()]);
+        if (seq !== s.seq || st.current !== s) return;              // a newer click or tool change won
+        clear();
+        const latlngs = res.points_lonlat.map(([lon, lat]) => L.latLng(lat, lon));
+        s.layers.push(L.polygon(latlngs, HALO).addTo(map));
+        s.layers.push(L.polygon(latlngs, { ...EDIT, interactive: false }).addTo(map));
+        for (const c of s.clicks) {
+          add(L.circleMarker(c.ll, { radius: 6, color: "#0d0f12", weight: 2, fillColor: c.label ? "#4cc38a" : "#f06a6a", fillOpacity: 1, interactive: false }));
+        }
+        s.preview = { latlngs, res };
+        live.current.onPreview?.({ res });
+      } catch (err) {
+        if (seq !== s.seq || st.current !== s) return;
+        s.preview = null;
+        live.current.onPreview?.({ error: err.detail?.message || err.detail || err.message });
+      } finally {
+        if (seq === s.seq) { s.busy = false; container.style.cursor = "crosshair"; }
+      }
+    }
+    function saveClick() {
+      if (!s.preview) return;
+      const { latlngs, res } = s.preview;
+      s.clicks = []; s.preview = null; clear();
+      live.current.onPreview?.(null);
+      live.current.onDrawn?.(latlngs, { tool: "click", shape: res.shape });
+    }
+
+    // ----- mouse -----
     function down(e) {
-      if (mode === "rect") {
-        st.start = e.latlng; clear();
-        st.overlay = L.rectangle([e.latlng, e.latlng], { color, weight: 2, dashArray: "4 3" }).addTo(map);
-      } else {
-        st.points.push(e.latlng); clear();
-        if (st.points.length > 1) st.overlay = L.polygon(st.points, { color, weight: 2, fillOpacity: 0.1 }).addTo(map);
+      if (e.originalEvent.button === 2) return;
+      const p = px(e.latlng);
+      if (mode === "rect" || mode === "square" || mode === "circle") {
+        if (s.points.length) return;                        // 3-click rectangle in progress: clicks only
+        s.start = p; s.drag = false;
+      } else if (mode === "freehand") {
+        s.points = [e.latlng]; s.drag = true;
       }
     }
     function move(e) {
-      if (mode === "rect" && st.start && st.overlay) st.overlay.setBounds([st.start, e.latlng]);
+      const p = px(e.latlng);
+      const ev = e.originalEvent;
+      if ((mode === "rect" || mode === "square" || mode === "circle") && s.start) {
+        if (!s.drag && s.start.distanceTo(p) < 4) return;
+        s.drag = true;
+        clear();
+        if (mode === "circle") {
+          shape(circleAround(s.start, p));
+          add(L.polyline([ll(s.start), e.latlng], { color: "#fff", weight: 1, dashArray: "3 3", interactive: false }));
+          say(e.latlng, `r ${fmtM(map.distance(ll(s.start), e.latlng))}`);
+        } else {
+          const pts = rectFrom(s.start, p, mode === "square" || ev.shiftKey, mode === "square" && ev.altKey);
+          shape(pts);
+          say(e.latlng, mode === "square" ? fmtM(map.distance(pts[0], pts[1])) : sizeText(pts));
+        }
+      } else if (mode === "rect" && s.points.length) {
+        clear();
+        if (s.points.length === 1) {
+          add(L.polyline([s.points[0], e.latlng], { color: "#fff", weight: 2, interactive: false }));
+          say(e.latlng, fmtM(map.distance(s.points[0], e.latlng)));
+        } else {
+          const pts = rotatedRect(px(s.points[0]), px(s.points[1]), p);
+          shape(pts);
+          say(e.latlng, sizeText(pts));
+        }
+      } else if (mode === "polygon" && s.points.length) {
+        clear();
+        const pts = [...s.points, e.latlng];
+        if (pts.length > 2) add(L.polygon(pts, { ...EDIT, weight: 1, fillOpacity: 0.08, interactive: false }));
+        add(L.polyline(pts, { color: "#fff", weight: 2, interactive: false }));
+        for (const q of s.points) add(L.circleMarker(q, { radius: 4, color: "#fff", weight: 1.5, fillColor: "#0d0f12", fillOpacity: 1, interactive: false }));
+        say(e.latlng, fmtM(map.distance(s.points[s.points.length - 1], e.latlng)));
+      } else if (mode === "freehand" && s.drag) {
+        const last = s.points[s.points.length - 1];
+        if (px(last).distanceTo(p) < 3) return;
+        s.points.push(e.latlng);
+        clear();
+        add(L.polyline(s.points, { color: "#fff", weight: 2, interactive: false }));
+      }
     }
     function up(e) {
-      if (mode !== "rect" || !st.start) return;
-      const b = L.latLngBounds(st.start, e.latlng);
-      st.start = null; clear();
-      if (map.latLngToContainerPoint(b.getSouthWest()).distanceTo(map.latLngToContainerPoint(b.getNorthEast())) < 6) return;
-      onDrawn?.(rectLatLngs(b));
+      const p = px(e.latlng);
+      const ev = e.originalEvent;
+      if ((mode === "rect" || mode === "square" || mode === "circle") && s.start) {
+        const start = s.start;
+        s.start = null;
+        if (s.drag) {
+          s.drag = false;
+          if (mode === "circle") {
+            if (start.distanceTo(p) < 3) { clear(); say(null); return; }
+            finish(circleAround(start, p), { tool: "circle", shape: "circle" });
+          } else {
+            const pts = rectFrom(start, p, mode === "square" || ev.shiftKey, mode === "square" && ev.altKey);
+            finish(pts, { tool: mode, shape: mode === "square" || ev.shiftKey ? "square" : "rectangle" });
+          }
+          return;
+        }
+        // a click, not a drag
+        if (placeExact(e.latlng)) return;
+        if (mode === "rect") { s.points = [e.latlng]; return; }
+      } else if (mode === "freehand" && s.drag) {
+        s.drag = false;
+        const pts = s.points;
+        finish(pts.length >= 3 ? pts : null, { tool: "freehand", shape: "polygon" });
+      }
+    }
+    function click(e) {
+      const ev = e.originalEvent;
+      if (mode === "polygon") {
+        s.points.push(e.latlng);
+        move(e);
+      } else if (mode === "rect" && s.points.length === 1 && px(s.points[0]).distanceTo(px(e.latlng)) > 3) {
+        s.points.push(e.latlng);
+      } else if (mode === "rect" && s.points.length === 2) {
+        const pts = rotatedRect(px(s.points[0]), px(s.points[1]), px(e.latlng));
+        finish(pts, { tool: "rect", shape: "rectangle" });
+      } else if (mode === "click") {
+        s.clicks.push({ ll: e.latlng, label: ev.altKey ? 0 : 1 });
+        segment();
+      }
+    }
+    function context(e) {
+      if (mode !== "click") return;
+      L.DomEvent.preventDefault(e.originalEvent);
+      s.clicks.push({ ll: e.latlng, label: 0 });
+      segment();
     }
     function dbl() {
-      if (mode !== "polygon" || st.points.length < 3) return;
-      const pts = st.points; st.points = []; clear();
-      onDrawn?.(pts);
+      if (mode === "polygon" && s.points.length >= 3) {
+        // the double-click's two clicks added one extra point at the same spot
+        const pts = s.points.slice(0, -1);
+        finish(pts.length >= 3 ? pts : s.points, { tool: "polygon", shape: "polygon" });
+      }
     }
-    map.on("mousedown", down); map.on("mousemove", move); map.on("mouseup", up); map.on("dblclick", dbl);
+    function key(e) {
+      const t = e.target;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT")) return;
+      if (e.key === "Enter") {
+        if (mode === "polygon" && s.points.length >= 3) { e.preventDefault(); finish(s.points, { tool: "polygon", shape: "polygon" }); }
+        if (mode === "click") { e.preventDefault(); saveClick(); }
+      } else if (e.key === "Escape") {
+        if (s.points.length || s.clicks.length || s.start) {
+          e.preventDefault(); e.stopPropagation();
+          s.clicks = []; s.preview = null; s.points = []; s.start = null; s.drag = false;
+          clear(); say(null); live.current.onPreview?.(null);
+        }
+      } else if (e.key === "Backspace") {
+        if (mode === "polygon" && s.points.length) { e.preventDefault(); s.points.pop(); clear(); say(null); }
+        if (mode === "click" && s.clicks.length) { e.preventDefault(); s.clicks.pop(); segment(); }
+        if (mode === "rect" && s.points.length) { e.preventDefault(); s.points.pop(); clear(); say(null); }
+      }
+    }
+    map.on("mousedown", down); map.on("mousemove", move); map.on("mouseup", up);
+    map.on("click", click); map.on("dblclick", dbl); map.on("contextmenu", context);
+    window.addEventListener("keydown", key, true);
     return () => {
-      map.off("mousedown", down); map.off("mousemove", move); map.off("mouseup", up); map.off("dblclick", dbl);
-      clear();
+      map.off("mousedown", down); map.off("mousemove", move); map.off("mouseup", up);
+      map.off("click", click); map.off("dblclick", dbl); map.off("contextmenu", context);
+      window.removeEventListener("keydown", key, true);
+      s.seq++;
+      clear(); map.removeLayer(tip);
+      live.current.onPreview?.(null);
       map.dragging.enable();
       map.doubleClickZoom.enable();
-      map.getContainer().style.cursor = "";
+      container.style.cursor = "";
     };
-  }, [visible, mode, className, map, onDrawn]);
+  }, [visible, mode, className, map]);
 
   return null;
 }
+
+export { ringArea };

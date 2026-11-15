@@ -187,6 +187,18 @@ direction in a comment. Work inside them:
 - **Motion.** Name transitions (`background-color`, `color`, `transform`)
   with `var(--ease)`; no looping animation except a live spinner.
 
+## 4b. Labelling and auto segmentation
+
+- Labels live in one Labels panel beside the map toolbar, in three groups: AI (click, box, in zone, similar), Draw (polygon, freehand, rectangle, brush), Edit (vertices, cut hole, merge, eraser). Every tool has a one-letter key; classes switch with 1-9.
+- Click-to-segment uses a SAM-family ONNX model (default SAM 2.1 Tiny/Small, Apache 2.0). Encode the view once and cache the embedding by raster, window and zoom; each click runs only the prompt decoder. Never re-encode per click.
+- Positive point = click, negative = Alt+click, save = Enter, discard = Esc, undo = Ctrl+Z. The outline being edited is white with a dark halo so it never matches a class colour.
+- Geometry operations (simplify, right angles, expand/contract in metres, round corners, fill holes, cut, merge, split) run server-side with shapely in a projected CRS, then reproject. Leaflet-Geoman Free (MIT) handles drawing and vertex editing; never add Geoman Pro or other paid code.
+- A saved outline is a geometric shape, never the raw mask. Pipeline: clean mask (open/close, fill holes, largest part) → contour → simplify → shape by class: buildings right angles (length-weighted edge-angle orientation, snap to 0/90°, optional 45°; `buildingregulariser`, MIT, or our own code), solar panels min-area rectangle, tanks circle when IoU ≥ 0.9, trees Chaikin smoothing. Keep the original if the result is invalid or its area ratio leaves 0.7–1.43. Refine values are in metres and converted with the image GSD. Never use GPL or unlicensed regularization code.
+- Prove geometry changes with numbers: IoU against the mask, vertex count, and on reviewed labels boundary IoU or PoLiS.
+- Store labels as full polygons with holes. Only the dataset export clips to tiles and bridges holes into single rings for YOLO-seg.
+- A model ships only after its licence file has been read. SAM 3 weights are gated and under the SAM License: GPU (RunPod) only, never bundled.
+- Report measured encoder and per-click times on the user's machine before calling auto segmentation fast.
+
 ## 5. Shipping a change
 
 1. Branch from `main`.

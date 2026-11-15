@@ -61,16 +61,20 @@ def save_annotations(image_path: str | Path, annotations: list[dict]) -> None:
 
 
 def add_annotation(image_path: str | Path, class_name: str, points_lonlat: list[list[float]],
-                    bounds: dict, width: int, height: int) -> dict:
+                    bounds: dict, width: int, height: int, extra: dict | None = None) -> dict:
     if len(points_lonlat) < 3:
         raise ValueError("An annotation needs at least 3 points (a closed ring).")
     points_px = [list(lonlat_to_pixel(lon, lat, bounds, width, height)) for lon, lat in points_lonlat]
+    xs, ys = [p[0] for p in points_px], [p[1] for p in points_px]
+    if max(xs) <= 0 or min(xs) >= width or max(ys) <= 0 or min(ys) >= height:
+        raise ValueError("This shape is outside the image. Draw it on the image")
     entry = {
         "id": str(uuid.uuid4()),
         "class_name": class_name.strip() or "object",
         "points_lonlat": points_lonlat,
         "points_px": points_px,
         "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        **{k: str(v)[:32] for k, v in (extra or {}).items()},
     }
     anns = load_annotations(image_path)
     anns.append(entry)

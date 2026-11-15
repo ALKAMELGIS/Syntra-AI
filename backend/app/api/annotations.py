@@ -20,6 +20,8 @@ router = APIRouter(prefix="/api/images/{image_id}/annotations", tags=["annotatio
 class AddAnnotationRequest(BaseModel):
     class_name: str
     points_lonlat: list[list[float]]   # closed/open ring of [lon, lat]
+    shape: str | None = None           # how it was drawn or fitted: polygon, rectangle, circle, right_angles…
+    tool: str | None = None            # which tool made it: polygon, rect, square, circle, freehand, click
 
 
 def _entry_or_404(image_id: str) -> dict:
@@ -50,6 +52,7 @@ def add_annotation(image_id: str, req: AddAnnotationRequest):
         entry_ann = store.add_annotation(
             entry["path"], req.class_name, req.points_lonlat,
             entry["bounds_wgs84"], entry["width"], entry["height"],
+            extra={k: v for k, v in (("shape", req.shape), ("tool", req.tool)) if v},
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
