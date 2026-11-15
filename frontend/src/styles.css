@@ -2006,8 +2006,24 @@ input[type=range].gauge:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 2px 
 .edit-mid:hover { opacity: 1; }
 .edit-rot { background: #0d0f12; border: 2px solid #ffffff; border-radius: 50%; box-sizing: border-box; cursor: grab; }
 .leaflet-interactive.edit-body { cursor: move; }
-.label-edit { display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: var(--radius-control); background: var(--hover-bg); }
-.label-edit-head { display: flex; align-items: center; gap: 8px; font-size: 13px; }
-.label-edit-head b { font-weight: 500; }
-.label-edit-head .mono { margin-left: auto; }
 .link-button.danger { color: var(--error); }
+
+/* Label tools: one row of 32 px icons; name and shortcut in the tooltip */
+.label-bar { display: flex; align-items: center; gap: 2px; padding: 2px; border: 1px solid var(--panel-border); border-radius: var(--radius-control); }
+.label-btn {
+  display: grid; place-items: center; width: 32px; height: 32px; flex: none; padding: 0; border: none; border-radius: 6px;
+  background: transparent; color: var(--text-dim); cursor: pointer; transition: background-color 0.12s var(--ease), color 0.12s var(--ease);
+}
+.label-btn svg { width: 16px; height: 16px; }
+.label-btn:hover:not(:disabled) { background: var(--hover-bg); color: var(--text); }
+.label-btn.active { background: var(--accent-soft); color: var(--text); box-shadow: inset 0 0 0 1px var(--accent); }
+.label-btn:disabled { opacity: 0.4; cursor: default; }
+.label-btn.danger:hover { color: var(--error); }
+.label-bar-sep { width: 1px; height: 20px; margin: 0 4px; background: var(--panel-border); }
+.label-bar-name { margin-left: auto; padding-right: 6px; display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-dim); white-space: nowrap; }
+.label-bar-name kbd { font: 10px/1 var(--font-mono); color: var(--text-muted); padding: 2px 4px; border: 1px solid var(--panel-border); border-radius: 4px; }
+.label-areas { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.label-areas .train-tool { height: 32px; font-size: 12px; }
+.label-edit { display: flex; flex-direction: row; align-items: center; gap: 8px; height: 40px; padding: 0 4px 0 12px; border-radius: var(--radius-control); background: var(--hover-bg); }
+.label-edit-name { font-size: 13px; font-weight: 500; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.label-edit .mono { margin-left: auto; font-size: 12px; }

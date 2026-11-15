@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { api } from "../api/client.js";
 import { classColor, isArea, TRAIN_AREA, CHECK_AREA, AREA_LABEL, fmtArea } from "./AnnotationTool.jsx";
-import { IconClickAI, IconCircle, IconPencil, IconPolygon, IconRectangle, IconSquare, IconTrash } from "./Icons.jsx";
+import { IconCheck, IconClickAI, IconCircle, IconPencil, IconPolygon, IconRectangle, IconSquare, IconTrash } from "./Icons.jsx";
 
 // The Label step of the Train panel: classes (keys 1-9), the tools (one
 // letter each) and what the active tool needs. The map layer that does the
@@ -195,26 +195,24 @@ export default function LabelTools({
         ))}
       </ul>
 
-      {["AI", "Draw"].map((g) => (
-        <div key={g} className="label-group">
-          <p className="train-label">{g}</p>
-          <div className="label-tools">
-            {LABEL_TOOLS.filter((t) => t.group === g).map((t) => (
-              <button type="button" key={t.id} title={`${t.label} (${t.key})`} disabled={!classes.length}
-                      className={`label-tool ${mode === t.id && !drawingArea ? "active" : ""}`} onClick={() => pickTool(t.id)}>
-                <t.Icon /><span>{t.label}</span><kbd>{t.key}</kbd>
-              </button>
-            ))}
-          </div>
-        </div>
-      ))}
-
-      {tool && !drawingArea && <p className="train-dim">{HINTS[tool.id]}</p>}
+      <p className="train-label">Tools</p>
+      <div className="label-bar" role="toolbar" aria-label="Label tools">
+        {LABEL_TOOLS.map((t, i) => (
+          <React.Fragment key={t.id}>
+            {i > 0 && LABEL_TOOLS[i - 1].group !== t.group && <span className="label-bar-sep" aria-hidden="true" />}
+            <button type="button" title={`${t.label} · ${t.key}\n${HINTS[t.id]}`} aria-label={`${t.label} (${t.key})`}
+                    aria-pressed={mode === t.id && !drawingArea} disabled={!classes.length}
+                    className={`label-btn ${mode === t.id && !drawingArea ? "active" : ""}`} onClick={() => pickTool(t.id)}>
+              <t.Icon />
+            </button>
+          </React.Fragment>
+        ))}
+      </div>
       {mode === "click" && !drawingArea && <ClickTool outline={outline} onOutline={onOutline} preview={segPreview} />}
       {["rect", "square", "circle"].includes(mode) && !drawingArea && <ExactSize mode={mode} exact={exact} onExact={onExact} />}
 
       <p className="train-label">Areas</p>
-      <div className="train-row">
+      <div className="label-areas">
         <button type="button" className={`train-tool train-tool-area ${activeClass === TRAIN_AREA && mode ? "active" : ""}`}
                 onClick={() => { onActiveClass(TRAIN_AREA); onMode(activeClass === TRAIN_AREA && mode ? null : "rect"); }}>
           <span className="train-swatch train-swatch-dash" style={{ borderColor: classColor(TRAIN_AREA) }} /> Training
@@ -227,26 +225,19 @@ export default function LabelTools({
         </button>
       </div>
       {drawingArea && mode && (
-        <p className="train-dim">
-          {activeClass === TRAIN_AREA ? "Drag a rectangle, then label every object inside it. Only these areas are learned from."
-            : "Drag a rectangle and label every object inside it. It is kept out of training and used to score models."}
-        </p>
+        <p className="train-dim">{activeClass === TRAIN_AREA ? "Label everything inside it" : "Label everything inside it · kept for scoring"}</p>
       )}
       {!classes.length && <p className="train-dim">Add a class in step 1 first.</p>}
       {editing ? (
-        <div className="label-edit">
-          <div className="label-edit-head">
-            <span className="train-swatch" style={{ background: classColor(editing.class_name) }} />
-            <span>Editing <b>{AREA_LABEL[editing.class_name] || editing.class_name}</b></span>
-            {editing.points_px && <span className="mono train-dim">{editing.points_lonlat.length} points</span>}
-          </div>
-          <p className="train-dim">Drag a corner or a midpoint · Alt+click a corner removes it · drag the shape to move it, the round handle to rotate (Shift in 15° steps) · {isArea(editing.class_name) ? "" : "1–9 changes the class · "}Delete removes it · Esc ends</p>
-          <div className="train-row">
-            <button type="button" className="train-tool" onClick={onEditDone}>Done</button>
-            <button type="button" className="link-button danger" onClick={onEditDelete}><IconTrash /> Delete</button>
-          </div>
+        <div className="label-edit"
+             title={`Drag corners or midpoints · Alt+click removes a corner · drag to move · round handle rotates${isArea(editing.class_name) ? "" : " · 1–9 class"} · Delete · Esc`}>
+          <span className="train-swatch" style={{ background: classColor(editing.class_name) }} />
+          <span className="label-edit-name">{AREA_LABEL[editing.class_name] || editing.class_name}</span>
+          <span className="mono train-dim">{editing.points_lonlat.length} pts</span>
+          <button type="button" className="label-btn danger" onClick={onEditDelete} aria-label="Delete label" title="Delete · Del"><IconTrash /></button>
+          <button type="button" className="label-btn" onClick={onEditDone} aria-label="Done" title="Done · Esc"><IconCheck /></button>
         </div>
-      ) : (!mode && classes.length > 0 && <p className="train-dim">Pick a tool, or click a saved shape to edit it</p>)}
+      ) : (!mode && classes.length > 0 && <p className="train-dim">Pick a tool, or click a label to edit</p>)}
       {labelError && <p className="train-error">{labelError}</p>}
       <div className="train-row train-row-split">
         <span className="train-dim"><span className="mono">{objects.length}</span> labelled · aim for 50+ per class</span>
