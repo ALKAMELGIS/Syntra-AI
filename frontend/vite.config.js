@@ -39,6 +39,9 @@ export default defineConfig(({ mode }) => {
       // fails loudly instead of silently moving to a different port.
       port: Number(env.VITE_PORT || 5291),
       strictPort: true,
+      // a Cloudflare quick tunnel (https://<words>.trycloudflare.com) or your own
+      // domain from VITE_ALLOWED_HOSTS (comma separated); everything else is refused
+      allowedHosts: [".trycloudflare.com", ...(env.VITE_ALLOWED_HOSTS || "").split(",").map((h) => h.trim()).filter(Boolean)],
       proxy: {
         "/api": { target: `http://localhost:${apiPort}`, timeout: 0, proxyTimeout: 0 },
       },

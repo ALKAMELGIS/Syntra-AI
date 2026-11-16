@@ -100,9 +100,17 @@ def require_api_key(request: Request) -> None:
 # --------------------------------------------------------------------------
 # Privileged actions (pip install / repair / update)
 # --------------------------------------------------------------------------
+# A tunnel or reverse proxy (Cloudflare Tunnel, nginx, the Vite dev proxy
+# passing a tunnel's headers on) connects from this machine, so its requests
+# look local. Any of these headers means the person is somewhere else.
+_PROXY_HEADERS = ("cf-connecting-ip", "cf-ray", "x-forwarded-for", "x-real-ip", "forwarded")
+
+
 def is_loopback(request: Request) -> bool:
     host = request.client.host if request.client else ""
-    return host in _LOOPBACK_HOSTS
+    if host not in _LOOPBACK_HOSTS:
+        return False
+    return not any(request.headers.get(h) for h in _PROXY_HEADERS)
 
 
 def environment_actions_allowed(request: Request) -> bool:
