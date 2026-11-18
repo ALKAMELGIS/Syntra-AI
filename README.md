@@ -512,6 +512,14 @@ for when it is exposed to a network (all in `backend/.env.example`):
   outlined on the map, zoom to selection, export, and sum / mean of the
   sorted column. Verified live with sample result layers (panel, options,
   labels, table, pop-up, information) and `vite build`.
+- **Delete an image.** A small trash icon at the top left of each image in
+  the gallery (on hover; always on touch screens) asks in the card, then
+  deletes every copy of that image from `backend/data/images`
+  (`DELETE /api/images/library/{folder}`). An image opened from your
+  computer is a hard link there, so the original file stays; an image with
+  labels is refused so samples are never lost. Verified:
+  `test_image_delete_offline.py` (7: copy gone and original kept, labelled
+  image refused, path tricks refused) and live (3 copies deleted).
 - **Layer lists like ArcGIS Online.** Each layer's ⋯ opens a small floating
   list under the button (above it when there is no room): results layers get
   Zoom to layer, Show properties, Show table, Rename (in place), Duplicate,

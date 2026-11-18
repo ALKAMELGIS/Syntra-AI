@@ -388,6 +388,33 @@ def _empty_png() -> bytes:
     return _EMPTY_TILE
 
 
+@router.delete("/library/{folder}")
+def delete_library_copy(folder: str):
+    """Delete one copy of an image from the library (backend/data/images/<folder>).
+
+    Only Syntra's own copy goes: an image opened from your computer is a hard
+    link there, so your original file stays where it is. An image that has
+    labels is refused, so samples are never lost by accident."""
+    import re
+    import shutil
+
+    from app.annotations import store
+
+    if not re.fullmatch(r"[0-9a-f]{8}|image", folder or ""):
+        raise HTTPException(status_code=400, detail="Not a library folder.")
+    root = settings.UPLOAD_DIR.resolve()
+    target = (root / folder).resolve()
+    if target.parent != root or not target.is_dir():
+        raise HTTPException(status_code=404, detail="No such image in the library.")
+    rasters = [p for p in target.iterdir() if p.is_file() and p.suffix.lower() in (".tif", ".tiff")]
+    labelled = sum(len(store.load_annotations(p)) for p in rasters)
+    if labelled:
+        raise HTTPException(status_code=409, detail=f"This image has {labelled} label(s). Delete or move them first; the image was kept.")
+    freed = sum(p.stat().st_size for p in target.rglob("*") if p.is_file())
+    shutil.rmtree(target)
+    return {"deleted": folder, "freed_bytes": freed}
+
+
 @router.get("/{image_id}/tiles/{z}/{x}/{y}.png")
 def get_image_tile(image_id: str, z: int, x: int, y: int, bands: str | None = None, stretch: str | None = None):
     """Full-resolution XYZ tile (Web Mercator, 256 px) cut from the GeoTIFF.

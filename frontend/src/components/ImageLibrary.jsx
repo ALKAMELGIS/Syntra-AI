@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { api } from "../api/client.js";
-import { IconClose } from "./Icons.jsx";
+import { IconClose, IconTrash } from "./Icons.jsx";
 
 // Every GeoTIFF this engine has on disk (GET /api/images), as a gallery: the
 // image's own preview, a short name read from the file name (sensor and
@@ -33,7 +33,7 @@ const day = (iso) => { const d = new Date(iso); return isNaN(d) ? null : d.toISO
 const noData = (e) => e.health?.findings?.some((f) => f.code === "no_data");
 const touches = (b, v) => b && v && !(b.north < v.south || b.south > v.north || b.east < v.west || b.west > v.east);
 
-export default function ImageLibrary({ open, onClose, onSelectImage, currentImageId, view }) {
+export default function ImageLibrary({ open, onClose, onSelectImage, currentImageId, view, onImageDeleted }) {
   const [entries, setEntries] = useState(null);
   const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
@@ -41,6 +41,8 @@ export default function ImageLibrary({ open, onClose, onSelectImage, currentImag
   const [sort, setSort] = useState("newest");              // newest | taken | name
   const [merge, setMerge] = useState(true);
   const [mode, setMode] = useState("gallery");             // gallery | list
+  const [confirm, setConfirm] = useState(null);            // the card asking "Delete?"
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -74,6 +76,21 @@ export default function ImageLibrary({ open, onClose, onSelectImage, currentImag
   }, [entries, merge, search, scope, view, sort]);
 
   if (!open) return null;
+
+  // each copy lives in its own library folder (backend/data/images/<folder>)
+  const folderOf = (e) => e.path.split(/[\\/]/).slice(-2, -1)[0];
+  async function remove(e) {
+    setBusy(true); setError(null);
+    try {
+      for (const c of e.copies) await api.deleteLibraryCopy(folderOf(c));
+      if (e.copies.some((c) => c.image_id && c.image_id === currentImageId)) onImageDeleted?.();
+      setConfirm(null);
+      setEntries(await api.listImages());
+    } catch (err) {
+      setError(err.detail?.message || err.detail || err.message);
+      setEntries(await api.listImages().catch(() => entries));
+    } finally { setBusy(false); }
+  }
 
   async function pick(entry) {
     if (!entry.image_id) return;
@@ -112,7 +129,8 @@ export default function ImageLibrary({ open, onClose, onSelectImage, currentImag
           const empty = noData(e);
           const meta = [e.d.taken || day(e.uploaded_at), fmtGsd(e.gsd_x_m), e.area_km2 ? `${Math.round(e.area_km2)} km²` : null].filter(Boolean).join(" · ");
           return (
-            <button type="button" key={e.path} className={`gal-card ${onMap ? "on" : ""} ${!e.image_id || empty ? "dim" : ""}`}
+            <div key={e.path} className="gal-wrap">
+            <button type="button" className={`gal-card ${onMap ? "on" : ""} ${!e.image_id || empty ? "dim" : ""}`}
                     disabled={!e.image_id} onClick={() => pick(e)} title={e.filename}>
               {mode === "gallery" && (
                 <span className="gal-thumb">
@@ -129,6 +147,20 @@ export default function ImageLibrary({ open, onClose, onSelectImage, currentImag
                 <span className="gal-tags mono">{onMap ? "on map" : ""}{onMap && e.copies.length > 1 ? " · " : ""}{e.copies.length > 1 ? `×${e.copies.length}` : ""}</span>
               )}
             </button>
+              {confirm === e.path ? (
+                <div className="gal-confirm" role="alertdialog" aria-label="Delete image">
+                  <span>{e.copies.length > 1 ? `Delete ${e.copies.length} copies?` : "Delete this image?"}</span>
+                  <span className="mono gal-confirm-sub">{fmtBytes(e.total) || "0 MB"} · original kept</span>
+                  <div>
+                    <button type="button" className="gal-del-go" disabled={busy} onClick={() => remove(e)}>{busy ? "Deleting…" : "Delete"}</button>
+                    <button type="button" className="gal-del-cancel" disabled={busy} onClick={() => setConfirm(null)}>Cancel</button>
+                  </div>
+                </div>
+              ) : (
+                <button type="button" className="gal-del" aria-label={`Delete ${e.d.title}`} title="Delete from Syntra"
+                        onClick={(ev) => { ev.stopPropagation(); setConfirm(e.path); }}><IconTrash /></button>
+              )}
+            </div>
           );
         })}
         {entries && cards.length === 0 && <p className="gal-none">{scope === "view" ? "No image in this map view" : "No images match"}</p>}

@@ -1928,7 +1928,7 @@ path.focus-outline { stroke: #f4f5f7; }
 .gal-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .gal-empty { position: absolute; inset: 0; display: grid; place-items: center; font-size: 12px; color: var(--text-muted);
   background: repeating-linear-gradient(135deg, #121519 0 8px, #16191e 8px 16px); }
-.gal-badge { position: absolute; left: 8px; top: 8px; padding: 2px 8px; border-radius: 6px; font-size: 11px; color: var(--text);
+.gal-badge { position: absolute; left: 8px; bottom: 8px; padding: 2px 8px; border-radius: 6px; font-size: 11px; color: var(--text);
   background: rgba(13, 15, 18, 0.86); box-shadow: 0 0 0 1px var(--border-strong); }
 .gal-copies { position: absolute; right: 8px; top: 8px; padding: 2px 6px; border-radius: 6px; font-size: 11px; color: var(--warn); background: rgba(13, 15, 18, 0.86); }
 .gal-name { padding: 0 6px; font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -2054,3 +2054,29 @@ input[type=range].gauge:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 2px 
   flex: 1; min-width: 0; height: 26px; padding: 0 6px; border-radius: 6px; border: 1px solid var(--accent);
   background: var(--bg); color: var(--text); font-size: 13px;
 }
+
+/* delete an image: a small trash at the image's top left, then a confirm in the card */
+.gal-wrap { position: relative; flex: none; display: flex; }
+.gallery-list .gal-wrap { display: block; }
+.gal-del {
+  position: absolute; left: 12px; top: 12px; display: grid; place-items: center; width: 26px; height: 26px; padding: 0;
+  border: none; border-radius: 6px; background: rgba(13, 15, 18, 0.86); color: var(--text-dim); cursor: pointer;
+  box-shadow: 0 0 0 1px var(--border-strong); opacity: 0; transition: opacity 0.12s var(--ease), color 0.12s var(--ease);
+}
+.gal-del svg { width: 14px; height: 14px; }
+.gal-wrap:hover .gal-del, .gal-del:focus-visible { opacity: 1; }
+.gal-del:hover { color: var(--error); }
+@media (hover: none) { .gal-del { opacity: 1; } }
+.gallery-list .gal-del { left: auto; right: 8px; top: 5px; }
+.gal-confirm {
+  position: absolute; inset: 6px 6px auto 6px; height: 140px; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 4px; border-radius: var(--radius-control); background: var(--bg); box-shadow: 0 0 0 1px var(--border-strong);
+  font-size: 13px; text-align: center; padding: 8px;
+}
+.gallery-list .gal-confirm { inset: 0; height: auto; flex-direction: row; gap: 12px; }
+.gal-confirm-sub { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+.gal-confirm div { display: flex; gap: 6px; margin-top: 6px; }
+.gallery-list .gal-confirm div { margin: 0; }
+.gal-del-go, .gal-del-cancel { height: 28px; padding: 0 12px; border-radius: 6px; font-size: 12px; cursor: pointer; border: 1px solid var(--border-strong); background: transparent; color: var(--text); }
+.gal-del-go { border-color: var(--error); color: var(--error); }
+.gal-del-go:hover:not(:disabled) { background: var(--error); color: #fff; }

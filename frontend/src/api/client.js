@@ -184,6 +184,7 @@ export const api = {
     if (display?.stretch) q.push(`stretch=${display.stretch}`);
     return withKey(`${BASE}/images/${imageId}/tiles/{z}/{x}/{y}.png${q.length ? `?${q.join("&")}` : ""}`);
   },
+  deleteLibraryCopy: (folder) => request(`${BASE}/images/library/${folder}`, { method: "DELETE" }).then(handle),
   vectorRead: (file) => {
     const form = new FormData();
     form.append("file", file);

@@ -616,6 +616,7 @@ export default function MapView({
         }}
         currentImageId={currentImageId}
         view={view}
+        onImageDeleted={onRemoveImage}
       />
       <SettingsPanel
         open={settingsOpen}
