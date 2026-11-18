@@ -7,7 +7,7 @@ import tempfile
 import zipfile
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Response
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Response
 
 from app.core.config import settings
 from app.engine.export_formats import geojson_to_kml
@@ -167,3 +167,74 @@ def apply_review_to_training(job_id: str, model_id: str):
     if not entry.get("bounds_wgs84") or not entry.get("width"):
         raise HTTPException(status_code=409, detail="The image has no geographic bounds yet")
     return apply_review(path, job_id, model_id, entry)
+
+
+# --- Refine outlines with SAM 2.1, and measure a layer on the accuracy areas ---
+REFINE_KIND = "refine"
+
+
+def _job_image(job_id: str) -> tuple[dict, dict]:
+    from app.core.image_library import find_entry_by_image_id
+    from app.core.jobs import get_store
+
+    job = get_store().get(job_id)
+    if not job or not job.get("image_id"):
+        raise HTTPException(status_code=404, detail="No detection run with that id.")
+    entry = find_entry_by_image_id(settings.UPLOAD_DIR, job["image_id"])
+    if not entry:
+        raise HTTPException(status_code=404, detail="The image this run used is no longer in the library.")
+    return job, entry
+
+
+def _run_refine(rid: str, job_id: str, model_id: str, path: str) -> None:
+    from app.core.jobs import get_store
+    from app.engine.refine_results import refine_layer
+
+    store = get_store()
+    try:
+        store.update(rid, status="processing")
+        fc = json.loads(_result_path(job_id, model_id).read_text())
+        out, stats = refine_layer(path, fc, progress=lambda d, n: store.update(rid, done=d, total=n))
+        target = _result_path(job_id, model_id).with_name(f"{model_id}__refined.geojson")
+        target.write_text(json.dumps(out))
+        store.update(rid, status="completed", stats=stats, result_model_id=f"{model_id}__refined")
+    except Exception as exc:  # noqa: BLE001 - the reason goes to the person
+        store.update(rid, status="error", error=str(exc))
+
+
+@router.post("/{job_id}/{model_id}/refine")
+def refine_outlines(job_id: str, model_id: str, background_tasks: BackgroundTasks):
+    """Trace every object again with SAM 2.1 inside its detected box and fit
+    its class's shape; written beside the run as <model_id>__refined."""
+    from app.core.jobs import get_store
+    from app.engine import click_segment
+
+    src = _result_path(job_id, model_id)
+    try:
+        click_segment._get_engine()
+    except click_segment.SegmentUnavailable as exc:
+        raise HTTPException(status_code=409, detail=f"Refining needs the click tool's SAM model. {exc}") from None
+    _job, entry = _job_image(job_id)
+    rid = get_store().create(REFINE_KIND, job_ref=job_id, model_id=model_id, done=0, total=0)
+    background_tasks.add_task(_run_refine, rid, job_id, model_id, entry["path"])
+    return {"job_id": rid}
+
+
+@router.post("/{job_id}/{model_id}/score")
+def score_against_labels(job_id: str, model_id: str, body: dict | None = None):
+    """Match the layer with the labels inside the accuracy areas of its image."""
+    from app.annotations import store
+    from app.engine.refine_results import score_layer
+
+    src = _result_path(job_id, model_id)
+    _job, entry = _job_image(job_id)
+    anns = store.load_annotations(entry["path"])
+    feat = lambda a: {"type": "Feature", "properties": {"class_name": a["class_name"]},  # noqa: E731
+                      "geometry": {"type": "Polygon", "coordinates": [a["points_lonlat"] + [a["points_lonlat"][0]]]}}
+    areas = [feat(a) for a in anns if a["class_name"] == store.CHECK_AREA]
+    labels = [feat(a) for a in anns if a["class_name"] not in (store.CHECK_AREA, store.TRAIN_AREA)]
+    try:
+        return score_layer(json.loads(src.read_text()).get("features", []), labels, areas,
+                           class_name=(body or {}).get("class_name"), iou_min=float((body or {}).get("iou_min", 0.5)))
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from None

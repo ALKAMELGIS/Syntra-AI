@@ -155,6 +155,9 @@ export const api = {
   putReview: (jobId, modelId, changes) => request(`${BASE}/results/${jobId}/${modelId}/review`,
     { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ changes }) }).then(handle),
   applyReview: (jobId, modelId) => request(`${BASE}/results/${jobId}/${modelId}/review/apply`, { method: "POST" }).then(handle),
+  refineResult: (jobId, modelId) => request(`${BASE}/results/${jobId}/${modelId}/refine`, { method: "POST" }).then(handle),
+  scoreResult: (jobId, modelId, body = {}) => request(`${BASE}/results/${jobId}/${modelId}/score`,
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).then(handle),
   getGeojson: (jobId, modelId) => request(`${BASE}/results/${jobId}/${modelId}`).then(handle),
   listDatasetVersions: (modelId) => request(`${BASE}/datasets/${modelId}/versions`).then(handle),
   getDatasetVersion: (modelId, versionId) =>

@@ -367,6 +367,8 @@ export default function App({ user = null, onSignOut = null }) {
       geojson: filtered[key],
       // for the layer's Information page
       modelId: job.model_id,
+      jobId: job.job_id,                  // refine / measure on the server
+      resultId: job.model_id,
       modelVersion: job.model_version || models.find((m) => m.model_id === job.model_id)?.version || null,
       imageName: job.image_name || image?.filename || null,
       ranAt: runTime(job.updated_at || job.created_at),

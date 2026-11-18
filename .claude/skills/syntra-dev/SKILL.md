@@ -31,6 +31,10 @@ real, what is written but unrun, and how it was verified.
   go in `SENSOR_RGB` with a note on how the order was established.
 - Anything new a GeoTIFF can get wrong belongs in `raster_health.py` as a
   finding with a level, a plain explanation and the fix.
+- Accuracy claims come from `score_layer` (results vs labels inside the
+  accuracy areas), never from a model's own confidence. A refinement that
+  is unsure keeps the detector outline and says why (`outline`,
+  `refine_note`); never replace a shape with one SAM was not sure of.
 - Exported geometry is WGS84 lon/lat. Do cross-tile merging in the raster
   CRS, then reproject (`reproject_detections_to_wgs84`). Never write
   projected coordinates into GeoJSON or KML.

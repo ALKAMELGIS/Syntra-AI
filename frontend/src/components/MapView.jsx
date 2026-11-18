@@ -434,6 +434,7 @@ export default function MapView({
         ...l, baseName: l.name, name: st.name || l.name, color: st.color || l.color,
         visible: st.visible ?? true, opacity: st.opacity ?? 1, minScore, labels: st.labels ?? false, popups: st.popups ?? true,
         minZoom: st.minZoom ?? null, maxZoom: st.maxZoom ?? null,
+        task: st.task || null, taskError: st.taskError || null, accuracy: st.accuracy || null,
         isArea: l.key.endsWith("vegetation_index"), features, shown, count: shown.length,
         value: /ha$/.test(l.value || "") ? l.value : String(shown.length),
       };
@@ -480,6 +481,48 @@ export default function MapView({
                              geojson: { type: "FeatureCollection", features }, value: String(features.length), version: 0,
                              modelId: l.modelId, modelVersion: l.modelVersion, imageName: l.imageName, ranAt: l.ranAt }]);
   };
+  // SAM 2.1 traces every object again inside its box; the result is a new layer beside the original
+  async function refineLayer(key) {
+    const l = vlayers.find((x) => x.key === key);
+    if (!l?.jobId) return;
+    const say = (task) => patchLayer(key, { task });
+    try {
+      patchLayer(key, { task: "Refining…", taskError: null });
+      const { job_id: rid } = await api.refineResult(l.jobId, l.resultId);
+      let j;
+      for (;;) {
+        await new Promise((r) => setTimeout(r, 800));
+        j = await api.job(rid);
+        if (["completed", "error", "failed", "interrupted"].includes(j.status)) break;
+        if (j.total) say(`Refining ${j.done}/${j.total}`);
+      }
+      if (j.status !== "completed") throw new Error(j.error || "Refining stopped");
+      const gj = await api.getGeojson(l.jobId, j.result_model_id);
+      const st = j.stats || {};
+      const n = added.length;
+      setAdded((a) => [...a, { key: `added:${Date.now()}`, name: `${l.name} · refined`, color: ADDED_COLOURS[n % ADDED_COLOURS.length],
+        geojson: gj, value: String(gj.features?.length ?? 0), version: 0, modelId: l.modelId, modelVersion: l.modelVersion,
+        imageName: l.imageName, ranAt: l.ranAt, jobId: l.jobId, resultId: j.result_model_id,
+        note: `SAM 2.1 outlines: ${st.refined ?? 0} of ${st.objects ?? 0} refined, ${st.kept ?? 0} kept from the detector`
+          + (st.reasons && Object.keys(st.reasons).length ? ` (${Object.entries(st.reasons).map(([k, v]) => `${v} ${k}`).join(", ")})` : "") }]);
+      say(null);
+    } catch (err) {
+      say(null);
+      patchLayer(key, { taskError: err.detail || err.message });
+    }
+  }
+  // the layer against the labels drawn inside the image's accuracy areas
+  async function scoreLayer(key) {
+    const l = vlayers.find((x) => x.key === key);
+    if (!l?.jobId) return;
+    patchLayer(key, { task: "Measuring…", taskError: null });
+    try {
+      const res = await api.scoreResult(l.jobId, l.resultId);
+      patchLayer(key, { task: null, accuracy: { ...res, at: new Date().toLocaleString("sv").slice(0, 16) } });
+    } catch (err) {
+      patchLayer(key, { task: null, taskError: err.detail || err.message });
+    }
+  }
   const addService = (sv) => setServices((s) => [...s, { ...sv, key: `svc:${Date.now()}`, visible: true, opacity: 1 }]);
   const patchService = (key, p) => setServices((s) => s.map((x) => (x.key === key ? { ...x, ...p } : x)));
   const removeService = (key) => setServices((s) => s.filter((x) => x.key !== key));
@@ -647,7 +690,7 @@ export default function MapView({
       <LayersPanel
         open={legendOpen} onClose={() => setLegendOpen(false)}
         layers={vlayers} onPatch={patchLayer} onMove={moveLayer} onRemove={removeLayer} onZoom={zoomTo} onTable={openTable}
-        onDuplicate={duplicateLayer} onRemoveImage={onRemoveImage}
+        onDuplicate={duplicateLayer} onRefine={refineLayer} onScore={scoreLayer} onRemoveImage={onRemoveImage}
         allVisible={detectionsVisible} onToggleAll={onToggleDetections}
         aoi={aoi} aoiVisible={aoiVisible} onAoiVisible={setAoiVisible} aoiLabel={aoiLabel}
         image={sourceImage} imageLayer={imageLayer} onImageLayer={setImageLayer}

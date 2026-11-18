@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   IconPlus, IconArrowDown, IconArrowUp, IconClose, IconDownload, IconEye, IconEyeOff, IconInfo, IconMore,
-  IconTable, IconTrash, IconZoomTo, IconEdit, IconChevronLeft, IconCopy,
+  IconTable, IconTrash, IconZoomTo, IconEdit, IconChevronLeft, IconCopy, IconClickAI, IconCheck,
 } from "./Icons.jsx";
 import { LAYER_COLOURS, downloadGeojson, featuresBounds, fieldType, fieldsOf, unitOf } from "./layerUtils.js";
 
@@ -78,6 +78,8 @@ function PropsHeader({ title, sub, onBack, onClose }) {
   );
 }
 
+const pct = (v) => (v == null ? "—" : `${(v * 100).toFixed(1)} %`);
+
 // Properties of a results or added layer: appearance, filter, then its source and fields.
 function VectorProps({ layer, onPatch, zoom, onBack, onClose }) {
   const b = featuresBounds(layer.features);
@@ -117,6 +119,20 @@ function VectorProps({ layer, onPatch, zoom, onBack, onClose }) {
                     onChange={(v) => onPatch({ minScore: v })} fmt={(v) => v.toFixed(2)} />
           </>)}
         </div>
+        {(layer.jobId && (layer.accuracy || layer.task || layer.taskError)) && (<>
+          <div className="lp-group-label">Accuracy</div>
+          {layer.accuracy ? (
+            <dl className="lp-dl">
+              <dt>F1</dt><dd className="mono lp-key">{pct(layer.accuracy.f1)}</dd>
+              <dt>Precision</dt><dd className="mono">{pct(layer.accuracy.precision)}</dd>
+              <dt>Recall</dt><dd className="mono">{pct(layer.accuracy.recall)}</dd>
+              <dt>Outline IoU</dt><dd className="mono">{pct(layer.accuracy.mean_iou)}</dd>
+              <dt>Matched</dt><dd className="mono">{layer.accuracy.matched} of {layer.accuracy.labels} labels · {layer.accuracy.results} found</dd>
+              <dt>Checked</dt><dd className="mono">{layer.accuracy.areas} area{layer.accuracy.areas === 1 ? "" : "s"} · IoU ≥ {layer.accuracy.iou_min} · {layer.accuracy.at}</dd>
+            </dl>
+          ) : <p className="lp-note" style={{ padding: "0 16px 8px" }}>{layer.task || layer.taskError}</p>}
+          {layer.accuracy && layer.taskError && <p className="lp-note" style={{ padding: "0 16px 8px" }}>{layer.taskError}</p>}
+        </>)}
         <div className="lp-group-label">Source</div>
         <dl className="lp-dl">
           {layer.modelId && (<><dt>Model</dt><dd className="mono">{layer.modelId}{layer.modelVersion ? ` · ${layer.modelVersion}` : ""}</dd></>)}
@@ -283,7 +299,7 @@ function AddLayer({ onFile, onService, onDone }) {
 const BASEMAP_CHOICES = [["satellite", "Satellite"], ["streets", "Streets"], ["none", "None"]];
 
 export default function LayersPanel({
-  open, onClose, layers, onPatch, onMove, onRemove, onZoom, onTable, onDuplicate, allVisible, onToggleAll,
+  open, onClose, layers, onPatch, onMove, onRemove, onZoom, onTable, onDuplicate, onRefine, onScore, allVisible, onToggleAll,
   aoi, aoiVisible, onAoiVisible, aoiLabel, image, imageLayer, onImageLayer, onZoomImage, onRemoveImage, basemap, onBasemap,
   zoom, onAddFile, onAddService, services = [], onServicePatch, onServiceRemove,
 }) {
@@ -346,6 +362,10 @@ export default function LayersPanel({
       "-",
       { label: "Rename", Icon: IconEdit, run: () => setRenaming(l.key) },
       { label: "Duplicate", Icon: IconCopy, run: () => onDuplicate(l.key) },
+      ...(l.jobId ? [
+        ...(String(l.resultId).endsWith("__refined") ? [] : [{ label: "Refine outlines", Icon: IconClickAI, hint: "SAM", disabled: !!l.task, run: () => onRefine(l.key) }]),
+        { label: "Measure accuracy", Icon: IconCheck, disabled: !!l.task, run: () => { onScore(l.key); setPage({ kind: "vector", key: l.key }); } },
+      ] : []),
       { label: "Export GeoJSON", Icon: IconDownload, hint: l.shown.length, run: () => downloadGeojson(l.name, l.shown) },
       { label: "Remove", Icon: IconTrash, danger: true, run: () => onRemove(l.key) },
       "-",
@@ -400,7 +420,7 @@ export default function LayersPanel({
                 </button>
                 <Swatch layer={l} />
                 {name(l.key, l.name, l.baseName, `lp-name ${l.visible && allVisible ? "" : "dim"}`)}
-                <span className="mono lp-val">{l.value}</span>
+                <span className="mono lp-val" title={l.taskError || undefined}>{l.task || (l.taskError ? "failed" : l.value)}</span>
                 {moreBtn(l.key, l.name)}
               </div>
             ))}

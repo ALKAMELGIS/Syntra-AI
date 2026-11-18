@@ -370,6 +370,26 @@ for when it is exposed to a network (all in `backend/.env.example`):
   were refused by the gate. **Not yet run with the real SAM weights**:
   huggingface.co is blocked in the build environment; on your machine
   Click > Install click tool downloads about 120 MB once.
+- **Refine outlines and measure accuracy.** A result layer's ⋯ menu has
+  Refine outlines (SAM) and Measure accuracy. Refine sends every detected
+  object to SAM 2.1 as a box prompt (one encode per 1024 px cell, the click
+  tool's model), fits the class's shape (`shapes.py`), re-measures it and
+  adds the result as a new layer "<name> · refined" beside the original
+  (`app/engine/refine_results.py`, background job `refine`). An object keeps
+  the detector's outline, marked `outline: detector` with the reason, when
+  SAM's score is under 0.70, the trace overlaps the detection under IoU 0.30
+  or its area is outside 0.15-1.6× the detection: refinement never invents
+  a shape. Measure accuracy matches the layer one to one with the labels
+  inside the image's accuracy areas (IoU ≥ 0.5, greedy) and shows F1,
+  precision, recall and the mean outline IoU in the layer's Properties; it
+  refuses without an accuracy area. Verified: `test_refine_results_offline.py`
+  (3 tests: a stand-in SAM tightens a box and the layer is re-measured, an
+  unsure SAM keeps the detector outline, 409 without SAM, path refusal,
+  scoring 1 of 2 matched with an object outside the area ignored), live in
+  the browser with the stand-in engine: refined layer added, Properties
+  showed F1 80 %, precision 66.7 %, recall 100 %. **Not run with the real
+  SAM weights or a trained model**: the 95-98 % target needs a trained
+  class model and labelled accuracy areas, and this page is how to check it.
 - **Train on a RunPod GPU (plan stage 3).** Settings > GPU training: paste
   a RunPod API key (checked, kept in `secrets.json`). Train > Where: RunPod
   GPU (RTX 4090 / 5090, L40S, A40; Community or Secure; a stop-after limit in

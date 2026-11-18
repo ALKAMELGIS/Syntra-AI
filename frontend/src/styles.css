@@ -2112,3 +2112,6 @@ input[type=range].gauge:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 2px 
 .rh-pop .raster-health-head { cursor: default; }
 .rh-pop .raster-health-head:hover { background: transparent; }
 .rh-pop .raster-health-notes { padding: 0 8px 8px; }
+
+/* the one number that matters on a layer's accuracy page */
+.lp-dl dd.lp-key { color: var(--accent); font-weight: 500; }
