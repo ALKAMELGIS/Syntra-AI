@@ -127,8 +127,7 @@ export default function App({ user = null, onSignOut = null }) {
         if (!restored[key]) restored[key] = j; // list is newest first
       }
       if (cancelled || Object.keys(restored).length === 0) return;
-      setJobs((prev) => ({ ...restored, ...prev }));
-      setAnalysisOpen(true);
+      setJobs((prev) => ({ ...restored, ...prev }));   // Analysis stays closed: the person opens it
 
       const newest = recent.find((j) => j.image_id);
       api.getImage(newest.image_id).then((img) => !cancelled && setImage((cur) => cur || img)).catch(() => {});
@@ -207,7 +206,6 @@ export default function App({ user = null, onSignOut = null }) {
     const validImages = (images || []).filter(Boolean);
     if (validImages.length === 0 || modelIds.length === 0) return;
 
-    setAnalysisOpen(true);
     for (const img of validImages) {
       for (const modelId of modelIds) {
         const key = jobKey(img.image_id, modelId);
@@ -463,6 +461,7 @@ export default function App({ user = null, onSignOut = null }) {
             analysisOpen={analysisOpen}
             onToggleAnalysis={() => setAnalysisOpen((v) => !v)}
             analysisCount={analysisEntries.length}
+            analysisRunning={Object.values(jobs).some((j) => j && ["queued", "processing", "starting"].includes(j.status))}
             focusFeature={focusFeature}
             analysisPanel={
               <AnalysisPanel entries={analysisEntries} colorFor={colorFor} onClose={() => setAnalysisOpen(false)}

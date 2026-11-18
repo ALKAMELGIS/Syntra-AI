@@ -51,7 +51,7 @@ const MAX_ZOOM = 24;
 // they are not decorative.
 function MapToolbar({
   layers, sourceImage, basemap, onBasemapChange, legendOpen, onLegendToggle,
-  onOpenLibrary, onOpenSettings, analysisOpen, onToggleAnalysis, analysisCount,
+  onOpenLibrary, onOpenSettings, analysisOpen, onToggleAnalysis, analysisCount, analysisRunning,
   detectionsVisible, onToggleDetections, trainOpen, onToggleTrain, perfOpen, onTogglePerf, libOpen, onToggleLib, editMenu,
 }) {
   const map = useMap();
@@ -121,11 +121,12 @@ function MapToolbar({
       <div className="map-toolbar-sep" />
       <button
         className={`map-tool-btn ${analysisOpen ? "active" : ""}`}
-        data-tool="analysis" title="Analysis results"
-        onClick={onToggleAnalysis}
+        data-tool="analysis" title={analysisRunning ? "Analysis results · running" : "Analysis results"}
+        aria-expanded={analysisOpen} onClick={onToggleAnalysis}
       >
         <IconAnalysis />
-        {analysisCount > 0 && <span className="map-tool-badge">{analysisCount}</span>}
+        {analysisRunning ? <span className="map-tool-badge running" aria-label="Running" />
+          : analysisCount > 0 && <span className="map-tool-badge">{analysisCount}</span>}
       </button>
       <button className={`map-tool-btn ${perfOpen ? "active" : ""}`} data-tool="performance" title="Model performance"
               aria-expanded={perfOpen} onClick={onTogglePerf}>
@@ -352,7 +353,7 @@ export default function MapView({
   aoi, onAoiChange, measurement, onMeasurementChange,
   trainOpen, onToggleTrain, onAnnotate, labels, trainPanel, perfOpen, onTogglePerf, perfPanel, libOpen, onToggleLib, libPanel,
   onSelectLibraryImage, currentImageId, sourceImage,
-  analysisOpen, onToggleAnalysis, analysisCount, analysisPanel, focusFeature = null,
+  analysisOpen, onToggleAnalysis, analysisCount, analysisRunning, analysisPanel, focusFeature = null,
 }) {
   const [basemap, setBasemap] = useState("satellite");
   const [legendOpen, setLegendOpen] = useState(false);
@@ -587,6 +588,7 @@ export default function MapView({
           analysisOpen={analysisOpen}
           onToggleAnalysis={onToggleAnalysis}
           analysisCount={analysisCount}
+          analysisRunning={analysisRunning}
           detectionsVisible={detectionsVisible}
           onToggleDetections={onToggleDetections}
           trainOpen={trainOpen}
