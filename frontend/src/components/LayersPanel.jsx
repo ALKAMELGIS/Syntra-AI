@@ -51,7 +51,14 @@ function LayerMenu({ top, items, onClose }) {
   }, [onClose]);
   return (
     <div className="lp-menu" role="menu" ref={ref} style={{ top }}>
-      {items.map((it, i) => it === "-" ? <div key={i} className="lp-menu-sep" role="separator" /> : (
+      {items.map((it, i) => it === "-" ? <div key={i} className="lp-menu-sep" role="separator" /> : it.slider ? (
+        <label key={it.label} className="lp-menu-slider">
+          <span>{it.label}</span>
+          <input type="range" className="gauge" min={0} max={it.max ?? 100} step={5} value={it.value}
+                 style={{ "--fill": `${(it.value / (it.max ?? 100)) * 100}%` }} onChange={(e) => it.onChange(Number(e.target.value))} />
+          <span className="mono">{it.value} %</span>
+        </label>
+      ) : (
         <button key={it.label} type="button" role="menuitem" disabled={it.disabled} className={it.danger ? "danger" : ""}
                 onClick={() => { onClose(); it.run(); }}>
           <it.Icon />{it.label}{it.hint != null && <span className="mono">{it.hint}</span>}
@@ -302,7 +309,7 @@ export default function LayersPanel({
     if (menu?.key === key) { setMenu(null); return; }
     // right under the ⋯ button; above it when the window has no room below
     const pr = ref.current.getBoundingClientRect(), br = e.currentTarget.getBoundingClientRect();
-    const h = key === "raster" ? 120 : services.some((x) => x.key === key) ? 88 : 300;
+    const h = key === "raster" ? 170 : services.some((x) => x.key === key) ? 140 : 350;
     const fitsBelow = br.bottom + 4 + h <= window.innerHeight - 8;
     setMenu({ key, top: fitsBelow ? br.bottom - pr.top + 4 : Math.max(8 - pr.top, br.top - pr.top - h - 4) });
   }
@@ -334,6 +341,8 @@ export default function LayersPanel({
       { label: "Show properties", Icon: IconInfo, run: () => setPage({ kind: "vector", key: l.key }) },
       { label: "Show table", Icon: IconTable, hint: l.shown.length, run: () => onTable(l.key) },
       "-",
+      { slider: true, label: "Transparency", max: 90, value: Math.round((1 - l.opacity) * 100), onChange: (v) => onPatch(l.key, { opacity: 1 - v / 100 }) },
+      "-",
       { label: "Rename", Icon: IconEdit, run: () => setRenaming(l.key) },
       { label: "Duplicate", Icon: IconCopy, run: () => onDuplicate(l.key) },
       { label: "Export GeoJSON", Icon: IconDownload, hint: l.shown.length, run: () => downloadGeojson(l.name, l.shown) },
@@ -345,11 +354,15 @@ export default function LayersPanel({
     else if (sv) items = [
       { label: "Show properties", Icon: IconInfo, run: () => setPage({ kind: "service", key: sv.key }) },
       "-",
+      { slider: true, label: "Transparency", value: Math.round((1 - sv.opacity) * 100), onChange: (v) => onServicePatch(sv.key, { opacity: 1 - v / 100 }) },
+      "-",
       { label: "Remove", Icon: IconTrash, danger: true, run: () => onServiceRemove(sv.key) },
     ];
     else if (menu.key === "raster" && image?.image_id) items = [
       { label: "Zoom to layer", Icon: IconZoomTo, run: onZoomImage },
       { label: "Show properties", Icon: IconInfo, run: () => setPage({ kind: "raster" }) },
+      "-",
+      { slider: true, label: "Transparency", value: Math.round((1 - imageLayer.opacity) * 100), onChange: (v) => onImageLayer({ ...imageLayer, opacity: 1 - v / 100 }) },
       "-",
       { label: "Remove", Icon: IconTrash, danger: true, run: onRemoveImage },
     ];
@@ -437,6 +450,7 @@ export default function LayersPanel({
               </button>
               <span className="lp-swatch raster" aria-hidden="true" />
               <span className={`lp-name ${imageLayer.visible ? "" : "dim"}`} title={image.filename}>{image.filename}</span>
+              {imageLayer.opacity < 1 && <span className="mono lp-val lp-op" title="Transparency">{Math.round((1 - imageLayer.opacity) * 100)} %</span>}
               {res && <span className="mono lp-val" title="Ground size of one pixel">{res}</span>}
               {moreBtn("raster", image.filename)}
             </div>

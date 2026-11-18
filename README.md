@@ -512,6 +512,12 @@ for when it is exposed to a network (all in `backend/.env.example`):
   outlined on the map, zoom to selection, export, and sum / mean of the
   sorted column. Verified live with sample result layers (panel, options,
   labels, table, pop-up, information) and `vite build`.
+- **Transparency in the layer list.** Each layer's ⋯ list has a
+  Transparency slider (image, results, services) that changes the map as it
+  moves; the image row shows its transparency when it is not 0 %. A newly
+  opened image starts fully opaque with no display changes; settings belong
+  to the image they were made on. Verified live (a saved 30 % opacity from
+  another image reset to 100 %, slider set 40 % with the list open).
 - **Delete an image.** A small trash icon at the top left of each image in
   the gallery (on hover; always on touch screens) asks in the card, then
   deletes every copy of that image from `backend/data/images`

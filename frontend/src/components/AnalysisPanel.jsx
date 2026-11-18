@@ -43,7 +43,7 @@ function JobRow({ entry, color, shown, onReview }) {
         <span className="analysis-name">{modelMeta?.name || job.model_id}</span>
         {job.status === "completed" && job.result && (
           <span className="analysis-count mono">
-            {job.result.summary ? `${job.result.summary.vegetation_area_ha} ha`
+            {job.result.summary?.vegetation_area_ha != null ? `${job.result.summary.vegetation_area_ha} ha`
               : shown != null && shown !== job.result.final_detection_count ? `${shown} of ${job.result.final_detection_count}`
               : job.result.final_detection_count}
           </span>

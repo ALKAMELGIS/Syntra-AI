@@ -2080,3 +2080,8 @@ input[type=range].gauge:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 2px 
 .gal-del-go, .gal-del-cancel { height: 28px; padding: 0 12px; border-radius: 6px; font-size: 12px; cursor: pointer; border: 1px solid var(--border-strong); background: transparent; color: var(--text); }
 .gal-del-go { border-color: var(--error); color: var(--error); }
 .gal-del-go:hover:not(:disabled) { background: var(--error); color: #fff; }
+
+.lp-menu-slider { display: grid; grid-template-columns: auto 1fr 40px; align-items: center; gap: 10px; height: 36px; padding: 0 10px; font-size: 13px; color: var(--text); }
+.lp-menu-slider input { width: 100%; min-width: 72px; }
+.lp-menu-slider .mono { font-size: 12px; color: var(--text-dim); text-align: right; }
+.lp-op { color: var(--warn); }

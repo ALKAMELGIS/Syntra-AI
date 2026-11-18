@@ -352,6 +352,13 @@ export default function MapView({
     setImageLayerRaw(v);
     try { localStorage.setItem(LAYER_KEY, JSON.stringify(v)); } catch { /* storage unavailable */ }
   };
+  // A newly opened image starts fully visible with no display changes; the
+  // settings belong to the image they were made on and come back with it.
+  useEffect(() => {
+    const id = sourceImage?.image_id;
+    if (!id || imageLayer.forImage === id) return;
+    setImageLayer({ visible: true, opacity: 1, contrast: 0, brightness: 0, bands: null, stretch: null, displayFor: id, forImage: id });
+  }, [sourceImage?.image_id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Legend and Analysis both open beside the toolbar: show one at a time.
   useEffect(() => {
