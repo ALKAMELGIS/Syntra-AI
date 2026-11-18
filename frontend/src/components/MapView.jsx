@@ -161,20 +161,31 @@ function SourceImage({ image, bounds, opacity = 1, display = null }) {
   const custom = Boolean(display?.bands?.length || display?.stretch);
   const useTiles = !image.optimize_job_id && (custom || (tileZoom != null && zoom >= tileZoom));
   const ll = [[bounds.south, bounds.west], [bounds.north, bounds.east]];
-  return useTiles ? (
-    <TileLayer
-      key={`tiles-${image.image_id}-${display?.bands?.join(",") || ""}-${display?.stretch || ""}`}
-      url={api.imageTileUrl(image.image_id, display)}
-      bounds={ll}
-      zIndex={10}
-      maxZoom={MAX_ZOOM}
-      maxNativeZoom={Math.min(MAX_ZOOM, nativeZoom ?? MAX_ZOOM)}
-      keepBuffer={1}
-      opacity={opacity}
-      className="syntra-raster"
-    />
-  ) : (
-    <ImageOverlay key={image.image_id} url={api.imagePreviewUrl(image.image_id)} bounds={ll} opacity={opacity} className="syntra-raster" />
+  // The preview stays underneath at every zoom; tiles draw over it when they
+  // are finer. A tile that is still loading shows the preview, never a hole,
+  // and switching between the two never blanks the image.
+  return (
+    <>
+      <ImageOverlay key={`preview-${image.image_id}`} url={api.imagePreviewUrl(image.image_id)} bounds={ll}
+                    opacity={opacity} className="syntra-raster" zIndex={9} />
+      {useTiles && (
+        <TileLayer
+          key={`tiles-${image.image_id}-${display?.bands?.join(",") || ""}-${display?.stretch || ""}`}
+          url={api.imageTileUrl(image.image_id, display)}
+          bounds={ll}
+          zIndex={10}
+          maxZoom={MAX_ZOOM}
+          maxNativeZoom={Math.min(MAX_ZOOM, nativeZoom ?? MAX_ZOOM)}
+          // no requests mid-zoom (they are thrown away and look like flicker);
+          // a wider ring of tiles kept around the view for smooth panning
+          updateWhenZooming={false}
+          keepBuffer={6}
+          noWrap
+          opacity={opacity}
+          className="syntra-raster"
+        />
+      )}
+    </>
   );
 }
 

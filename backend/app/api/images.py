@@ -432,8 +432,8 @@ def get_image_tile(image_id: str, z: int, x: int, y: int, bands: str | None = No
     if entry is None:
         raise HTTPException(status_code=404, detail=f"No library image with id '{image_id}'.")
     try:
-        from app.engine.tiles import render_tile
-        png = render_tile(entry["path"], z, x, y, disp_bands, disp_stretch)
+        from app.engine.tiles import cached_tile
+        png = cached_tile(entry["path"], z, x, y, disp_bands, disp_stretch)
     except ImportError:
         raise HTTPException(status_code=503, detail="rasterio not installed.")
     except ValueError as exc:

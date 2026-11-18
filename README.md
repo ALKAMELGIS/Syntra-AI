@@ -512,6 +512,15 @@ for when it is exposed to a network (all in `backend/.env.example`):
   outlined on the map, zoom to selection, export, and sum / mean of the
   sorted column. Verified live with sample result layers (panel, options,
   labels, table, pop-up, information) and `vite build`.
+- **Steady GeoTIFF display while zooming.** The image's preview now stays
+  underneath at every zoom and the full-resolution tiles draw over it, so a
+  tile still loading shows the preview instead of a hole and switching
+  between the two never blanks the image. Tiles are not requested mid-zoom,
+  a wider ring is kept around the view, and the server keeps rendered tiles
+  in memory (96 MB, keyed by the file's size and change time) so returning
+  to a place is instant. Verified: `test_tile_cache_offline.py` (2) and a
+  live zoom-in / zoom-out burst over a 6000 px GeoTIFF, 56 screenshots
+  mid-animation with the image complete in every one.
 - **Transparency in the layer list.** Each layer's ⋯ list has a
   Transparency slider (image, results, services) that changes the map as it
   moves; the image row shows its transparency when it is not 0 %. A newly

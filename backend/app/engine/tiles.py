@@ -119,3 +119,35 @@ def native_zoom(gsd_m: float | None, lat: float) -> int | None:
     if not gsd_m:
         return None
     return int(math.ceil(math.log2(2 * math.pi * 6378137 * math.cos(math.radians(lat)) / 256 / gsd_m)))
+
+
+# Rendered tiles, kept in memory so zooming back and forth or panning over
+# the same place answers at once instead of reading the GeoTIFF again. Keyed
+# by the file's size and change time, so an edited file is never served stale.
+_TILE_CACHE: "OrderedDict[tuple, bytes | None]" = None  # type: ignore[assignment]
+_TILE_CACHE_BYTES = 0
+_TILE_CACHE_MAX = 96 * 1024 * 1024
+_TILE_LOCK = threading.Lock()
+
+
+def cached_tile(path: str, z: int, x: int, y: int, bands: tuple[int, ...] | None = None,
+                stretch: tuple[float, float] | None = None) -> bytes | None:
+    global _TILE_CACHE, _TILE_CACHE_BYTES
+    from collections import OrderedDict
+
+    st = os.stat(path)
+    key = (path, st.st_size, st.st_mtime_ns, z, x, y, bands, stretch)
+    with _TILE_LOCK:
+        if _TILE_CACHE is None:
+            _TILE_CACHE = OrderedDict()
+        if key in _TILE_CACHE:
+            _TILE_CACHE.move_to_end(key)
+            return _TILE_CACHE[key]
+    png = render_tile(path, z, x, y, bands, stretch)
+    with _TILE_LOCK:
+        _TILE_CACHE[key] = png
+        _TILE_CACHE_BYTES += len(png or b"")
+        while _TILE_CACHE_BYTES > _TILE_CACHE_MAX and _TILE_CACHE:
+            _, old = _TILE_CACHE.popitem(last=False)
+            _TILE_CACHE_BYTES -= len(old or b"")
+    return png
