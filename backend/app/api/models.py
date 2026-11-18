@@ -155,13 +155,21 @@ def uninstall_pack(pack_id: str):
 @router.get("/performance")
 def list_performance():
     """Models that have a training history to show in the Model performance panel."""
-    from app.engine.performance import models_with_performance
-    return models_with_performance()
+    from app.engine.performance import models_with_performance, training_runs
+    return training_runs() + models_with_performance()
 
 
 @router.get("/{model_id}/performance")
 def get_performance(model_id: str):
-    from app.engine.performance import model_performance
+    from app.engine.performance import model_performance, run_performance
+
+    if model_id.startswith("run:"):                       # a training run, live while it trains
+        from app.core.jobs import get_store
+
+        job = get_store().get(model_id[4:], "train")
+        if job is None:
+            raise HTTPException(status_code=404, detail="Unknown training run.")
+        return run_performance(job)
     try:
         get_metadata(model_id)
     except KeyError as exc:

@@ -370,6 +370,18 @@ for when it is exposed to a network (all in `backend/.env.example`):
   were refused by the gate. **Not yet run with the real SAM weights**:
   huggingface.co is blocked in the build environment; on your machine
   Click > Install click tool downloads about 120 MB once.
+- **Model performance follows training live.** A training run (on this
+  computer or a RunPod GPU) appears in Model performance from its first
+  epoch, marked as training, with epoch N of the planned total, a progress
+  bar, and its loss and validation lines growing every 4 s on an axis that
+  already spans the planned epochs. Hovering a chart reads out that epoch's
+  values. Finished runs read `results.csv`; stopped or failed runs say why.
+  The worker now reports each epoch after validation (`on_fit_epoch_end`),
+  with summed train and val loss and mask metrics for segmentation, so an
+  epoch's numbers are its own and not the previous epoch's. Verified:
+  `test_training_live_perf_offline.py` (2), live with a simulated run whose
+  epochs were written every 2.5 s. Not run with a real ultralytics training
+  here (no GPU or dataset in the build environment).
 - **Results on the map belong to the image shown.** After a reload the
   Layers list restores only the newest finished run per model on the image
   that is open; runs on other images or copies of it stay off the map.

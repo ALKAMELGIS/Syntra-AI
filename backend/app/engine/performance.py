@@ -117,3 +117,70 @@ def models_with_performance() -> list[dict]:
             f1 = perf["checks"][0]["overall"]["f1"] if perf.get("checks") else None
             out.append({"model_id": m.model_id, "name": m.name, "best": perf["best"], "f1": f1})
     return out
+
+
+# --- training runs, live while they train ---------------------------------
+LIVE = {"queued", "processing", "starting", "training", "running"}
+
+
+def _epochs_from_history(history: list[dict]) -> list[dict]:
+    by_epoch: dict[int, dict] = {}
+    for ev in history or []:
+        if ev.get("type") != "epoch" or ev.get("epoch") is None:
+            continue
+        tl = ev.get("train_loss")
+        if tl is None:                                  # events written before train_loss existed
+            parts = [ev.get(k) for k in ("box_loss", "cls_loss", "dfl_loss") if ev.get(k) is not None]
+            tl = round(sum(parts), 4) if parts else None
+        by_epoch[int(ev["epoch"])] = {"epoch": int(ev["epoch"]), "train_loss": tl, "val_loss": ev.get("val_loss"),
+                                      "precision": ev.get("precision"), "recall": ev.get("recall"),
+                                      "map50": ev.get("map50"), "map50_95": ev.get("map50_95")}
+    return [by_epoch[k] for k in sorted(by_epoch)]
+
+
+def _run_name(job: dict) -> str:
+    group, version = job.get("model_group"), job.get("model_version")
+    if group:
+        return f"{group} v{int(version):03d}" if isinstance(version, int) else f"{group} {version or ''}".strip()
+    return f"Run {job['job_id'][:8]}"
+
+
+def run_performance(job: dict) -> dict:
+    """A training job's history: results.csv once it is written, the epoch events until then."""
+    epochs = []
+    csv_path = (job.get("result") or {}).get("results_csv")
+    if csv_path and Path(csv_path).is_file():
+        try:
+            epochs = parse_results_csv(csv_path)
+        except (OSError, ValueError, KeyError):
+            epochs = []
+    if not epochs:
+        epochs = _epochs_from_history(job.get("history"))
+    cfg = job.get("config") or {}
+    planned = (job.get("progress") or {}).get("epochs") or cfg.get("epochs")
+    test = (job.get("result") or {}).get("test")
+    out = _summary(f"run:{job['job_id']}", _run_name(job), epochs, source=None, per_class=None, hidden_classes=[])
+    out.update({
+        "run_id": job["job_id"], "status": job.get("status"), "live": job.get("status") in LIVE,
+        "planned_epochs": int(planned) if planned else None, "where": job.get("where") or "this computer",
+        "device": cfg.get("device"), "elapsed_s": (job.get("progress") or {}).get("elapsed_s"),
+        "error": job.get("error"), "message": job.get("message"),
+        "test": test if isinstance(test, dict) and "error" not in test else None,
+        "updated_at": job.get("updated_at"), "checks": [],
+        "training": {"note": None},
+    })
+    return out
+
+
+def training_runs(limit: int = 10) -> list[dict]:
+    from app.core.jobs import get_store
+
+    out = []
+    for job in get_store().list("train", limit=limit):
+        perf = run_performance(job)
+        if not perf["epochs"] and not perf["live"]:
+            continue                                    # never reached an epoch: nothing to show
+        out.append({"model_id": perf["model_id"], "run_id": job["job_id"], "name": perf["name"], "best": perf["best"],
+                    "f1": None, "status": perf["status"], "live": perf["live"],
+                    "epoch": perf["epochs"][-1]["epoch"] if perf["epochs"] else 0, "planned_epochs": perf["planned_epochs"]})
+    return out

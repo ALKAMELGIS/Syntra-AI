@@ -38,6 +38,10 @@ real, what is written but unrun, and how it was verified.
 - The map shows results of the image that is open, nothing else. Anything
   restored after a reload is filtered by `image_id`, and Remove on a run's
   layer must stick (hide the job on the server), never only in React state.
+- Charts and figures in the UI are drawn from data the server has (job
+  history, `results.csv`, pack metrics), and a running job's view polls
+  until the job ends. Never ship a chart as a fixed picture or with numbers
+  typed into the component.
 - Exported geometry is WGS84 lon/lat. Do cross-tile merging in the raster
   CRS, then reproject (`reproject_detections_to_wgs84`). Never write
   projected coordinates into GeoJSON or KML.
