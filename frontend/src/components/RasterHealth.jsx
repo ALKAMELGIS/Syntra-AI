@@ -1,10 +1,12 @@
-import React from "react";
+import React, { useEffect, useRef, useState } from "react";
 import InfoNote from "./InfoNote.jsx";
+import { IconCheck } from "./Icons.jsx";
 
-// Compact raster check under the loaded image: the facts an analyst checks
-// before trusting a run (CRS, resolution, data, bands, layout), then one short
-// line per thing worth knowing. Each line's explanation and fix open in place
-// from its (i). Data comes from the backend's check_raster().
+// The raster check as one small icon in the corner of the image box, coloured
+// by its result (ready / to review / error). Hovering or clicking it opens a
+// small message with the facts an analyst checks before trusting a run (CRS,
+// resolution, data, bands, layout) and one line per thing worth knowing.
+// Data comes from the backend's check_raster().
 
 const LEVEL_ORDER = { error: 0, warning: 1, info: 2, ok: 3 };
 const SHOWN_IN_FACTS = new Set(["crs", "gsd"]);   // "ok" findings the facts already say
@@ -15,6 +17,17 @@ function fmtGsd(m) {
 }
 
 export default function RasterHealth({ health, optimizing = null }) {
+  const [pinned, setPinned] = useState(false);
+  const [hover, setHover] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!pinned) return;
+    const down = (e) => { if (ref.current && !ref.current.contains(e.target)) setPinned(false); };
+    const key = (e) => { if (e.key === "Escape") setPinned(false); };
+    document.addEventListener("mousedown", down);
+    window.addEventListener("keydown", key);
+    return () => { document.removeEventListener("mousedown", down); window.removeEventListener("keydown", key); };
+  }, [pinned]);
   if (!health) return null;
   const findings = [...(health.findings || [])]
     .filter((f) => !(f.level === "ok" && SHOWN_IN_FACTS.has(f.code)))
@@ -23,12 +36,24 @@ export default function RasterHealth({ health, optimizing = null }) {
     .sort((a, b) => LEVEL_ORDER[a.level] - LEVEL_ORDER[b.level]);
   const issues = findings.filter((f) => f.level === "error" || f.level === "warning").length;
 
+  const level = health.status === "ok" ? "ready" : health.status === "warning" ? "warn" : "error";
+  const busy = optimizing?.pct != null;
+  const summary = busy ? `Optimising ${optimizing.pct}%` : issues === 0 ? "Ready" : `${issues} to review`;
+  const open = pinned || hover;
+
   return (
-    <div className={`raster-health raster-health-${health.status}`}>
+    <div className="rh" ref={ref} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
+         onClick={(e) => e.stopPropagation()}>
+      <button type="button" className={`rh-btn rh-${level} ${busy ? "busy" : ""}`} aria-expanded={open}
+              aria-label={`Raster check: ${summary}`} onClick={() => setPinned((v) => !v)}>
+        {level === "ready" ? <IconCheck /> : <span className="rh-mark">!</span>}
+      </button>
+      {open && (
+      <div className={`rh-pop raster-health-${health.status}`} role="dialog" aria-label="Raster check">
       <div className="raster-health-head">
-        <span className={`raster-health-dot dot-${health.status === "ok" ? "ready" : health.status === "warning" ? "warn" : "error"}`} />
+        <span className={`raster-health-dot dot-${level === "ready" ? "ready" : level}`} />
         <span className="raster-health-title">Raster check</span>
-        <span className="raster-health-summary">{optimizing?.pct != null ? "Optimising" : issues === 0 ? "Ready" : `${issues} to review`}</span>
+        <span className="raster-health-summary">{summary}</span>
       </div>
 
       <dl className="raster-health-facts mono">
@@ -58,6 +83,8 @@ export default function RasterHealth({ health, optimizing = null }) {
                       fix={f.level !== "ok" ? f.fix : null} />
           ))}
         </div>
+      )}
+    </div>
       )}
     </div>
   );

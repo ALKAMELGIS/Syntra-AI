@@ -182,6 +182,8 @@ export default function Sidebar({ models, selectedModels, onToggleModel, onModel
       )}
       {mode === "local" ? null : mode === "single" ? (
         <>
+          <div className="dropzone-wrap">
+          {image?.health && !uploading && <RasterHealth health={image.health} optimizing={optimizing} />}
           <div
             className={`dropzone ${dragOver ? "drag-over" : ""}`}
             onClick={() => fileInput.current?.click()}
@@ -212,13 +214,13 @@ export default function Sidebar({ models, selectedModels, onToggleModel, onModel
               </span>
             )}
           </div>
+          </div>
           {uploading && (
             <div className="upload-progress-bar">
               <div className="upload-progress-fill" style={{ width: `${Math.round(uploadProgress * 100)}%` }} />
             </div>
           )}
           {uploadError && <InfoNote level="error" title={splitMessage(uploadError)[0]} detail={splitMessage(uploadError)[1]} />}
-          {image?.health && <RasterHealth health={image.health} optimizing={optimizing} />}
         </>
       ) : (
         <>
