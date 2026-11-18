@@ -202,8 +202,14 @@ def read_rgb(ds, plan: "RgbPlan", window=None, out_shape: tuple[int, int] | None
     return rgb, valid
 
 
+# How the map shows an image: a per-band percent clip, as ArcGIS shows imagery
+# by default, so an 8-bit photo whose values sit between 40 and 235 is not
+# drawn grey and hazy. Display only: detection keeps DETECTOR_STRETCH.
+DISPLAY_STRETCH: tuple[float, float] = (0.5, 99.5)
+
+
 def plan_rgb(path: str | Path, override: list[int] | None = None, sample_dim: int = 2048,
-             stretch: tuple[float, float] | None = None) -> RgbPlan:
+             stretch: "tuple[float, float] | str | None" = None) -> RgbPlan:
     """Choose bands and a global stretch for a raster (one decimated read).
 
     `stretch` (low, high percentiles) is for the map's display only; detection
@@ -238,9 +244,9 @@ def plan_rgb(path: str | Path, override: list[int] | None = None, sample_dim: in
         sample = ds.read(indexes=uniq, out_shape=shape, resampling=Resampling.nearest, masked=True)
 
     ordered = np.ma.stack([sample[uniq.index(b)] for b in bands])
-    if dtype == "uint8" and source != "override" and stretch is None:
+    if dtype == "uint8" and ((source != "override" and stretch is None) or stretch == "none"):
         lo, hi = [0.0, 0.0, 0.0], [255.0, 255.0, 255.0]   # already display-ready: leave as is
     else:
-        a, b = stretch or (2.0, 98.0)
+        a, b = (0.0, 100.0) if stretch == "none" else (stretch or (2.0, 98.0))
         lo, hi = compute_stretch(ordered, nodata, a, b, valid=valid_pixels(ordered, nodata))
     return RgbPlan(bands=bands, source=source, lo=lo, hi=hi, nodata=nodata, dtype=dtype)

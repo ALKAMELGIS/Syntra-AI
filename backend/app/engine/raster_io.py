@@ -138,16 +138,17 @@ def read_preview_png(path: str | Path, max_dim: int = 2048) -> bytes:
     A true-colour PNG of the raster for the map, in Web Mercator so it sits on
     its real footprint (see _preview_vrt). Decimated at read time via out_shape,
     so a multi-GB orthomosaic never loads at full resolution. Pixels outside the
-    footprint are transparent. Same bands, stretch and masking the detector sees.
+    footprint are transparent. Same bands and masking the detector sees, with
+    the map's display stretch (DISPLAY_STRETCH, like ArcGIS's percent clip).
     """
     import io
 
     import rasterio  # lazy import
     from PIL import Image
 
-    from app.engine.raster_prep import plan_rgb, read_rgb
+    from app.engine.raster_prep import DISPLAY_STRETCH, plan_rgb, read_rgb
 
-    plan = plan_rgb(path)
+    plan = plan_rgb(path, stretch=DISPLAY_STRETCH)
     with rasterio.open(path) as ds:
         if ds.crs is None:
             scale = min(1.0, max_dim / max(ds.width, ds.height))

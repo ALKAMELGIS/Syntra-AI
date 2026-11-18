@@ -462,7 +462,7 @@ def get_image_preview(image_id: str, request: Request):
         st = path.stat()
     except OSError:
         raise HTTPException(status_code=404, detail="The image file is missing from the library folder.")
-    etag = f'"{st.st_size:x}-{st.st_mtime_ns:x}"'
+    etag = f'"{st.st_size:x}-{st.st_mtime_ns:x}-d2"'      # d2: display stretch; older previews are redrawn
     headers = {"ETag": etag, "Cache-Control": "private, no-cache"}      # revalidate: 304 when unchanged
     if request.headers.get("if-none-match") == etag:
         return Response(status_code=304, headers=headers)

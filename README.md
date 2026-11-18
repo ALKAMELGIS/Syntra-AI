@@ -512,6 +512,15 @@ for when it is exposed to a network (all in `backend/.env.example`):
   outlined on the map, zoom to selection, export, and sum / mean of the
   sorted column. Verified live with sample result layers (panel, options,
   labels, table, pop-up, information) and `vite build`.
+- **Clear image display, like ArcGIS.** The map, the preview and the
+  gallery draw every image with a per-band percent clip (0.5–99.5 %,
+  `raster_prep.DISPLAY_STRETCH`), as ArcGIS shows imagery by default; an
+  8-bit photo whose values sat between 40 and 235 used to look grey and
+  hazy. Display only: the detector still reads the stored values. Stretch
+  choices in Properties: percent clip 0.5 / 2 / 5 %, min–max, none (as
+  stored). Cached previews are redrawn once. Verified: a test that the
+  display plan spreads 40..235 while the detector's plan stays 0..255, the
+  full suite (317), and a before / after on Haven.tif.
 - **Steady GeoTIFF display while zooming.** The image's preview now stays
   underneath at every zoom and the full-resolution tiles draw over it, so a
   tile still loading shows the preview instead of a hole and switching

@@ -56,7 +56,7 @@ def test_stretch_plan_computed_once_under_parallel_tile_requests(monkeypatch, tm
     calls = []
     lock = threading.Lock()
 
-    def slow_plan(path):
+    def slow_plan(path, **_kw):
         with lock:
             calls.append(path)
         time.sleep(0.05)

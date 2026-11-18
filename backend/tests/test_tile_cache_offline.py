@@ -30,3 +30,27 @@ def test_cache_stays_within_its_size(tmp_path, monkeypatch):
     for i in range(50):
         tiles.cached_tile(str(f), 15, i, 0)
     assert tiles._TILE_CACHE_BYTES <= 10_000 and len(tiles._TILE_CACHE) == 10
+
+
+def test_map_display_is_stretched_but_detection_is_not(tmp_path):
+    """An 8-bit photo using only 40..235 is drawn with a percent clip on the map
+    (like ArcGIS), while the detector still reads the stored values."""
+    import numpy as np
+    import pytest
+    rasterio = pytest.importorskip("rasterio")
+    from rasterio.transform import from_origin
+    from app.engine.raster_prep import DISPLAY_STRETCH, plan_rgb
+    from app.engine.tiles import parse_display
+    rng = np.random.default_rng(0)
+    data = rng.integers(40, 236, size=(3, 256, 256), dtype=np.uint8)
+    p = tmp_path / "photo.tif"
+    with rasterio.open(p, "w", driver="GTiff", width=256, height=256, count=3, dtype="uint8",
+                       crs="EPSG:32639", transform=from_origin(500000, 2900000, 0.2, 0.2)) as d:
+        d.write(data)
+    detector = plan_rgb(p)
+    assert detector.lo == [0.0, 0.0, 0.0] and detector.hi == [255.0, 255.0, 255.0]      # untouched
+    shown = plan_rgb(p, stretch=DISPLAY_STRETCH)
+    assert all(39 <= v <= 45 for v in shown.lo) and all(230 <= v <= 236 for v in shown.hi)   # spread to full range
+    stored = plan_rgb(p, stretch="none")
+    assert stored.hi == [255.0, 255.0, 255.0]
+    assert parse_display(None, "none") == (None, "none")

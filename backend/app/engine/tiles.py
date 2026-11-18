@@ -36,9 +36,10 @@ def tile_bounds_3857(z: int, x: int, y: int) -> tuple[float, float, float, float
 def _plan(path: str, mtime: float, bands: tuple[int, ...] | None = None, stretch: tuple[float, float] | None = None):
     from app.engine.raster_prep import plan_rgb
 
-    if bands is None and stretch is None:
-        return plan_rgb(path)                     # the detector's own choice
-    return plan_rgb(path, override=list(bands) if bands else None, stretch=stretch)
+    from app.engine.raster_prep import DISPLAY_STRETCH
+
+    # the map's look: ArcGIS-like percent clip unless the person chose another
+    return plan_rgb(path, override=list(bands) if bands else None, stretch=stretch or DISPLAY_STRETCH)
 
 
 def parse_display(bands: str | None, stretch: str | None) -> tuple[tuple[int, ...] | None, tuple[float, float] | None]:
@@ -51,6 +52,8 @@ def parse_display(bands: str | None, stretch: str | None) -> tuple[tuple[int, ..
             raise ValueError("bands must be one or three band numbers from 1")
         b = tuple(parts * 3 if len(parts) == 1 else parts)
     st = None
+    if stretch == "none":
+        return b, "none"                          # as stored (8-bit), else min-max
     if stretch:
         lo, hi = (float(v) for v in stretch.split("-", 1))
         if not (0 <= lo < hi <= 100):

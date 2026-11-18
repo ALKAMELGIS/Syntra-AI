@@ -226,7 +226,8 @@ function RenameField({ value, onSave, onCancel }) {
 }
 
 const ZOOMS = Array.from({ length: 22 }, (_, i) => i + 1);
-const STRETCHES = [["", "Auto (2–98 %)"], ["0.5-99.5", "0.5–99.5 %"], ["5-95", "5–95 %"], ["0-100", "Min – max"]];
+// "" is the map's default, a percent clip like ArcGIS (raster_prep.DISPLAY_STRETCH)
+const STRETCHES = [["", "Percent clip 0.5 %"], ["2-98", "Percent clip 2 %"], ["5-95", "Percent clip 5 %"], ["0-100", "Min – max"], ["none", "None (as stored)"]];
 
 // Add > From a file (read by the server, reprojected to WGS84) or a map service (XYZ / WMS).
 function AddLayer({ onFile, onService, onDone }) {
