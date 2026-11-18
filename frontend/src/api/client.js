@@ -149,7 +149,9 @@ export const api = {
       body: JSON.stringify(payload),
     }).then(handle),
   job: (jobId) => request(`${BASE}/jobs/${jobId}`).then(handle),
-  listJobs: (kind, limit = 20) => request(`${BASE}/jobs?kind=${kind}&limit=${limit}`).then(handle),
+  listJobs: (kind, limit = 20, imageId = null) =>
+    request(`${BASE}/jobs?kind=${kind}&limit=${limit}${imageId ? `&image_id=${encodeURIComponent(imageId)}` : ""}`).then(handle),
+  hideJob: (jobId) => request(`${BASE}/jobs/${jobId}/hide`, { method: "POST" }).then(handle),
   jobStatus: (jobId) => request(`${BASE}/predict/${jobId}`).then(handle),
   getReview: (jobId, modelId) => request(`${BASE}/results/${jobId}/${modelId}/review`).then(handle),
   putReview: (jobId, modelId, changes) => request(`${BASE}/results/${jobId}/${modelId}/review`,

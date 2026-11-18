@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import TopBar from "./components/TopBar.jsx";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import Sidebar from "./components/Sidebar.jsx";
@@ -108,39 +108,53 @@ export default function App({ user = null, onSignOut = null }) {
     }
   }, []);
 
-  // Restore recent prediction jobs after a page reload or server restart.
-  // The server keeps them in its job store; the newest job per
-  // (image, model) pair wins, and finished ones get their layer back.
+  // Restore the image's own runs after a page reload or server restart: the
+  // newest finished run per model on the image shown, nothing from other
+  // images or older runs, and nothing the person removed (hidden on the server).
+  const imageId = image?.image_id || null;
   useEffect(() => {
     let cancelled = false;
     (async () => {
       let recent = [];
       try {
-        recent = await api.listJobs("predict", 20);
+        recent = await api.listJobs("predict", imageId ? 50 : 20, imageId);
       } catch {
         return; // older backend without /api/jobs: start empty, as before
       }
+      if (cancelled) return;
+      if (!imageId) {                                 // first visit: open the image of the last run still in the library
+        if (restoring.current) return;
+        for (const id of [...new Set(recent.map((j) => j.image_id).filter(Boolean))]) {
+          const img = await api.getImage(id).catch(() => null);
+          if (cancelled) return;
+          if (img) { setImage((cur) => cur || img); break; }
+        }
+        return;
+      }
       const restored = {};
       for (const j of recent) {
-        if (!j.image_id) continue;
         const key = jobKey(j.image_id, j.model_id);
         if (!restored[key]) restored[key] = j; // list is newest first
       }
-      if (cancelled || Object.keys(restored).length === 0) return;
+      if (Object.keys(restored).length === 0) return;
       setJobs((prev) => ({ ...restored, ...prev }));   // Analysis stays closed: the person opens it
-
-      const newest = recent.find((j) => j.image_id);
-      api.getImage(newest.image_id).then((img) => !cancelled && setImage((cur) => cur || img)).catch(() => {});
-
       for (const [key, j] of Object.entries(restored)) {
         if (j.status !== "completed") continue;
         api.getGeojson(j.job_id, j.model_id)
-          .then((gj) => !cancelled && setGeojsonByKey((prev) => ({ ...prev, [key]: gj })))
+          .then((gj) => !cancelled && setGeojsonByKey((prev) => (prev[key] ? prev : { ...prev, [key]: gj })))
           .catch(() => {});
       }
     })();
     return () => { cancelled = true; };
-  }, []);
+  }, [imageId]);
+
+  // Remove on a results layer: off the map now and after a reload (its files stay on the server)
+  const removeResult = useCallback((key) => {
+    const j = jobs[key];
+    setJobs((prev) => { const n = { ...prev }; delete n[key]; return n; });
+    setGeojsonByKey((prev) => { const n = { ...prev }; delete n[key]; return n; });
+    if (j?.job_id) api.hideJob(j.job_id).catch(() => {});
+  }, [jobs]);
 
   useEffect(() => {
     api.listModels().then(setModels).catch(() => setModels([]));
@@ -357,7 +371,7 @@ export default function App({ user = null, onSignOut = null }) {
   const shownCount = (key) => filtered[key]?.features?.length;
 
   const mapLayers = Object.entries(jobs)
-    .filter(([key]) => geojsonByKey[key])
+    .filter(([key, job]) => geojsonByKey[key] && job.image_id === imageId)   // only the image on the map
     .map(([key, job]) => ({
       key,
       version: minScore,
@@ -410,6 +424,7 @@ export default function App({ user = null, onSignOut = null }) {
           </ErrorBoundary>
           <MapView
             layers={mapLayers}
+            onRemoveResult={removeResult}
             detectionsVisible={detectionsVisible}
             onToggleDetections={() => setDetectionsVisible((v) => !v)}
             aoi={aoi}

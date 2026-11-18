@@ -348,7 +348,7 @@ function ViewTracker({ onView }) {
 }
 
 export default function MapView({
-  onRemoveImage,
+  onRemoveImage, onRemoveResult,
   layers, detectionsVisible = true, onToggleDetections,
   aoi, onAoiChange, measurement, onMeasurementChange,
   trainOpen, onToggleTrain, onAnnotate, labels, trainPanel, perfOpen, onTogglePerf, perfPanel, libOpen, onToggleLib, libPanel,
@@ -450,6 +450,7 @@ export default function MapView({
   });
   const removeLayer = (key) => {
     if (key.startsWith("added:")) setAdded((a) => a.filter((x) => x.key !== key));
+    else onRemoveResult?.(key);                          // a run's layer: not restored after a reload either
     const l = allLayers.find((x) => x.key === key);
     if (l) setRemoved((r) => ({ ...r, [key]: l.geojson }));
     setSelection((s) => ({ ...s, [key]: new Set() }));

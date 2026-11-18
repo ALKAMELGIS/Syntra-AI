@@ -35,6 +35,9 @@ real, what is written but unrun, and how it was verified.
   accuracy areas), never from a model's own confidence. A refinement that
   is unsure keeps the detector outline and says why (`outline`,
   `refine_note`); never replace a shape with one SAM was not sure of.
+- The map shows results of the image that is open, nothing else. Anything
+  restored after a reload is filtered by `image_id`, and Remove on a run's
+  layer must stick (hide the job on the server), never only in React state.
 - Exported geometry is WGS84 lon/lat. Do cross-tile merging in the raster
   CRS, then reproject (`reproject_detections_to_wgs84`). Never write
   projected coordinates into GeoJSON or KML.

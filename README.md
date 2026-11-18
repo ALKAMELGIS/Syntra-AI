@@ -370,6 +370,15 @@ for when it is exposed to a network (all in `backend/.env.example`):
   were refused by the gate. **Not yet run with the real SAM weights**:
   huggingface.co is blocked in the build environment; on your machine
   Click > Install click tool downloads about 120 MB once.
+- **Results on the map belong to the image shown.** After a reload the
+  Layers list restores only the newest finished run per model on the image
+  that is open; runs on other images or copies of it stay off the map.
+  Remove on a results layer also hides the run on the server
+  (`POST /api/jobs/{id}/hide`, files kept), so it does not come back after
+  a reload. `GET /api/jobs` takes `image_id` and leaves hidden runs out
+  unless `include_hidden=true`. Verified: `test_jobs_hide_offline.py`, live:
+  two runs from another image did not appear, a removed layer stayed gone
+  after a reload.
 - **Refine outlines and measure accuracy.** A result layer's ⋯ menu has
   Refine outlines (SAM) and Measure accuracy. Refine sends every detected
   object to SAM 2.1 as a box prompt (one encode per 1024 px cell, the click
