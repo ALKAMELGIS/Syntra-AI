@@ -1,7 +1,7 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   IconPlus, IconArrowDown, IconArrowUp, IconClose, IconDownload, IconEye, IconEyeOff, IconInfo, IconMore,
-  IconTable, IconTrash, IconZoomTo, IconEdit, IconChevronLeft, IconChevronDown,
+  IconTable, IconTrash, IconZoomTo, IconEdit, IconChevronLeft, IconCopy,
 } from "./Icons.jsx";
 import { LAYER_COLOURS, downloadGeojson, featuresBounds, fieldType, fieldsOf, unitOf } from "./layerUtils.js";
 
@@ -37,74 +37,79 @@ function Swatch({ layer }) {
   return <span className={`lp-swatch ${layer.isArea ? "fill" : ""}`} style={style} aria-hidden="true" />;
 }
 
-function VectorOptions({ layer, onPatch, onZoom, onTable, onInfo, onMove, onRemove, first, last, zoom }) {
-  const [renaming, setRenaming] = useState(false);
-  const [name, setName] = useState(layer.name);
-  const hasScore = layer.features.some((f) => typeof f.properties?.score === "number");
+// The ⋯ list of a layer: a small floating menu like ArcGIS Online's. Actions
+// run at once; settings live on the layer's Properties page.
+function LayerMenu({ top, items, onClose }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const down = (e) => { if (ref.current && !ref.current.contains(e.target) && !e.target.closest?.("[data-menu-anchor]")) onClose(); };
+    const key = (e) => { if (e.key === "Escape") { e.stopPropagation(); onClose(); } };
+    document.addEventListener("mousedown", down);
+    window.addEventListener("keydown", key, true);
+    ref.current?.querySelector("button:not(:disabled)")?.focus();
+    return () => { document.removeEventListener("mousedown", down); window.removeEventListener("keydown", key, true); };
+  }, [onClose]);
   return (
-    <div className="lp-options">
-      <div className="lp-actions">
-        <button type="button" onClick={onZoom}><IconZoomTo />Zoom to</button>
-        <button type="button" onClick={onTable}><IconTable />Show table<span className="mono">{layer.count}</span></button>
-        <button type="button" onClick={onInfo}><IconInfo />Information</button>
-      </div>
-      <div className="lp-sec">Appearance</div>
-      <div className="lp-colours" role="radiogroup" aria-label="Colour">
-        {LAYER_COLOURS.map((c) => (
-          <button key={c} type="button" role="radio" aria-checked={layer.color === c} aria-label={c}
-                  className={layer.color === c ? "on" : ""} style={{ background: c }} onClick={() => onPatch({ color: c })} />
-        ))}
-      </div>
-      <Slider label="Transparency" value={Math.round((1 - layer.opacity) * 100)} min={0} max={90} step={5}
-              onChange={(v) => onPatch({ opacity: 1 - v / 100 })} fmt={(v) => `${v} %`} />
-      <div className="lp-range">
-        <span>Visible from</span>
-        <select value={layer.minZoom ?? ""} onChange={(e) => onPatch({ minZoom: e.target.value === "" ? null : Number(e.target.value) })} aria-label="Visible from zoom">
-          <option value="">any</option>{ZOOMS.map((z) => <option key={z} value={z}>z {z}</option>)}
-        </select>
-        <span>to</span>
-        <select value={layer.maxZoom ?? ""} onChange={(e) => onPatch({ maxZoom: e.target.value === "" ? null : Number(e.target.value) })} aria-label="Visible to zoom">
-          <option value="">any</option>{ZOOMS.map((z) => <option key={z} value={z}>z {z}</option>)}
-        </select>
-        {zoom != null && <span className="mono lp-muted" title="The map's zoom now">now {zoom}</span>}
-      </div>
-      <Toggle label="Labels" on={layer.labels} onChange={(v) => onPatch({ labels: v })} />
-      <Toggle label="Pop-ups" on={layer.popups} onChange={(v) => onPatch({ popups: v })} />
-      {hasScore && (<>
-        <div className="lp-sec">Filter</div>
-        <Slider label="Score at least" value={layer.minScore} min={0} max={0.95} step={0.05}
-                onChange={(v) => onPatch({ minScore: v })} fmt={(v) => v.toFixed(2)} />
-      </>)}
-      <div className="lp-sec">Layer</div>
-      {renaming ? (
-        <form className="lp-rename" onSubmit={(e) => { e.preventDefault(); onPatch({ name: name.trim() || layer.baseName }); setRenaming(false); }}>
-          <input autoFocus value={name} onChange={(e) => setName(e.target.value)} maxLength={60} aria-label="Layer name" />
-          <button type="submit">Save</button>
-        </form>
-      ) : null}
-      <div className="lp-actions">
-        <button type="button" onClick={() => { setName(layer.name); setRenaming(true); }}><IconEdit />Rename</button>
-        <button type="button" disabled={first} onClick={() => onMove(-1)}><IconArrowUp />Move up</button>
-        <button type="button" disabled={last} onClick={() => onMove(1)}><IconArrowDown />Move down</button>
-        <button type="button" onClick={() => downloadGeojson(layer.name, layer.shown)}><IconDownload />Export GeoJSON<span className="mono">{layer.shown.length}</span></button>
-        <button type="button" className="danger" onClick={onRemove}><IconTrash />Remove from map</button>
-      </div>
+    <div className="lp-menu" role="menu" ref={ref} style={{ top }}>
+      {items.map((it, i) => it === "-" ? <div key={i} className="lp-menu-sep" role="separator" /> : (
+        <button key={it.label} type="button" role="menuitem" disabled={it.disabled} className={it.danger ? "danger" : ""}
+                onClick={() => { onClose(); it.run(); }}>
+          <it.Icon />{it.label}{it.hint != null && <span className="mono">{it.hint}</span>}
+        </button>
+      ))}
     </div>
   );
 }
 
-function LayerInfo({ layer, onBack, onClose }) {
+function PropsHeader({ title, sub, onBack, onClose }) {
+  return (
+    <header className="lp-head">
+      <button type="button" className="lp-icon" onClick={onBack} aria-label="Back to layers"><IconChevronLeft /></button>
+      <span className="lp-title" title={title}>{title}</span><span className="lp-sub">{sub}</span>
+      <button type="button" className="lp-icon" onClick={onClose} aria-label="Close"><IconClose /></button>
+    </header>
+  );
+}
+
+// Properties of a results or added layer: appearance, filter, then its source and fields.
+function VectorProps({ layer, onPatch, zoom, onBack, onClose }) {
   const b = featuresBounds(layer.features);
   const fields = fieldsOf(layer.features);
   const geomTypes = [...new Set(layer.features.map((f) => f.geometry?.type).filter(Boolean))].join(", ") || "—";
+  const hasScore = layer.features.some((f) => typeof f.properties?.score === "number");
   return (
     <>
-      <header className="lp-head">
-        <button type="button" className="lp-icon" onClick={onBack} aria-label="Back to layers"><IconChevronLeft /></button>
-        <span className="lp-title">{layer.name}</span><span className="lp-sub">Information</span>
-        <button type="button" className="lp-icon" onClick={onClose} aria-label="Close"><IconClose /></button>
-      </header>
+      <PropsHeader title={layer.name} sub="Properties" onBack={onBack} onClose={onClose} />
       <div className="lp-body">
+        <div className="lp-props">
+          <div className="lp-sec">Appearance</div>
+          <div className="lp-colours" role="radiogroup" aria-label="Colour">
+            {LAYER_COLOURS.map((c) => (
+              <button key={c} type="button" role="radio" aria-checked={layer.color === c} aria-label={c}
+                      className={layer.color === c ? "on" : ""} style={{ background: c }} onClick={() => onPatch({ color: c })} />
+            ))}
+          </div>
+          <Slider label="Transparency" value={Math.round((1 - layer.opacity) * 100)} min={0} max={90} step={5}
+                  onChange={(v) => onPatch({ opacity: 1 - v / 100 })} fmt={(v) => `${v} %`} />
+          <div className="lp-range">
+            <span>Visible from</span>
+            <select value={layer.minZoom ?? ""} onChange={(e) => onPatch({ minZoom: e.target.value === "" ? null : Number(e.target.value) })} aria-label="Visible from zoom">
+              <option value="">any</option>{ZOOMS.map((z) => <option key={z} value={z}>z {z}</option>)}
+            </select>
+            <span>to</span>
+            <select value={layer.maxZoom ?? ""} onChange={(e) => onPatch({ maxZoom: e.target.value === "" ? null : Number(e.target.value) })} aria-label="Visible to zoom">
+              <option value="">any</option>{ZOOMS.map((z) => <option key={z} value={z}>z {z}</option>)}
+            </select>
+            {zoom != null && <span className="mono lp-muted" title="The map's zoom now">now {zoom}</span>}
+          </div>
+          <Toggle label="Labels" on={layer.labels} onChange={(v) => onPatch({ labels: v })} />
+          <Toggle label="Pop-ups" on={layer.popups} onChange={(v) => onPatch({ popups: v })} />
+          {hasScore && (<>
+            <div className="lp-sec">Filter</div>
+            <Slider label="Score at least" value={layer.minScore} min={0} max={0.95} step={0.05}
+                    onChange={(v) => onPatch({ minScore: v })} fmt={(v) => v.toFixed(2)} />
+          </>)}
+        </div>
         <div className="lp-group-label">Source</div>
         <dl className="lp-dl">
           {layer.modelId && (<><dt>Model</dt><dd className="mono">{layer.modelId}{layer.modelVersion ? ` · ${layer.modelVersion}` : ""}</dd></>)}
@@ -125,6 +130,91 @@ function LayerInfo({ layer, onBack, onClose }) {
         </ul>
       </div>
     </>
+  );
+}
+
+// Properties of the image: display settings (the map only), then what the file is.
+function RasterProps({ image, imageLayer, onImageLayer, onBack, onClose }) {
+  const nBands = image?.bands || 0;
+  const display = imageLayer.displayFor === image?.image_id ? imageLayer : {};
+  const setDisplay = (p) => onImageLayer({ ...imageLayer, bands: display.bands || null, stretch: display.stretch || null, ...p, displayFor: image.image_id });
+  const gsd = image?.health?.gsd_m || image?.gsd_x_m;
+  const b = image?.bounds_wgs84;
+  return (
+    <>
+      <PropsHeader title={image.filename} sub="Properties" onBack={onBack} onClose={onClose} />
+      <div className="lp-body">
+        <div className="lp-props">
+          <div className="lp-sec">Display</div>
+          <Slider label="Opacity" value={Math.round(imageLayer.opacity * 100)} min={0} max={100} step={5}
+                  onChange={(v) => onImageLayer({ ...imageLayer, opacity: v / 100 })} fmt={(v) => `${v} %`} />
+          <Slider label="Contrast" value={imageLayer.contrast ?? 0} min={-50} max={100} step={5}
+                  onChange={(v) => onImageLayer({ ...imageLayer, contrast: v })} />
+          <Slider label="Brightness" value={imageLayer.brightness ?? 0} min={-50} max={100} step={5}
+                  onChange={(v) => onImageLayer({ ...imageLayer, brightness: v })} />
+          {nBands > 1 && (
+            <div className="lp-bands">
+              <span>Bands</span>
+              <select value={display.bands ? "custom" : ""} aria-label="Band choice"
+                      onChange={(e) => setDisplay({ bands: e.target.value ? (display.bands || [Math.min(3, nBands), Math.min(2, nBands), 1]) : null })}>
+                <option value="">Auto</option><option value="custom">Choose R G B</option>
+              </select>
+              {display.bands && ["R", "G", "B"].map((c, i) => (
+                <select key={c} value={display.bands[i]} aria-label={`${c} band`}
+                        onChange={(e) => { const bb = [...display.bands]; bb[i] = Number(e.target.value); setDisplay({ bands: bb }); }}>
+                  {Array.from({ length: nBands }, (_, k) => <option key={k} value={k + 1}>{c} {k + 1}</option>)}
+                </select>
+              ))}
+            </div>
+          )}
+          <div className="lp-bands">
+            <span>Stretch</span>
+            <select value={display.stretch || ""} onChange={(e) => setDisplay({ stretch: e.target.value || null })} aria-label="Stretch">
+              {STRETCHES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+          </div>
+          <p className="lp-note">Display only: detection reads the original pixels with its own bands and stretch</p>
+          <div className="lp-actions">
+            <button type="button" disabled={!imageLayer.contrast && !imageLayer.brightness && !display.bands && !display.stretch}
+                    onClick={() => onImageLayer({ ...imageLayer, contrast: 0, brightness: 0, bands: null, stretch: null })}>Reset display</button>
+          </div>
+        </div>
+        <div className="lp-group-label">Source</div>
+        <dl className="lp-dl">
+          <dt>File</dt><dd className="mono">{image.filename}</dd>
+          {image.width && (<><dt>Size</dt><dd className="mono">{image.width.toLocaleString("en-US")} × {image.height.toLocaleString("en-US")} px</dd></>)}
+          {gsd && (<><dt>Resolution</dt><dd className="mono">{gsd < 1 ? `${Math.round(gsd * 100)} cm` : `${+gsd.toFixed(2)} m`}</dd></>)}
+          {nBands > 0 && (<><dt>Bands</dt><dd className="mono">{nBands}{image.dtype ? ` · ${image.dtype}` : ""}</dd></>)}
+          {image.crs && (<><dt>CRS</dt><dd className="mono">{image.crs}</dd></>)}
+          {image.area_km2 && (<><dt>Area</dt><dd className="mono">{Math.round(image.area_km2).toLocaleString("en-US")} km²</dd></>)}
+          {b && (<><dt>Extent</dt><dd className="mono">{b.west.toFixed(4)} – {b.east.toFixed(4)} E<br />{b.south.toFixed(4)} – {b.north.toFixed(4)} N</dd></>)}
+        </dl>
+      </div>
+    </>
+  );
+}
+
+function ServiceProps({ sv, onPatch, onBack, onClose }) {
+  return (
+    <>
+      <PropsHeader title={sv.name} sub="Properties" onBack={onBack} onClose={onClose} />
+      <div className="lp-body"><div className="lp-props">
+        <Slider label="Opacity" value={Math.round(sv.opacity * 100)} min={0} max={100} step={5}
+                onChange={(v) => onPatch({ opacity: v / 100 })} fmt={(v) => `${v} %`} />
+        <dl className="lp-dl" style={{ padding: 0 }}><dt>Type</dt><dd className="mono">{sv.kind.toUpperCase()}</dd><dt>Address</dt><dd className="mono">{sv.url}</dd>
+          {sv.layers && (<><dt>Layers</dt><dd className="mono">{sv.layers}</dd></>)}</dl>
+      </div></div>
+    </>
+  );
+}
+
+// A row's name becomes a text field while renaming (Enter saves, Esc cancels).
+function RenameField({ value, onSave, onCancel }) {
+  const [v, setV] = useState(value);
+  return (
+    <input className="lp-rename-inline" autoFocus value={v} maxLength={60} aria-label="Layer name"
+           onChange={(e) => setV(e.target.value)} onBlur={() => onSave(v)}
+           onKeyDown={(e) => { if (e.key === "Enter") onSave(v); if (e.key === "Escape") { e.stopPropagation(); onCancel(); } }} />
   );
 }
 
@@ -185,191 +275,186 @@ function AddLayer({ onFile, onService, onDone }) {
 const BASEMAP_CHOICES = [["satellite", "Satellite"], ["streets", "Streets"], ["none", "None"]];
 
 export default function LayersPanel({
-  open, onClose, layers, onPatch, onMove, onRemove, onZoom, onTable, allVisible, onToggleAll,
-  aoi, aoiVisible, onAoiVisible, aoiLabel, image, imageLayer, onImageLayer, onZoomImage, basemap, onBasemap,
+  open, onClose, layers, onPatch, onMove, onRemove, onZoom, onTable, onDuplicate, allVisible, onToggleAll,
+  aoi, aoiVisible, onAoiVisible, aoiLabel, image, imageLayer, onImageLayer, onZoomImage, onRemoveImage, basemap, onBasemap,
   zoom, onAddFile, onAddService, services = [], onServicePatch, onServiceRemove,
 }) {
   const [adding, setAdding] = useState(false);
-  const [menu, setMenu] = useState(null);           // key whose options are open
-  const [info, setInfo] = useState(null);           // key whose Information is shown
-  const [rasterOpen, setRasterOpen] = useState(false);
+  const [menu, setMenu] = useState(null);           // {key, top}: the ⋯ list that is open
+  const [page, setPage] = useState(null);           // {kind, key}: a layer's Properties
+  const [renaming, setRenaming] = useState(null);   // key whose name is being edited
   const ref = useRef(null);
+  const closeMenu = useCallback(() => setMenu(null), []);
 
   useEffect(() => {
     if (!open) return;
-    const onKey = (e) => { if (e.key === "Escape") { if (info) setInfo(null); else onClose(); } };
+    const onKey = (e) => { if (e.key === "Escape" && !menu && !renaming) { if (page) setPage(null); else onClose(); } };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, info, onClose]);
+  }, [open, page, menu, renaming, onClose]);
 
   if (!open) return null;
-  const infoLayer = info && layers.find((l) => l.key === info);
   const total = layers.length + services.length + (aoi ? 1 : 0) + (image?.image_id ? 1 : 0);
-  const nBands = image?.bands || 0;
-  const display = imageLayer.displayFor === image?.image_id ? imageLayer : {};
-  const setDisplay = (p) => onImageLayer({ ...imageLayer, bands: display.bands || null, stretch: display.stretch || null, ...p, displayFor: image.image_id });
   const gsd = image?.health?.gsd_m || image?.gsd_x_m;
   const res = gsd ? (gsd < 1 ? `${Math.round(gsd * 100)} cm` : `${+gsd.toFixed(2)} m`) : null;
 
+  function toggleMenu(e, key) {
+    if (menu?.key === key) { setMenu(null); return; }
+    // right under the ⋯ button; above it when the window has no room below
+    const pr = ref.current.getBoundingClientRect(), br = e.currentTarget.getBoundingClientRect();
+    const h = key === "raster" ? 120 : services.some((x) => x.key === key) ? 88 : 300;
+    const fitsBelow = br.bottom + 4 + h <= window.innerHeight - 8;
+    setMenu({ key, top: fitsBelow ? br.bottom - pr.top + 4 : Math.max(8 - pr.top, br.top - pr.top - h - 4) });
+  }
+  const moreBtn = (key, name) => (
+    <button type="button" className={`lp-icon ${menu?.key === key ? "on" : ""}`} data-menu-anchor aria-haspopup="menu" aria-expanded={menu?.key === key}
+            aria-label={`Options for ${name}`} onClick={(e) => toggleMenu(e, key)}><IconMore /></button>
+  );
+
+  const back = () => setPage(null);
+  if (page?.kind === "vector") {
+    const l = layers.find((x) => x.key === page.key);
+    if (l) return <section className="layers-panel" aria-label="Layers" ref={ref}><VectorProps layer={l} onPatch={(p) => onPatch(l.key, p)} zoom={zoom} onBack={back} onClose={onClose} /></section>;
+  }
+  if (page?.kind === "raster" && image?.image_id) {
+    return <section className="layers-panel" aria-label="Layers" ref={ref}><RasterProps image={image} imageLayer={imageLayer} onImageLayer={onImageLayer} onBack={back} onClose={onClose} /></section>;
+  }
+  if (page?.kind === "service") {
+    const sv = services.find((x) => x.key === page.key);
+    if (sv) return <section className="layers-panel" aria-label="Layers" ref={ref}><ServiceProps sv={sv} onPatch={(p) => onServicePatch(sv.key, p)} onBack={back} onClose={onClose} /></section>;
+  }
+
+  let items = null;
+  if (menu) {
+    const i = layers.findIndex((x) => x.key === menu.key);
+    const l = layers[i];
+    const sv = services.find((x) => x.key === menu.key);
+    if (l) items = [
+      { label: "Zoom to layer", Icon: IconZoomTo, run: () => onZoom(l.shown) },
+      { label: "Show properties", Icon: IconInfo, run: () => setPage({ kind: "vector", key: l.key }) },
+      { label: "Show table", Icon: IconTable, hint: l.shown.length, run: () => onTable(l.key) },
+      "-",
+      { label: "Rename", Icon: IconEdit, run: () => setRenaming(l.key) },
+      { label: "Duplicate", Icon: IconCopy, run: () => onDuplicate(l.key) },
+      { label: "Export GeoJSON", Icon: IconDownload, hint: l.shown.length, run: () => downloadGeojson(l.name, l.shown) },
+      { label: "Remove", Icon: IconTrash, danger: true, run: () => onRemove(l.key) },
+      "-",
+      { label: "Move up", Icon: IconArrowUp, disabled: i === 0, run: () => onMove(l.key, -1) },
+      { label: "Move down", Icon: IconArrowDown, disabled: i === layers.length - 1, run: () => onMove(l.key, 1) },
+    ];
+    else if (sv) items = [
+      { label: "Show properties", Icon: IconInfo, run: () => setPage({ kind: "service", key: sv.key }) },
+      "-",
+      { label: "Remove", Icon: IconTrash, danger: true, run: () => onServiceRemove(sv.key) },
+    ];
+    else if (menu.key === "raster" && image?.image_id) items = [
+      { label: "Zoom to layer", Icon: IconZoomTo, run: onZoomImage },
+      { label: "Show properties", Icon: IconInfo, run: () => setPage({ kind: "raster" }) },
+      "-",
+      { label: "Remove", Icon: IconTrash, danger: true, run: onRemoveImage },
+    ];
+  }
+
+  const name = (key, value, base, cls) => (renaming === key
+    ? <RenameField value={value} onSave={(v) => { onPatch(key, { name: v.trim() || base }); setRenaming(null); }} onCancel={() => setRenaming(null)} />
+    : <span className={cls} title={value}>{value}</span>);
+
   return (
     <section className="layers-panel" aria-label="Layers" ref={ref}>
-      {infoLayer ? <LayerInfo layer={infoLayer} onBack={() => setInfo(null)} onClose={onClose} /> : (<>
-        <header className="lp-head">
-          <span className="lp-title">Layers</span><span className="lp-sub mono">{total || ""}</span>
-          <button type="button" className={`lp-add-btn ${adding ? "on" : ""}`} aria-expanded={adding} onClick={() => setAdding((a) => !a)}>
-            <IconPlus />Add</button>
-          <button type="button" className="lp-icon" onClick={onClose} aria-label="Close layers"><IconClose /></button>
-        </header>
-        <div className="lp-body">
-          {adding && <AddLayer onFile={onAddFile} onService={onAddService} onDone={() => setAdding(false)} />}
-          {layers.length > 0 && (
-            <div className="lp-group">
-              <div className="lp-group-label">
-                <button type="button" className="lp-eye" onClick={onToggleAll} aria-pressed={allVisible}
-                        aria-label={allVisible ? "Hide all results" : "Show all results"} title={allVisible ? "Hide all results" : "Show all results"}>
-                  {allVisible ? <IconEye /> : <IconEyeOff />}
+      <header className="lp-head">
+        <span className="lp-title">Layers</span><span className="lp-sub mono">{total || ""}</span>
+        <button type="button" className={`lp-add-btn ${adding ? "on" : ""}`} aria-expanded={adding} onClick={() => setAdding((a) => !a)}>
+          <IconPlus />Add</button>
+        <button type="button" className="lp-icon" onClick={onClose} aria-label="Close layers"><IconClose /></button>
+      </header>
+      <div className="lp-body" onScroll={closeMenu}>
+        {adding && <AddLayer onFile={onAddFile} onService={onAddService} onDone={() => setAdding(false)} />}
+        {layers.length > 0 && (
+          <div className="lp-group">
+            <div className="lp-group-label">
+              <button type="button" className="lp-eye" onClick={onToggleAll} aria-pressed={allVisible}
+                      aria-label={allVisible ? "Hide all results" : "Show all results"} title={allVisible ? "Hide all results" : "Show all results"}>
+                {allVisible ? <IconEye /> : <IconEyeOff />}
+              </button>
+              Results<span className="mono">{layers.reduce((n, l) => n + l.shown.length, 0)}</span>
+            </div>
+            {layers.map((l) => (
+              <div key={l.key} className={`lp-row ${menu?.key === l.key ? "on" : ""}`}>
+                <button type="button" className="lp-eye" onClick={() => onPatch(l.key, { visible: !l.visible })}
+                        aria-pressed={l.visible} aria-label={l.visible ? `Hide ${l.name}` : `Show ${l.name}`}>
+                  {l.visible && allVisible ? <IconEye /> : <IconEyeOff />}
                 </button>
-                Results<span className="mono">{layers.reduce((n, l) => n + l.shown.length, 0)}</span>
+                <Swatch layer={l} />
+                {name(l.key, l.name, l.baseName, `lp-name ${l.visible && allVisible ? "" : "dim"}`)}
+                <span className="mono lp-val">{l.value}</span>
+                {moreBtn(l.key, l.name)}
               </div>
-              {layers.map((l, i) => (
-                <div key={l.key} className={`lp-item ${menu === l.key ? "open" : ""}`}>
-                  <div className="lp-row">
-                    <button type="button" className="lp-eye" onClick={() => onPatch(l.key, { visible: !l.visible })}
-                            aria-pressed={l.visible} aria-label={l.visible ? `Hide ${l.name}` : `Show ${l.name}`}>
-                      {l.visible && allVisible ? <IconEye /> : <IconEyeOff />}
-                    </button>
-                    <Swatch layer={l} />
-                    <span className={`lp-name ${l.visible && allVisible ? "" : "dim"}`} title={l.name}>{l.name}</span>
-                    <span className="mono lp-val">{l.value}</span>
-                    <button type="button" className="lp-icon" aria-expanded={menu === l.key} aria-label={`Options for ${l.name}`}
-                            onClick={() => setMenu((m) => (m === l.key ? null : l.key))}><IconMore /></button>
-                  </div>
-                  {menu === l.key && (
-                    <VectorOptions layer={l} first={i === 0} last={i === layers.length - 1}
-                                   onPatch={(p) => onPatch(l.key, p)} onZoom={() => onZoom(l.shown)} onTable={() => onTable(l.key)}
-                                   onInfo={() => { setInfo(l.key); setMenu(null); }} onMove={(d) => onMove(l.key, d)}
-                                   onRemove={() => { setMenu(null); onRemove(l.key); }} zoom={zoom} />
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-
-          {services.length > 0 && (
-            <div className="lp-group">
-              <div className="lp-group-label">Map services</div>
-              {services.map((sv) => (
-                <div key={sv.key} className={`lp-item ${menu === sv.key ? "open" : ""}`}>
-                  <div className="lp-row">
-                    <button type="button" className="lp-eye" onClick={() => onServicePatch(sv.key, { visible: !sv.visible })}
-                            aria-pressed={sv.visible} aria-label={sv.visible ? `Hide ${sv.name}` : `Show ${sv.name}`}>
-                      {sv.visible ? <IconEye /> : <IconEyeOff />}
-                    </button>
-                    <span className="lp-swatch raster" aria-hidden="true" />
-                    <span className={`lp-name ${sv.visible ? "" : "dim"}`} title={sv.url}>{sv.name}</span>
-                    <span className="mono lp-val">{sv.kind.toUpperCase()}</span>
-                    <button type="button" className="lp-icon" aria-expanded={menu === sv.key} aria-label={`Options for ${sv.name}`}
-                            onClick={() => setMenu((m) => (m === sv.key ? null : sv.key))}><IconMore /></button>
-                  </div>
-                  {menu === sv.key && (
-                    <div className="lp-options">
-                      <Slider label="Opacity" value={Math.round(sv.opacity * 100)} min={0} max={100} step={5}
-                              onChange={(v) => onServicePatch(sv.key, { opacity: v / 100 })} fmt={(v) => `${v} %`} />
-                      <p className="lp-note mono" style={{ overflowWrap: "anywhere" }}>{sv.url}</p>
-                      <div className="lp-actions">
-                        <button type="button" className="danger" onClick={() => { setMenu(null); onServiceRemove(sv.key); }}><IconTrash />Remove</button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-
-          {aoi && (
-            <div className="lp-group">
-              <div className="lp-group-label">Drawn</div>
-              <div className="lp-row">
-                <button type="button" className="lp-eye" onClick={() => onAoiVisible(!aoiVisible)} aria-pressed={aoiVisible}
-                        aria-label={aoiVisible ? "Hide area of interest" : "Show area of interest"}>
-                  {aoiVisible ? <IconEye /> : <IconEyeOff />}
-                </button>
-                <span className="lp-swatch aoi" aria-hidden="true" />
-                <span className={`lp-name ${aoiVisible ? "" : "dim"}`}>Area of interest</span>
-                {aoiLabel && <span className="mono lp-val">{aoiLabel}</span>}
-                <button type="button" className="lp-icon" aria-label="Zoom to area of interest" onClick={() => onZoom(aoi.features || [aoi])}><IconZoomTo /></button>
-              </div>
-            </div>
-          )}
-
-          {image?.image_id && (
-            <div className="lp-group">
-              <div className="lp-group-label">Imagery</div>
-              <div className={`lp-item ${rasterOpen ? "open" : ""}`}>
-                <div className="lp-row">
-                  <button type="button" className="lp-eye" onClick={() => onImageLayer({ ...imageLayer, visible: !imageLayer.visible })}
-                          aria-pressed={imageLayer.visible} aria-label={imageLayer.visible ? "Hide image" : "Show image"}>
-                    {imageLayer.visible ? <IconEye /> : <IconEyeOff />}
-                  </button>
-                  <span className="lp-swatch raster" aria-hidden="true" />
-                  <span className={`lp-name ${imageLayer.visible ? "" : "dim"}`} title={image.filename}>{image.filename}</span>
-                  {res && <span className="mono lp-val" title="Ground size of one pixel">{res}</span>}
-                  <button type="button" className="lp-icon" aria-expanded={rasterOpen} aria-label="Image display settings"
-                          onClick={() => setRasterOpen((o) => !o)}><IconChevronDown /></button>
-                </div>
-                {rasterOpen && (
-                  <div className="lp-options">
-                    <Slider label="Opacity" value={Math.round(imageLayer.opacity * 100)} min={0} max={100} step={5}
-                            onChange={(v) => onImageLayer({ ...imageLayer, opacity: v / 100 })} fmt={(v) => `${v} %`} />
-                    <Slider label="Contrast" value={imageLayer.contrast ?? 0} min={-50} max={100} step={5}
-                            onChange={(v) => onImageLayer({ ...imageLayer, contrast: v })} />
-                    <Slider label="Brightness" value={imageLayer.brightness ?? 0} min={-50} max={100} step={5}
-                            onChange={(v) => onImageLayer({ ...imageLayer, brightness: v })} />
-                    {nBands > 1 && (
-                      <div className="lp-bands">
-                        <span>Bands</span>
-                        <select value={display.bands ? "custom" : ""} aria-label="Band choice"
-                                onChange={(e) => setDisplay({ bands: e.target.value ? (display.bands || [Math.min(3, nBands), Math.min(2, nBands), 1]) : null })}>
-                          <option value="">Auto</option><option value="custom">Choose R G B</option>
-                        </select>
-                        {display.bands && ["R", "G", "B"].map((c, i) => (
-                          <select key={c} value={display.bands[i]} aria-label={`${c} band`}
-                                  onChange={(e) => { const b = [...display.bands]; b[i] = Number(e.target.value); setDisplay({ bands: b }); }}>
-                            {Array.from({ length: nBands }, (_, k) => <option key={k} value={k + 1}>{c} {k + 1}</option>)}
-                          </select>
-                        ))}
-                      </div>
-                    )}
-                    <div className="lp-bands">
-                      <span>Stretch</span>
-                      <select value={display.stretch || ""} onChange={(e) => setDisplay({ stretch: e.target.value || null })} aria-label="Stretch">
-                        {STRETCHES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-                      </select>
-                    </div>
-                    <p className="lp-note">Display only: detection always reads the original pixels with its own bands and stretch</p>
-                    <div className="lp-actions">
-                      <button type="button" onClick={onZoomImage}><IconZoomTo />Zoom to</button>
-                      <button type="button" disabled={!imageLayer.contrast && !imageLayer.brightness && !display.bands && !display.stretch}
-                              onClick={() => onImageLayer({ ...imageLayer, contrast: 0, brightness: 0, bands: null, stretch: null })}>Reset display</button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {total === 0 && <p className="lp-empty">No layers yet: open an image and run a model</p>}
-        </div>
-        <footer className="lp-foot">
-          <div className="lp-group-label">Basemap</div>
-          <div className="lp-seg" role="radiogroup" aria-label="Basemap">
-            {BASEMAP_CHOICES.map(([k, label]) => (
-              <button key={k} type="button" role="radio" aria-checked={basemap === k} className={basemap === k ? "on" : ""}
-                      onClick={() => onBasemap(k)}>{label}</button>
             ))}
           </div>
-        </footer>
-      </>)}
+        )}
+
+        {services.length > 0 && (
+          <div className="lp-group">
+            <div className="lp-group-label">Map services</div>
+            {services.map((sv) => (
+              <div key={sv.key} className={`lp-row ${menu?.key === sv.key ? "on" : ""}`}>
+                <button type="button" className="lp-eye" onClick={() => onServicePatch(sv.key, { visible: !sv.visible })}
+                        aria-pressed={sv.visible} aria-label={sv.visible ? `Hide ${sv.name}` : `Show ${sv.name}`}>
+                  {sv.visible ? <IconEye /> : <IconEyeOff />}
+                </button>
+                <span className="lp-swatch raster" aria-hidden="true" />
+                <span className={`lp-name ${sv.visible ? "" : "dim"}`} title={sv.url}>{sv.name}</span>
+                <span className="mono lp-val">{sv.kind.toUpperCase()}</span>
+                {moreBtn(sv.key, sv.name)}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {aoi && (
+          <div className="lp-group">
+            <div className="lp-group-label">Drawn</div>
+            <div className="lp-row">
+              <button type="button" className="lp-eye" onClick={() => onAoiVisible(!aoiVisible)} aria-pressed={aoiVisible}
+                      aria-label={aoiVisible ? "Hide area of interest" : "Show area of interest"}>
+                {aoiVisible ? <IconEye /> : <IconEyeOff />}
+              </button>
+              <span className="lp-swatch aoi" aria-hidden="true" />
+              <span className={`lp-name ${aoiVisible ? "" : "dim"}`}>Area of interest</span>
+              {aoiLabel && <span className="mono lp-val">{aoiLabel}</span>}
+              <button type="button" className="lp-icon" aria-label="Zoom to area of interest" title="Zoom to layer" onClick={() => onZoom(aoi.features || [aoi])}><IconZoomTo /></button>
+            </div>
+          </div>
+        )}
+
+        {image?.image_id && (
+          <div className="lp-group">
+            <div className="lp-group-label">Imagery</div>
+            <div className={`lp-row ${menu?.key === "raster" ? "on" : ""}`}>
+              <button type="button" className="lp-eye" onClick={() => onImageLayer({ ...imageLayer, visible: !imageLayer.visible })}
+                      aria-pressed={imageLayer.visible} aria-label={imageLayer.visible ? "Hide image" : "Show image"}>
+                {imageLayer.visible ? <IconEye /> : <IconEyeOff />}
+              </button>
+              <span className="lp-swatch raster" aria-hidden="true" />
+              <span className={`lp-name ${imageLayer.visible ? "" : "dim"}`} title={image.filename}>{image.filename}</span>
+              {res && <span className="mono lp-val" title="Ground size of one pixel">{res}</span>}
+              {moreBtn("raster", image.filename)}
+            </div>
+          </div>
+        )}
+
+        {total === 0 && <p className="lp-empty">No layers yet: open an image and run a model</p>}
+      </div>
+      <footer className="lp-foot">
+        <div className="lp-group-label">Basemap</div>
+        <div className="lp-seg" role="radiogroup" aria-label="Basemap">
+          {BASEMAP_CHOICES.map(([k, label]) => (
+            <button key={k} type="button" role="radio" aria-checked={basemap === k} className={basemap === k ? "on" : ""}
+                    onClick={() => onBasemap(k)}>{label}</button>
+          ))}
+        </div>
+      </footer>
+      {items && <LayerMenu top={menu.top} items={items} onClose={closeMenu} />}
     </section>
   );
 }

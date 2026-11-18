@@ -336,6 +336,7 @@ function ViewTracker({ onView }) {
 }
 
 export default function MapView({
+  onRemoveImage,
   layers, detectionsVisible = true, onToggleDetections,
   aoi, onAoiChange, measurement, onMeasurementChange,
   trainOpen, onToggleTrain, onAnnotate, labels, trainPanel, perfOpen, onTogglePerf, perfPanel, libOpen, onToggleLib, libPanel,
@@ -450,6 +451,16 @@ export default function MapView({
                              ranAt: null, sourceCrs: r.source_crs, note: r.note }]);
     zoomTo(features);
   }
+  // a copy of a layer as it is shown now (filter applied), with its own settings
+  const duplicateLayer = (key) => {
+    const l = vlayers.find((x) => x.key === key);
+    if (!l) return;
+    const n = added.length;
+    const features = l.shown.map(({ id, ...f }) => f);
+    setAdded((a) => [...a, { key: `added:${Date.now()}`, name: `${l.name} copy`, color: ADDED_COLOURS[n % ADDED_COLOURS.length],
+                             geojson: { type: "FeatureCollection", features }, value: String(features.length), version: 0,
+                             modelId: l.modelId, modelVersion: l.modelVersion, imageName: l.imageName, ranAt: l.ranAt }]);
+  };
   const addService = (sv) => setServices((s) => [...s, { ...sv, key: `svc:${Date.now()}`, visible: true, opacity: 1 }]);
   const patchService = (key, p) => setServices((s) => s.map((x) => (x.key === key ? { ...x, ...p } : x)));
   const removeService = (key) => setServices((s) => s.filter((x) => x.key !== key));
@@ -615,6 +626,7 @@ export default function MapView({
       <LayersPanel
         open={legendOpen} onClose={() => setLegendOpen(false)}
         layers={vlayers} onPatch={patchLayer} onMove={moveLayer} onRemove={removeLayer} onZoom={zoomTo} onTable={openTable}
+        onDuplicate={duplicateLayer} onRemoveImage={onRemoveImage}
         allVisible={detectionsVisible} onToggleAll={onToggleDetections}
         aoi={aoi} aoiVisible={aoiVisible} onAoiVisible={setAoiVisible} aoiLabel={aoiLabel}
         image={sourceImage} imageLayer={imageLayer} onImageLayer={setImageLayer}

@@ -512,6 +512,15 @@ for when it is exposed to a network (all in `backend/.env.example`):
   outlined on the map, zoom to selection, export, and sum / mean of the
   sorted column. Verified live with sample result layers (panel, options,
   labels, table, pop-up, information) and `vite build`.
+- **Layer lists like ArcGIS Online.** Each layer's ⋯ opens a small floating
+  list under the button (above it when there is no room): results layers get
+  Zoom to layer, Show properties, Show table, Rename (in place), Duplicate,
+  Export GeoJSON, Remove, Move up / down; the image gets Zoom to layer, Show
+  properties and Remove (takes it off the map; the file stays in the
+  library); map services get Show properties and Remove. Appearance, filter
+  and display settings live on the layer's Properties page with its source
+  and fields. Verified live: both lists, rename, duplicate, image removal,
+  raster properties.
 - **More layer controls.** Visible range per layer (from / to zoom). Image
   bands (Auto, or any R G B) and stretch (2–98 %, 0.5–99.5 %, 5–95 %,
   min–max) drawn by the tile server (`tiles/{z}/{x}/{y}.png?bands=4,3,2&stretch=0.5-99.5`)

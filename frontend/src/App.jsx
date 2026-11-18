@@ -459,6 +459,7 @@ export default function App({ user = null, onSignOut = null }) {
             onSelectLibraryImage={setImage}
             currentImageId={image?.image_id}
             sourceImage={image}
+            onRemoveImage={() => { setImage(null); setEditId(null); setDrawMode(null); }}
             analysisOpen={analysisOpen}
             onToggleAnalysis={() => setAnalysisOpen((v) => !v)}
             analysisCount={analysisEntries.length}
