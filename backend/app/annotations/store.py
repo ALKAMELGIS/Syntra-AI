@@ -184,6 +184,23 @@ def add_annotation(image_path: str | Path, class_name: str, points_lonlat: list[
     return entry
 
 
+def add_many(image_path: str | Path, items: list[dict], bounds: dict, width: int, height: int,
+             extra: dict | None = None) -> list[dict]:
+    """Many labels in one write (an imported file): items are {class_name, points_lonlat}."""
+    now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    new = [{
+        "id": str(uuid.uuid4()),
+        "class_name": it["class_name"],
+        "points_lonlat": it["points_lonlat"],
+        "points_px": [list(lonlat_to_pixel(lon, lat, bounds, width, height)) for lon, lat in it["points_lonlat"]],
+        "created_at": now,
+        **{k: str(v)[:64] for k, v in (extra or {}).items()},
+    } for it in items if len(it["points_lonlat"]) >= 3]
+    if new:
+        save_annotations(image_path, load_annotations(image_path) + new)
+    return new
+
+
 def update_annotation(image_path: str | Path, annotation_id: str, bounds: dict, width: int, height: int,
                       points_lonlat: list[list[float]] | None = None, class_name: str | None = None) -> dict | None:
     """Change a saved label's outline and / or class; its id and creation time stay."""

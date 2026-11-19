@@ -42,6 +42,11 @@ real, what is written but unrun, and how it was verified.
   history, `results.csv`, pack metrics), and a running job's view polls
   until the job ends. Never ship a chart as a fixed picture or with numbers
   typed into the component.
+- Labels that come from a file follow Syntra labels v1 (the docstring of
+  `app/annotations/importer.py`: `class`, optional `role`
+  object / complete / accuracy, polygons only). Change the standard there
+  and in README together, keep imports idempotent (duplicates skipped) and
+  always show the field mapping before writing anything.
 - Exported geometry is WGS84 lon/lat. Do cross-tile merging in the raster
   CRS, then reproject (`reproject_detections_to_wgs84`). Never write
   projected coordinates into GeoJSON or KML.

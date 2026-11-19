@@ -83,6 +83,11 @@ def read_vector(path: Path) -> dict:
 
 @router.post("/read")
 async def read_upload(file: UploadFile = File(...)):
+    return await receive_vector(file)
+
+
+async def receive_vector(file: UploadFile) -> dict:
+    """An uploaded vector file -> {name, geojson (WGS84), count, source_crs, note}; nothing kept on disk."""
     name = safe_filename(file.filename, default="layer")
     ext = Path(name).suffix.lower()
     if ext not in DIRECT | {".zip"}:

@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { api } from "../api/client.js";
+import LabelImport from "./LabelImport.jsx";
 import { classColor, isArea, TRAIN_AREA, CHECK_AREA, AREA_LABEL, fmtArea } from "./AnnotationTool.jsx";
 import { IconCheck, IconClickAI, IconCircle, IconPencil, IconPolygon, IconRectangle, IconSquare, IconTrash } from "./Icons.jsx";
 
@@ -147,7 +148,7 @@ function ClickTool({ outline, onOutline, preview }) {
 
 export default function LabelTools({
   open, classes, counts, activeClass, onActiveClass, mode, onMode, annotations, onClearAnnotations, labelError,
-  outline, onOutline, exact, onExact, segPreview, editId, onEditDone, onEditClass, onEditDelete,
+  outline, onOutline, exact, onExact, segPreview, editId, onEditDone, onEditClass, onEditDelete, image, onImported,
 }) {
   const drawingArea = isArea(activeClass || "");
   const objects = annotations.filter((a) => !isArea(a.class_name));
@@ -227,7 +228,9 @@ export default function LabelTools({
       {drawingArea && mode && (
         <p className="train-dim">{activeClass === TRAIN_AREA ? "Label everything inside it" : "Label everything inside it · kept for scoring"}</p>
       )}
-      {!classes.length && <p className="train-dim">Add a class in step 1 first.</p>}
+      <p className="train-label">Import</p>
+      <LabelImport image={image} onImported={onImported} />
+      {!classes.length && <p className="train-dim">Add a class in step 1, or import labels above.</p>}
       {editing ? (
         <div className="label-edit"
              title={`Drag corners or midpoints · Alt+click removes a corner · drag to move · round handle rotates${isArea(editing.class_name) ? "" : " · 1–9 class"} · Delete · Esc`}>

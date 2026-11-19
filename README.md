@@ -370,6 +370,26 @@ for when it is exposed to a network (all in `backend/.env.example`):
   were refused by the gate. **Not yet run with the real SAM weights**:
   huggingface.co is blocked in the build environment; on your machine
   Click > Install click tool downloads about 120 MB once.
+- **Labels from a file (Syntra labels v1).** Train > Label > Import adds
+  polygons drawn in ArcGIS or QGIS as labels, without drawing. The file:
+  Shapefile as a .zip (.shp .shx .dbf .prj), GeoPackage, GeoJSON, KML or
+  FlatGeobuf, any CRS declared in the file. Fields: `class` (text,
+  required; also read from class_name, classname, label, category, type
+  or name, or one class for the whole file), `role` (optional: `object`,
+  `complete` = training area, `accuracy` = accuracy area). Geometry is
+  Polygon or MultiPolygon, one object each. Before anything is added the
+  person sees the fields, picks the class field, renames or leaves out each
+  value, and picks the role field. On import labels are clipped to the
+  image, holes dropped, parts under 2 px skipped, and a label already on
+  the image (same class, IoU >= 0.9) skipped, so the same file twice adds
+  nothing; the report says how many of each were skipped. "Standard" shows
+  the fields and downloads a template GeoJSON placed on the open image.
+  (`app/annotations/importer.py`, `POST /api/images/{id}/annotations/import`
+  and `/import/preview`). Verified: `test_label_import_offline.py` (2: a
+  UTM Shapefile with Type and role fields, clipped, outside, no class,
+  re-import duplicates; one class for a GeoJSON, a class map, MultiPolygon
+  parts, a point refused), live: a 4-feature Shapefile zip, two values
+  mapped to ship, 4 labels added.
 - **Model performance follows training live.** A training run (on this
   computer or a RunPod GPU) appears in Model performance from its first
   epoch, marked as training, with epoch N of the planned total, a progress

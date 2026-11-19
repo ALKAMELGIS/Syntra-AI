@@ -2127,3 +2127,28 @@ input[type=range].gauge:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 2px 
 .perf-progress { height: 4px; margin: 4px 0 12px; border-radius: 2px; background: var(--hover-bg); overflow: hidden; }
 .perf-progress > span { display: block; height: 100%; background: var(--accent); transition: width 0.4s var(--ease); }
 .perf-err { color: var(--error); }
+
+/* Label step: labels from a file */
+.limp { display: flex; flex-direction: column; gap: 8px; }
+.limp-row { display: flex; align-items: center; gap: 8px; }
+.limp-pick { flex: 1; display: flex; align-items: center; gap: 8px; }
+.limp-pick svg { width: 16px; height: 16px; }
+.limp-link { background: none; border: 0; padding: 4px; color: var(--text-dim); font: inherit; font-size: 12px; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 4px; transition: color 0.15s var(--ease); }
+.limp-link:hover { color: var(--text); }
+.limp-link svg { width: 14px; height: 14px; }
+.limp-std { padding: 8px 12px; border: 1px solid var(--panel-border); border-radius: var(--radius-control); font-size: 12px; }
+.limp-std dl { display: grid; grid-template-columns: 72px 1fr; gap: 4px 8px; margin: 0 0 4px; }
+.limp-std dt { color: var(--text); }
+.limp-std dd { margin: 0; color: var(--text-dim); }
+.limp-card { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid var(--panel-border); border-radius: var(--radius-control); }
+.limp-card p { margin: 0; font-size: 12px; }
+.limp-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.limp-name { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.limp-field { display: grid; grid-template-columns: 72px 1fr; align-items: center; gap: 8px; font-size: 12px; color: var(--text-dim); }
+.limp-map { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; max-height: 220px; overflow: auto; }
+.limp-map li { display: grid; grid-template-columns: 16px minmax(0, 1fr) 32px minmax(0, 1fr); align-items: center; gap: 8px; font-size: 12px; }
+.limp-map li.off .limp-val { color: var(--text-muted); text-decoration: line-through; }
+.limp-map .train-input { height: 28px; }
+.limp-val { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.limp-report { margin: 0; font-size: 12px; }

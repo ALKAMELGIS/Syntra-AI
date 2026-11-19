@@ -36,7 +36,7 @@ export default function TrainPanel({
   annotations, classes, onAddClass, activeClass, onActiveClass, mode, onMode, onClearAnnotations, labelError,
   outline, onOutline, exact, onExact, segPreview,
   device = "cpu", onModelsChanged, onRunModel, onCheckModel,
-  editId, onEditDone, onEditClass, onEditDelete,
+  editId, onEditDone, onEditClass, onEditDelete, onImported,
 }) {
   const [images, setImages] = useState([]);
   const [upload, setUpload] = useState(null);       // null | {pct} | {error}
@@ -213,7 +213,8 @@ export default function TrainPanel({
                       onActiveClass={onActiveClass} mode={mode} onMode={onMode} annotations={annotations}
                       onClearAnnotations={onClearAnnotations} labelError={labelError}
                       outline={outline} onOutline={onOutline} exact={exact} onExact={onExact} segPreview={segPreview}
-                      editId={editId} onEditDone={onEditDone} onEditClass={onEditClass} onEditDelete={onEditDelete} />
+                      editId={editId} onEditDone={onEditDone} onEditClass={onEditClass} onEditDelete={onEditDelete}
+                      image={image} onImported={onImported} />
         )}
 
         {step === 2 && (

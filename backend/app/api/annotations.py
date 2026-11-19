@@ -7,7 +7,10 @@ POST /api/training/export-dataset) instead of pasting pixel JSON by hand.
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+import json
+
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 
 from app.annotations import store
@@ -105,3 +108,59 @@ def export_annotations(image_id: str):
     class_names, annotations = store.to_export_payload(anns)
     return {"image_id": image_id, "image_path": entry["path"], "class_names": class_names,
             "annotations": annotations}
+
+
+# --- labels from a file (Shapefile zip, GeoPackage, GeoJSON, KML, FlatGeobuf) ---
+@router.post("/import/preview")
+async def import_preview(image_id: str, file: UploadFile = File(...)):
+    """What the file holds and which fields look like class and role; nothing is added."""
+    from app.annotations import importer
+    from app.api.vector import receive_vector
+
+    entry = _entry_or_404(image_id)
+    got = await receive_vector(file)
+    info = importer.inspect(got["geojson"])
+    b = entry["bounds_wgs84"]
+    from shapely.geometry import box, shape
+
+    frame = box(b["west"], b["south"], b["east"], b["north"])
+    on_image = 0
+    for f in got["geojson"]["features"]:
+        try:
+            on_image += bool(f.get("geometry")) and shape(f["geometry"]).intersects(frame)
+        except Exception:  # noqa: BLE001
+            pass
+    return {"name": got["name"], "source_crs": got["source_crs"], "note": got["note"], "on_image": on_image, **info}
+
+
+@router.post("/import")
+async def import_labels(image_id: str, file: UploadFile = File(...), class_field: str | None = Form(None),
+                        fixed_class: str | None = Form(None), role_field: str | None = Form(None),
+                        class_map: str | None = Form(None)):
+    """Add the file's polygons as labels (see app/annotations/importer.py for the standard)."""
+    from app.annotations import importer
+    from app.api.vector import receive_vector
+
+    entry = _entry_or_404(image_id)
+    try:
+        cmap = json.loads(class_map) if class_map else None
+        if cmap is not None and not isinstance(cmap, dict):
+            raise ValueError
+    except ValueError:
+        raise HTTPException(status_code=400, detail="class_map must be a JSON object of file value -> class.") from None
+    got = await receive_vector(file)
+
+    def work():
+        items, report = importer.to_labels(
+            got["geojson"], entry["bounds_wgs84"], entry["width"], entry["height"], class_field=class_field or None,
+            fixed_class=fixed_class or None, role_field=role_field or None, class_map=cmap,
+            existing=store.load_annotations(entry["path"]))
+        store.add_many(entry["path"], items, entry["bounds_wgs84"], entry["width"], entry["height"],
+                       extra={"tool": "import", "source": got["name"]})
+        return report
+
+    try:
+        report = await run_in_threadpool(work)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    return {"name": got["name"], **report, "annotations": store.load_annotations(entry["path"])}

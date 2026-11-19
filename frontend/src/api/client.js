@@ -248,6 +248,15 @@ export const api = {
     }).then(handle),
   deleteAnnotation: (imageId, annotationId) =>
     request(`${BASE}/images/${imageId}/annotations/${annotationId}`, { method: "DELETE" }).then(handle),
+  previewLabelImport: (imageId, file) => {
+    const fd = new FormData(); fd.append("file", file);
+    return request(`${BASE}/images/${imageId}/annotations/import/preview`, { method: "POST", body: fd }).then(handle);
+  },
+  importLabels: (imageId, file, fields) => {
+    const fd = new FormData(); fd.append("file", file);
+    for (const [k, v] of Object.entries(fields)) if (v) fd.append(k, v);
+    return request(`${BASE}/images/${imageId}/annotations/import`, { method: "POST", body: fd }).then(handle);
+  },
   clearAnnotations: (imageId) =>
     request(`${BASE}/images/${imageId}/annotations`, { method: "DELETE" }).then(handle),
 };
