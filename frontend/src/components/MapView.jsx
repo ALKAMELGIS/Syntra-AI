@@ -10,34 +10,7 @@ import { IconExpand, IconBasemap, IconLayers, IconGallery, IconGear, IconAnalysi
 import LayersPanel from "./LayersPanel.jsx";
 import AttributeTable from "./AttributeTable.jsx";
 import { featuresBounds, fieldsOf, fmtValue } from "./layerUtils.js";
-
-const BASEMAPS = {
-  satellite: {
-    label: "Satellite",
-    url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-    attribution: "&copy; Esri, Maxar, Earthstar Geographics",
-    // Esri's World_Imagery service only actually renders tiles up to about
-    // z19 in most of the world (higher in a handful of flagship cities).
-    // Past that there are no native tiles, so maxNativeZoom tells Leaflet
-    // to keep serving/upscaling the z19 tile rather than requesting (and
-    // failing to get) tiles that don't exist -- the user can still zoom
-    // all the way in past this, the image just gets blurrier.
-    maxNativeZoom: 19,
-  },
-  streets: {
-    // CARTO's free basemap tiles (basemaps.cartocdn.com) now require an API
-    // key -- confirmed by hand (tiles rendered as "API KEY REQUIRED" in the
-    // browser) after wiring this up. Standard OpenStreetMap raster tiles
-    // remain genuinely keyless and are the correct default for a "streets"
-    // toggle with no account/billing setup required.
-    label: "Streets",
-    url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-    attribution: "&copy; OpenStreetMap contributors",
-    // Standard OSM raster tiles stop at z19 natively; same upscale behavior
-    // as above beyond that.
-    maxNativeZoom: 19,
-  },
-};
+import { BASEMAPS } from "./basemaps.js";
 
 // Hard ceiling for how far the user can zoom in, on either basemap or on an
 // uploaded image overlay. 24 matches what the user asked for and is well
@@ -83,7 +56,7 @@ function MapToolbar({
   }
 
   function toggleBasemap() {
-    onBasemapChange(basemap === "satellite" ? "streets" : basemap === "streets" ? "none" : "satellite");
+    onBasemapChange(basemap === "none" ? "satellite" : "none");
   }
 
   return (
@@ -91,7 +64,7 @@ function MapToolbar({
       <button className="map-tool-btn" data-tool="fit" title="Zoom to detections / reset view" onClick={zoomToFit}>
         <IconExpand />
       </button>
-      <button className="map-tool-btn" data-tool="basemap" title="Toggle basemap" onClick={toggleBasemap}>
+      <button className="map-tool-btn" data-tool="basemap" title={basemap === "none" ? "Show basemap" : "Hide basemap"} onClick={toggleBasemap}>
         <IconBasemap />
       </button>
       <button
@@ -355,7 +328,8 @@ export default function MapView({
   onSelectLibraryImage, currentImageId, sourceImage,
   analysisOpen, onToggleAnalysis, analysisCount, analysisRunning, analysisPanel, focusFeature = null,
 }) {
-  const [basemap, setBasemap] = useState("satellite");
+  const [basemap, setBasemapState] = useState(() => { try { return localStorage.getItem("syntra_basemap") || "satellite"; } catch { return "satellite"; } });
+  const setBasemap = (k) => { setBasemapState(k); try { localStorage.setItem("syntra_basemap", k); } catch { /* private window */ } };
   const [legendOpen, setLegendOpen] = useState(false);
   const [imageLayer, setImageLayerRaw] = useState(() => {
     try { return { visible: true, opacity: 1, ...JSON.parse(localStorage.getItem(LAYER_KEY) || "{}") }; } catch { return { visible: true, opacity: 1 }; }
@@ -576,6 +550,7 @@ export default function MapView({
             tileerror: () => setTiles((t) => ({ ...t, failed: t.failed + 1 })),
           }}
         />}
+        {bm?.overlay && <TileLayer key={`${basemap}-ref`} url={bm.overlay} maxZoom={MAX_ZOOM} maxNativeZoom={bm.maxNativeZoom} zIndex={2} />}
         {overlayBounds && sourceImage?.image_id && imageLayer.visible && <SourceImage image={sourceImage} bounds={overlayBounds} opacity={imageLayer.opacity}
                        display={imageLayer.displayFor === sourceImage.image_id ? { bands: imageLayer.bands || null, stretch: imageLayer.stretch || null } : null} />}
         <ImageFootprint image={sourceImage} />
@@ -664,7 +639,7 @@ export default function MapView({
       </MapContainer>
       {bm && !tiles.ok && tiles.failed >= 4 && (
         <p className="basemap-note" role="status">
-          {bm.label} base map can't load: this computer can't reach its tile server
+          {bm.needsKey ? "Google base map needs a working key: Layers > Basemap" : `${bm.label} base map can't load: this computer can't reach its tile server`}
         </p>
       )}
       {analysisOpen && analysisPanel}

@@ -47,6 +47,9 @@ real, what is written but unrun, and how it was verified.
   object / complete / accuracy, polygons only). Change the standard there
   and in README together, keep imports idempotent (duplicates skipped) and
   always show the field mapping before writing anything.
+- Base maps are for looking only. Google tiles go through
+  `api/basemaps.py` (key on the server, passed through, never stored) and
+  must never reach a model, a dataset or a cache: its policy forbids it.
 - Exported geometry is WGS84 lon/lat. Do cross-tile merging in the raster
   CRS, then reproject (`reproject_detections_to_wgs84`). Never write
   projected coordinates into GeoJSON or KML.

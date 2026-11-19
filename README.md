@@ -370,6 +370,20 @@ for when it is exposed to a network (all in `backend/.env.example`):
   were refused by the gate. **Not yet run with the real SAM weights**:
   huggingface.co is blocked in the build environment; on your machine
   Click > Install click tool downloads about 120 MB once.
+- **Base maps.** Layers > Basemap is a gallery with a thumbnail of each:
+  Imagery, Hybrid (imagery with Esri place and boundary labels), Google,
+  Streets (Esri), OSM, Topographic, Dark gray, Light gray, None. All are
+  keyless except Google; the choice is remembered in the browser. Google
+  satellite uses the official Map Tiles API: the key is saved on the server
+  (`secrets.json`, checked by opening a session, never returned) and each
+  tile is passed through `/api/basemaps/google/tile/{z}/{x}/{y}` with
+  `Cache-Control: no-store`, nothing written. Display only: Google's policy
+  forbids detection on, training from, storing or extracting data from its
+  tiles, so they are never sent to a model. Verified:
+  `test_basemaps_offline.py` (2: bad key refused and not kept, key never in
+  a response, tile passed through with nothing written, tile outside the
+  world refused), vite build. The tile servers are not reachable from the
+  build environment; check the thumbnails on your machine.
 - **Labels from a file (Syntra labels v1).** Train > Label > Import adds
   polygons drawn in ArcGIS or QGIS as labels, without drawing. The file:
   Shapefile as a .zip (.shp .shx .dbf .prj), GeoPackage, GeoJSON, KML or
