@@ -370,6 +370,17 @@ for when it is exposed to a network (all in `backend/.env.example`):
   were refused by the gate. **Not yet run with the real SAM weights**:
   huggingface.co is blocked in the build environment; on your machine
   Click > Install click tool downloads about 120 MB once.
+- **Use a result layer as labels.** A layer's ⋯ menu has Use as labels:
+  type a class (for example date palm) and the layer's shown polygons are
+  added as labels of that class on the open image, through the same import
+  as a file (clipped to the image, duplicates skipped). This is how a
+  model without trained weights gets its first labels: run Trees
+  (DeepForest) on palm farms, keep the palms, send them to labels as date
+  palm, correct, train. Verified: vite build, live (3 results became 3
+  labels of a new class). No pretrained date palm weights with a licence
+  that allows this use were found: the one public date palm dataset found
+  (Figshare, UAE) is built from Google Earth imagery, whose terms forbid
+  training models on it, so it is not used.
 - **Base maps.** Layers > Basemap is a gallery with a thumbnail of each:
   Imagery, Hybrid (imagery with Esri place and boundary labels), Google,
   Streets (Esri), OSM, Topographic, Dark gray, Light gray, None. All are

@@ -321,7 +321,7 @@ function ViewTracker({ onView }) {
 }
 
 export default function MapView({
-  onRemoveImage, onRemoveResult,
+  onRemoveImage, onRemoveResult, onLabelsImported,
   layers, detectionsVisible = true, onToggleDetections,
   aoi, onAoiChange, measurement, onMeasurementChange,
   trainOpen, onToggleTrain, onAnnotate, labels, trainPanel, perfOpen, onTogglePerf, perfPanel, libOpen, onToggleLib, libPanel,
@@ -484,6 +484,22 @@ export default function MapView({
     } catch (err) {
       say(null);
       patchLayer(key, { taskError: err.detail || err.message });
+    }
+  }
+  // a layer's polygons become training labels of one class on the open image (clipped, duplicates skipped)
+  async function toLabels(key, cls) {
+    const l = vlayers.find((x) => x.key === key);
+    if (!l || !sourceImage?.image_id) { patchLayer(key, { taskError: "Open the image first" }); return; }
+    patchLayer(key, { task: "Labelling…", taskError: null });
+    try {
+      const gj = { type: "FeatureCollection", features: (l.shown || []).map(({ id, ...f }) => f) };
+      const file = new File([JSON.stringify(gj)], `${l.name}.geojson`, { type: "application/geo+json" });
+      const r = await api.importLabels(sourceImage.image_id, file, { fixed_class: cls });
+      onLabelsImported?.(r.annotations || []);
+      patchLayer(key, { task: `+${r.added} labels` });
+      setTimeout(() => patchLayer(key, { task: null }), 4000);
+    } catch (err) {
+      patchLayer(key, { task: null, taskError: err.detail || err.message });
     }
   }
   // the layer against the labels drawn inside the image's accuracy areas
@@ -666,7 +682,7 @@ export default function MapView({
       <LayersPanel
         open={legendOpen} onClose={() => setLegendOpen(false)}
         layers={vlayers} onPatch={patchLayer} onMove={moveLayer} onRemove={removeLayer} onZoom={zoomTo} onTable={openTable}
-        onDuplicate={duplicateLayer} onRefine={refineLayer} onScore={scoreLayer} onRemoveImage={onRemoveImage}
+        onDuplicate={duplicateLayer} onRefine={refineLayer} onScore={scoreLayer} onToLabels={toLabels} onRemoveImage={onRemoveImage}
         allVisible={detectionsVisible} onToggleAll={onToggleDetections}
         aoi={aoi} aoiVisible={aoiVisible} onAoiVisible={setAoiVisible} aoiLabel={aoiLabel}
         image={sourceImage} imageLayer={imageLayer} onImageLayer={setImageLayer}

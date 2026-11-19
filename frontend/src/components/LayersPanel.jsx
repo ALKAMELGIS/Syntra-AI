@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   IconPlus, IconArrowDown, IconArrowUp, IconClose, IconDownload, IconEye, IconEyeOff, IconInfo, IconMore,
-  IconTable, IconTrash, IconZoomTo, IconEdit, IconChevronLeft, IconCopy, IconClickAI, IconCheck,
+  IconTable, IconTrash, IconZoomTo, IconEdit, IconChevronLeft, IconCopy, IconClickAI, IconCheck, IconPolygon,
 } from "./Icons.jsx";
 import { LAYER_COLOURS, downloadGeojson, featuresBounds, fieldType, fieldsOf, unitOf } from "./layerUtils.js";
 import { BASEMAPS, BASEMAP_ORDER, thumbUrl } from "./basemaps.js";
@@ -234,11 +234,11 @@ function ServiceProps({ sv, onPatch, onBack, onClose }) {
 }
 
 // A row's name becomes a text field while renaming (Enter saves, Esc cancels).
-function RenameField({ value, onSave, onCancel }) {
+function RenameField({ value, onSave, onCancel, label = "Layer name", placeholder, blurSaves = true }) {
   const [v, setV] = useState(value);
   return (
-    <input className="lp-rename-inline" autoFocus value={v} maxLength={60} aria-label="Layer name"
-           onChange={(e) => setV(e.target.value)} onBlur={() => onSave(v)}
+    <input className="lp-rename-inline" autoFocus value={v} maxLength={60} aria-label={label} placeholder={placeholder}
+           onChange={(e) => setV(e.target.value)} onBlur={() => (blurSaves ? onSave(v) : onCancel())}
            onKeyDown={(e) => { if (e.key === "Enter") onSave(v); if (e.key === "Escape") { e.stopPropagation(); onCancel(); } }} />
   );
 }
@@ -347,7 +347,7 @@ function BasemapGallery({ basemap, onBasemap }) {
 }
 
 export default function LayersPanel({
-  open, onClose, layers, onPatch, onMove, onRemove, onZoom, onTable, onDuplicate, onRefine, onScore, allVisible, onToggleAll,
+  open, onClose, layers, onPatch, onMove, onRemove, onZoom, onTable, onDuplicate, onRefine, onScore, onToLabels, allVisible, onToggleAll,
   aoi, aoiVisible, onAoiVisible, aoiLabel, image, imageLayer, onImageLayer, onZoomImage, onRemoveImage, basemap, onBasemap,
   zoom, onAddFile, onAddService, services = [], onServicePatch, onServiceRemove,
 }) {
@@ -355,6 +355,7 @@ export default function LayersPanel({
   const [menu, setMenu] = useState(null);           // {key, top}: the ⋯ list that is open
   const [page, setPage] = useState(null);           // {kind, key}: a layer's Properties
   const [renaming, setRenaming] = useState(null);   // key whose name is being edited
+  const [labelling, setLabelling] = useState(null); // key being sent to labels: its row asks for the class
   const ref = useRef(null);
   const closeMenu = useCallback(() => setMenu(null), []);
 
@@ -410,6 +411,7 @@ export default function LayersPanel({
       "-",
       { label: "Rename", Icon: IconEdit, run: () => setRenaming(l.key) },
       { label: "Duplicate", Icon: IconCopy, run: () => onDuplicate(l.key) },
+      ...(onToLabels ? [{ label: "Use as labels", Icon: IconPolygon, disabled: !!l.task, run: () => setLabelling(l.key) }] : []),
       ...(l.jobId ? [
         ...(String(l.resultId).endsWith("__refined") ? [] : [{ label: "Refine outlines", Icon: IconClickAI, hint: "SAM", disabled: !!l.task, run: () => onRefine(l.key) }]),
         { label: "Measure accuracy", Icon: IconCheck, disabled: !!l.task, run: () => { onScore(l.key); setPage({ kind: "vector", key: l.key }); } },
@@ -437,7 +439,10 @@ export default function LayersPanel({
     ];
   }
 
-  const name = (key, value, base, cls) => (renaming === key
+  const name = (key, value, base, cls) => (labelling === key
+    ? <RenameField value="" label="Class for these labels" placeholder="Class, e.g. date palm" blurSaves={false}
+                   onSave={(v) => { if (v.trim()) onToLabels(key, v.trim()); setLabelling(null); }} onCancel={() => setLabelling(null)} />
+    : renaming === key
     ? <RenameField value={value} onSave={(v) => { onPatch(key, { name: v.trim() || base }); setRenaming(null); }} onCancel={() => setRenaming(null)} />
     : <span className={cls} title={value}>{value}</span>);
 

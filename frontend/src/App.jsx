@@ -425,6 +425,7 @@ export default function App({ user = null, onSignOut = null }) {
           <MapView
             layers={mapLayers}
             onRemoveResult={removeResult}
+            onLabelsImported={(list) => { setAnnotations(list); setLabelError(null); }}
             detectionsVisible={detectionsVisible}
             onToggleDetections={() => setDetectionsVisible((v) => !v)}
             aoi={aoi}
