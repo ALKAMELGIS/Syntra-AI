@@ -39,7 +39,6 @@ export default function LabelImport({ image, onImported }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [report, setReport] = useState(null);
-  const [showStd, setShowStd] = useState(false);
 
   const reset = () => { setFile(null); setPre(null); setMap({}); setError(null); };
   async function choose(f) {
@@ -76,23 +75,14 @@ export default function LabelImport({ image, onImported }) {
         <button type="button" className="quiet-button limp-pick" disabled={!image?.image_id || busy} onClick={() => input.current?.click()}>
           <IconUpload /> {busy && !pre ? "Reading…" : "From a file"}
         </button>
-        <button type="button" className="limp-link" aria-expanded={showStd} onClick={() => setShowStd((v) => !v)}>Standard</button>
+        {image?.bounds_wgs84 && (
+          <button type="button" className="lp-icon limp-tpl" onClick={downloadTemplate} aria-label="Download template"
+                  title={"Template · GeoJSON\nclass: ship, building…\nrole: object · complete · accuracy\nPolygons, any CRS"}>
+            <IconDownload />
+          </button>
+        )}
         <input ref={input} type="file" hidden accept=".zip,.gpkg,.geojson,.json,.kml,.fgb" onChange={(e) => choose(e.target.files?.[0])} />
       </div>
-
-      {showStd && (
-        <div className="limp-std">
-          <dl>
-            <dt className="mono">geometry</dt><dd>Polygon or MultiPolygon, one object each</dd>
-            <dt className="mono">class</dt><dd>Text, required. ship, building, tank…</dd>
-            <dt className="mono">role</dt><dd>Optional. object, complete (training area) or accuracy</dd>
-            <dt className="mono">crs</dt><dd>Any, with its .prj. Shapefile as a .zip</dd>
-          </dl>
-          {image?.bounds_wgs84 && (
-            <button type="button" className="limp-link" onClick={downloadTemplate}><IconDownload /> Template for this image</button>
-          )}
-        </div>
-      )}
 
       {pre && (
         <div className="limp-card">
@@ -100,18 +90,16 @@ export default function LabelImport({ image, onImported }) {
             <span className="limp-name" title={file?.name}>{pre.name}</span>
             <button type="button" className="lp-icon" aria-label="Cancel" onClick={reset}><IconClose /></button>
           </div>
-          <p className="mono train-dim">{pre.polygons} polygons · {pre.on_image} on this image{pre.other_geometry ? ` · ${pre.other_geometry} not polygons` : ""}</p>
-          {pre.note && <p className="train-dim">{pre.note}</p>}
 
           <label className="limp-field">
-            <span>Class from</span>
+            <span>Class</span>
             <select className="train-input" value={field} onChange={(e) => { setField(e.target.value); setMap({}); }}>
-              <option value="">One class for all</option>
-              {pre.fields.map((f) => <option key={f.name} value={f.name}>{f.name} · {f.distinct}</option>)}
+              <option value="">One class</option>
+              {pre.fields.map((f) => <option key={f.name} value={f.name}>{f.name}</option>)}
             </select>
           </label>
           {!field && (
-            <input className="train-input" placeholder="Class, e.g. ship" value={fixed} onChange={(e) => setFixed(e.target.value)} aria-label="Class for every polygon" />
+            <input className="train-input" placeholder="ship" value={fixed} onChange={(e) => setFixed(e.target.value)} aria-label="Class for every polygon" />
           )}
           {field && values.length > 0 && (
             <ul className="limp-map">
@@ -131,23 +119,22 @@ export default function LabelImport({ image, onImported }) {
             </ul>
           )}
           <label className="limp-field">
-            <span>Role from</span>
+            <span>Role</span>
             <select className="train-input" value={roleField} onChange={(e) => setRoleField(e.target.value)}>
-              <option value="">None · all are objects</option>
+              <option value="">None</option>
               {pre.fields.filter((f) => f.name !== field).map((f) => <option key={f.name} value={f.name}>{f.name}</option>)}
             </select>
           </label>
           <button type="button" className="run-button" disabled={!ready || busy || !pre.on_image} onClick={add}>
-            {busy ? "Adding…" : pre.on_image ? `Add ${pre.on_image} label${pre.on_image === 1 ? "" : "s"}` : "Nothing on this image"}
+            {busy ? "Adding…" : pre.on_image ? `Add ${pre.on_image}` : "Not on this image"}
           </button>
         </div>
       )}
 
       {report && (
-        <p className="limp-report train-dim">
-          <span className="mono">{report.added}</span> added
-          {Object.entries(report.by_class).filter(([c]) => !c.startsWith("__")).map(([c, n]) => ` · ${c} ${n}`).join("")}
-          {Object.entries(report.skipped || {}).filter(([k]) => SKIPS[k]).map(([k, n]) => ` · ${n} ${SKIPS[k]}`).join("")}
+        <p className="limp-report mono train-dim"
+           title={Object.entries(report.skipped || {}).filter(([k]) => SKIPS[k]).map(([k, n]) => `${n} ${SKIPS[k]}`).join("\n") || undefined}>
+          +{report.added}{Object.values(report.skipped || {}).some(Boolean) ? ` · ${Object.entries(report.skipped).filter(([k]) => SKIPS[k]).reduce((a, [, n]) => a + n, 0)} skipped` : ""}
         </p>
       )}
       {error && <p className="train-error">{error}</p>}

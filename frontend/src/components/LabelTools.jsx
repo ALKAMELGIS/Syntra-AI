@@ -230,7 +230,6 @@ export default function LabelTools({
       )}
       <p className="train-label">Import</p>
       <LabelImport image={image} onImported={onImported} />
-      {!classes.length && <p className="train-dim">Add a class in step 1, or import labels above.</p>}
       {editing ? (
         <div className="label-edit"
              title={`Drag corners or midpoints · Alt+click removes a corner · drag to move · round handle rotates${isArea(editing.class_name) ? "" : " · 1–9 class"} · Delete · Esc`}>

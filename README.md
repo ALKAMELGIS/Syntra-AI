@@ -382,8 +382,9 @@ for when it is exposed to a network (all in `backend/.env.example`):
   value, and picks the role field. On import labels are clipped to the
   image, holes dropped, parts under 2 px skipped, and a label already on
   the image (same class, IoU >= 0.9) skipped, so the same file twice adds
-  nothing; the report says how many of each were skipped. "Standard" shows
-  the fields and downloads a template GeoJSON placed on the open image.
+  nothing; the report says how many of each were skipped. The download icon
+  next to From a file gives a template GeoJSON placed on the open image,
+  its tooltip names the fields.
   (`app/annotations/importer.py`, `POST /api/images/{id}/annotations/import`
   and `/import/preview`). Verified: `test_label_import_offline.py` (2: a
   UTM Shapefile with Type and role fields, clipped, outside, no class,

@@ -2152,3 +2152,5 @@ input[type=range].gauge:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 2px 
 .limp-map .train-input { height: 28px; }
 .limp-val { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .limp-report { margin: 0; font-size: 12px; }
+
+.limp-tpl { flex: none; }
