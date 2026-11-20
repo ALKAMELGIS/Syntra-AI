@@ -83,7 +83,7 @@ function PackRow({ m, onInstalled }) {
           <button type="button" className="link-button" onClick={() => fileRef.current?.click()}>From file</button>
         </span>
       )}
-      <input ref={fileRef} type="file" accept=".onnx" hidden onChange={fromFile} />
+      <input ref={fileRef} type="file" accept={pack?.filename ? "." + pack.filename.split(".").pop() : ".onnx"} hidden onChange={fromFile} />
     </li>
   );
 }

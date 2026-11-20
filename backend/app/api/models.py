@@ -8,7 +8,7 @@ from app.core.config import settings
 from app.models.custom_registry import delete_custom_model, get_custom_model
 from app.models.registry import get_metadata, list_catalog
 from app.core.jobs import get_store
-from app.models.packs import PACKS, is_installed, list_packs, pack_for_model, pack_path, verify_onnx
+from app.models.packs import PACKS, check_sha256, is_installed, list_packs, pack_for_model, pack_path, verify_onnx
 from app.models.stats import get_stats
 
 router = APIRouter(prefix="/api/models", tags=["models"])
@@ -79,6 +79,7 @@ def _download(job_id: str, pack) -> None:
                 if got - last > 2_000_000:
                     jobs.update(job_id, bytes=got, total_bytes=total or None)
                     last = got
+        check_sha256(part, pack)
         info = verify_onnx(part, pack.runtime)
         part.replace(dest)
         jobs.update(job_id, status="completed", bytes=got, total_bytes=total or got, model=info)
@@ -113,10 +114,11 @@ def install_status(job_id: str):
 
 @router.post("/packs/{pack_id}/file")
 async def install_pack_from_file(pack_id: str, file: UploadFile):
-    """Offline install: the same .onnx the pack would download."""
+    """Offline install: the same file the pack would download."""
     pack = _get_pack(pack_id)
-    if not (file.filename or "").lower().endswith(".onnx"):
-        raise HTTPException(status_code=400, detail="Choose the model's .onnx file.")
+    ext = "." + pack.filename.rsplit(".", 1)[-1].lower()
+    if not (file.filename or "").lower().endswith(ext):
+        raise HTTPException(status_code=400, detail=f"Choose the model's {ext} file ({pack.filename}).")
     dest = pack_path(pack)
     part = dest.with_suffix(dest.suffix + ".part")
 
@@ -132,6 +134,7 @@ async def install_pack_from_file(pack_id: str, file: UploadFile):
 
     try:
         size = await run_in_threadpool(_save)
+        await run_in_threadpool(check_sha256, part, pack)
         info = await run_in_threadpool(verify_onnx, part, pack.runtime)
     except Exception as exc:
         part.unlink(missing_ok=True)

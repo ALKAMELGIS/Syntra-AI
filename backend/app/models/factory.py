@@ -43,6 +43,9 @@ def build_model(model_id: str, version: str | None = None) -> DetectionModel:
         if pack.runtime == "yolo_seg":
             from app.models.drone_seg_detector import DroneSegDetector
             return DroneSegDetector(metadata, str(pack_path(pack)), training_gsd_m=pack.training_gsd_m or 0.04)
+        if pack.runtime == "palm_segformer":
+            from app.models.palm_segformer import PalmSegformerDetector
+            return PalmSegformerDetector(metadata, str(pack_path(pack)), training_gsd_m=pack.training_gsd_m or 0.31)
         raise KeyError(f"{model_id} is a segmentation pack; it runs through app.engine.segmentation_run.")
 
     from app.models.aerial_obb_detector import DOTA_CLASS_MAP

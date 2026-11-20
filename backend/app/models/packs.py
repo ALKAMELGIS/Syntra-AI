@@ -37,6 +37,7 @@ class ModelPack:
     training_gsd_m: float | None
     approx_size_mb: float | None
     caveats: tuple[str, ...] = field(default_factory=tuple)
+    sha256: str | None = None           # checked after download and on From file, when known
 
     def to_dict(self, installed: bool, path: Path | None) -> dict:
         d = asdict(self)
@@ -105,6 +106,29 @@ PACKS: dict[str, ModelPack] = {
             "Trained from per-pixel labels: touching trees or roofs can come out as one outline.",
         ),
     ),
+    "date-palm-wv3": ModelPack(
+        pack_id="date-palm-wv3",
+        model_ids=("date_tree_detection",),
+        title="Date palms · WorldView-3 SegFormer",
+        filename="segformer_b3_rgb.safetensors",
+        url="https://huggingface.co/brakuta/date-palm-wv3-models/resolve/main/segformer_b3_rgb.safetensors",
+        runtime="palm_segformer",
+        licence="CC BY 4.0 (weights), Apache 2.0 (code)",
+        commercial_use=True,
+        source=(
+            "SegFormer-B3 RGB from 'Date Palm Segmentation from WorldView-3 Satellite Data' (Al-Ruzouq et al., 2024). "
+            "Trained on 20 WorldView-3 scenes over Ajman, Sharjah and Fujairah, pansharpened to 0.31 m; "
+            "reported 76.16 % mIoU and 84.59 % mean F-score on its held-out tiles. Crowns are split per tree by Syntra."
+        ),
+        training_gsd_m=0.31,
+        approx_size_mb=179,
+        caveats=(
+            "Needs PyTorch on this computer (runs on CPU; a GPU is faster).",
+            "Trained on pansharpened RGB at about 0.31 m: on 0.5 m imagery small crowns merge or are missed.",
+            "Credit required by CC BY 4.0: Al-Ruzouq et al. 2024, brakuta/date-palm-wv3-models.",
+        ),
+        sha256="4b79043fd4f6fbcf715c8f814dc492b8e9324391a6c66f7fc5dd1646252f615f",
+    ),
 }
 
 
@@ -169,6 +193,10 @@ def list_packs() -> list[dict]:
 
 def verify_onnx(path: Path, runtime: str) -> dict:
     """Load the file and check it is the kind of model the pack says it is."""
+    if runtime == "palm_segformer":
+        from app.models.palm_segformer import verify_weights
+
+        return verify_weights(path)
     if runtime == "yolo_seg":
         from app.models.onnx_seg import OnnxSegModel
 
@@ -186,3 +214,16 @@ def verify_onnx(path: Path, runtime: str) -> dict:
         raise ValueError(f"Expected a {want} model, the file is a {cfg['model_type']}.")
     return {"model_type": cfg["model_type"], "resolution_cm": cfg["resolution"], "tile_px": cfg["tiles_size"],
             "class_names": cfg["class_names"]}
+
+
+def check_sha256(path: Path, pack: ModelPack) -> None:
+    if not pack.sha256:
+        return
+    import hashlib
+
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        while chunk := f.read(1 << 20):
+            h.update(chunk)
+    if h.hexdigest() != pack.sha256:
+        raise ValueError("The file is not the published one (SHA-256 differs).")

@@ -47,7 +47,7 @@ CATALOG: dict[str, ModelMetadata] = {
         supported_formats=["GeoTIFF", "COG"],
         status=ModelStatus.NOT_PRODUCTION_READY,
         hardware_compatibility=["cpu", "cuda"],
-        default_confidence_threshold=0.35,
+        default_confidence_threshold=0.5,
         class_names={0: "date_palm"},
         notes=(
             "No fine-tuned weights. Distinguishing date palms from other palm species requires "

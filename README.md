@@ -370,6 +370,25 @@ for when it is exposed to a network (all in `backend/.env.example`):
   were refused by the gate. **Not yet run with the real SAM weights**:
   huggingface.co is blocked in the build environment; on your machine
   Click > Install click tool downloads about 120 MB once.
+- **Date palms (model pack `date-palm-wv3`).** Install in Detection models
+  > Available to add. The released SegFormer-B3 RGB model of "Date Palm
+  Segmentation from WorldView-3 Satellite Data" (Al-Ruzouq et al., 2024;
+  weights CC BY 4.0, code Apache 2.0, github.com/brakuta/...), trained on
+  20 WorldView-3 scenes over Ajman, Sharjah and Fujairah at 0.31 m
+  (reported 76.16 % mIoU, 84.59 % mean F-score on its held-out tiles).
+  Syntra runs it in plain PyTorch (`app/models/palm_segformer.py`, module
+  names as in MMSegmentation 1.x so the file loads with `strict=True`; no
+  MMSegmentation install), reads tiles at 0.31 m, and splits the palm mask
+  into one crown per tree (distance-transform peaks, nearest-seed split).
+  The download is checked against the published SHA-256. Status:
+  Unvalidated until measured on your accuracy areas. Verified:
+  `test_palm_segformer_offline.py` (5: tensor names and shapes match the
+  published file's header, strict load refuses a missing tensor and an
+  8-band file, three touching crowns split into three, tiles read at the
+  training scale, SHA-256 and file type refused on From file). The real
+  weights were not run in the build environment (Hugging Face is not
+  reachable there). The Palm-Tree-Dataset (Al Ain) was not added: its
+  licence forbids commercial use.
 - **Use a result layer as labels.** A layer's ⋯ menu has Use as labels:
   type a class (for example date palm) and the layer's shown polygons are
   added as labels of that class on the open image, through the same import
