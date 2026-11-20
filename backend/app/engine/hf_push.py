@@ -146,3 +146,48 @@ def push_dataset(dataset_dir: Path, repo_id: str, token: str, source: dict, *,
     return {"repo_id": repo_id, "folder": folder, "files": n_files,
             "url": f"https://huggingface.co/datasets/{repo_id}/tree/main/{folder}",
             "commit": getattr(commit, "oid", None) or str(commit)}
+
+
+def push_model(model_dir: Path, dataset_dir: Path | None, repo_id: str, token: str, card: str, *,
+               public: bool = False, progress=lambda pct, msg=None: None) -> dict:
+    """A trained Library model version (weights, curves) to a Hugging Face model repo,
+    with the dataset it was trained on under data/ when given. Private unless `public`."""
+    import shutil
+    import tempfile
+
+    api = _api(token)
+    progress(5, "Checking the repo")
+    try:
+        api.create_repo(repo_id, repo_type="model", private=not public, exist_ok=True)
+        info = api.repo_info(repo_id, repo_type="model")
+    except Exception as exc:  # noqa: BLE001
+        raise PushError(_explain(exc))
+    if not getattr(info, "private", True) and not public:
+        raise PushError(f"{repo_id} is public on Hugging Face. Choose Public to upload there, or make it private")
+    with tempfile.TemporaryDirectory(prefix="syntra-model-") as tmp:
+        up = Path(tmp) / "up"
+        up.mkdir()
+        n = 0
+        for name in ("best.pt", "best.onnx"):
+            for f in sorted(model_dir.rglob(name))[:1]:
+                shutil.copy2(f, up / name)
+                n += 1
+        if not n:
+            raise PushError("This version has no trained weights")
+        for name in ("results.csv", "args.yaml", "results.png", "confusion_matrix.png", "model.json", "test_metrics.json"):
+            for f in sorted(model_dir.rglob(name))[:1]:
+                shutil.copy2(f, up / name)
+        if dataset_dir and (dataset_dir / "data.yaml").exists():
+            progress(15, "Packing the training data")
+            check_folder_sizes(dataset_dir)
+            shutil.copytree(dataset_dir, up / "data", ignore=shutil.ignore_patterns("pushed.json", "*.cache"))
+        (up / "README.md").write_text(card, encoding="utf-8")
+        progress(30, "Uploading")
+        try:
+            commit = api.upload_folder(folder_path=str(up), repo_id=repo_id, repo_type="model",
+                                       commit_message=f"Syntra AI: {model_dir.parent.name} {model_dir.name}")
+        except Exception as exc:  # noqa: BLE001
+            raise PushError(_explain(exc))
+    progress(100, "Done")
+    return {"repo_id": repo_id, "url": f"https://huggingface.co/{repo_id}", "private": not public,
+            "commit": getattr(commit, "oid", None)}

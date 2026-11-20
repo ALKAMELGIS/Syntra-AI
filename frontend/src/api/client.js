@@ -69,6 +69,7 @@ export const auth = {
 };
 
 export const api = {
+  libraryPushModel: (group, body) => request(`${BASE}/library/${encodeURIComponent(group)}/push`, json(body)).then(handle),
   googleBasemap: () => request(`${BASE}/basemaps/google`).then(handle),
   googleBasemapSave: (key) => request(`${BASE}/basemaps/google`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key }) }).then(handle),
   runpodStatus: () => request(`${BASE}/cloud/runpod`).then(handle),

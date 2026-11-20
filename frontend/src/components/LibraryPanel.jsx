@@ -166,6 +166,20 @@ export default function LibraryPanel({ open, onClose, device = "cpu", onModelsCh
     setErr(null);
     try { await api.libraryApprove(m.group, version); load(); onModelsChanged?.(); } catch (e) { setErr(e.detail?.message || e.detail || e.message); }
   }
+  async function pushModel(m) {
+    setErr(null);
+    try {
+      const r = await api.libraryPushModel(m.group, { version: m.version });
+      setJobs((l) => [{ kind: "push", id: r.job_id, label: `${m.group} ${m.version} to ${r.repo}`, status: "queued" }, ...l]);
+      for (;;) {
+        await new Promise((res) => setTimeout(res, 1500));
+        const j = await api.job(r.job_id);
+        setJobs((l) => l.map((x) => (x.id === r.job_id ? { ...x, status: j.status, progress: j.progress } : x)));
+        if (["completed", "error", "interrupted"].includes(j.status)) { if (j.status === "error") setErr(j.error); break; }
+      }
+      load();
+    } catch (e) { setErr(e.detail?.message || e.detail || e.message); }
+  }
   async function toggleAuto() {
     try { setHf(await api.hfSave({ auto_backup: !hf?.auto_backup })); } catch (e) { setErr(e.detail?.message || e.message); }
   }
@@ -236,7 +250,7 @@ export default function LibraryPanel({ open, onClose, device = "cpu", onModelsCh
                 <div className="lib-sec-head"><span>Models</span><span className="train-dim">scored on test areas</span></div>
                 {c.models.length === 0 ? <p className="train-dim">Train a dataset version above</p> : (
                   <div className="lib-tbl">
-                    <div className="lib-tr lib-th lib-mtr"><span>Version</span><span>score</span><span>dataset</span><span /></div>
+                    <div className="lib-tr lib-th lib-mtr"><span>Version</span><span>score</span><span>dataset</span><span /><span /></div>
                     {[...c.models].reverse().map((m) => {
                       const s = score(m);
                       return (
@@ -248,6 +262,10 @@ export default function LibraryPanel({ open, onClose, device = "cpu", onModelsCh
                             ? <button type="button" className="lib-pill on" onClick={() => approve(m, null)} title="Stop using it">Approved</button>
                             : <button type="button" className="lib-pill" disabled={!m.weights} onClick={() => approve(m, m.version)}>
                                 {c.models.some((x) => x.approved && x.version > m.version) ? "Roll back" : "Approve"}</button>}
+                          {m.pushed?.url
+                            ? <a className="lib-pill on" href={m.pushed.url} target="_blank" rel="noreferrer" title={m.pushed.repo_id}>HF</a>
+                            : lib.owner && <button type="button" className="lib-pill" disabled={!m.weights || !hf?.configured}
+                                title={hf?.configured ? "Push to Hugging Face (private)" : "Add your Hugging Face token in Settings"} onClick={() => pushModel(m)}>HF</button>}
                         </div>
                       );
                     })}

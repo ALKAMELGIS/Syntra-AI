@@ -370,6 +370,15 @@ for when it is exposed to a network (all in `backend/.env.example`):
   were refused by the gate. **Not yet run with the real SAM weights**:
   huggingface.co is blocked in the build environment; on your machine
   Click > Install click tool downloads about 120 MB once.
+- **Push a model version to Hugging Face.** Library > a class > Models has
+  an HF button per version: the weights (`best.pt`, `best.onnx` when
+  there), `results.csv`, a generated model card and the dataset version it
+  was trained on (`data/`) go to a model repo `<user>/syntra-<class>`,
+  created private; a public repo is refused unless asked for. Uses the
+  token saved in Settings (never returned). Verified:
+  `test_model_push_offline.py` (2: token and version checked, card holds
+  the best mAP50 and data source, staging holds weights, curves, card and
+  data, private by default).
 - **Date palms (model pack `date-palm-wv3`).** Install in Detection models
   > Available to add. The released SegFormer-B3 RGB model of "Date Palm
   Segmentation from WorldView-3 Satellite Data" (Al-Ruzouq et al., 2024;

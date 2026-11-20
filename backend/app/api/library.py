@@ -95,8 +95,9 @@ def library() -> dict:
             appr = layout.approved(g)
             for v in layout.versions(m_root / g):
                 info = layout.read_json(v / "model.json", {}) or {}
+                pushed_m = layout.read_json(v / "pushed.json", None)
                 models.append({"group": g, "version": v.name, "dataset_version": info.get("dataset_version"),
-                               "approved": v.name == appr, **_metrics(v)})
+                               "approved": v.name == appr, "pushed": pushed_m, **_metrics(v)})
         last = datasets[-1]["samples"] if datasets else None
         built_with = (last or {}).get(meta.get("name") or d.name) if isinstance(last, dict) else None
         out.append({
@@ -293,3 +294,74 @@ def approve(group: str, body: ApproveRequest):
             raise HTTPException(status_code=409, detail="This version has no trained weights yet")
     layout.set_approved(group, body.version)
     return {"group": group, "approved": layout.approved(group)}
+
+
+# --- a model version to Hugging Face (weights, curves, and the data it learned from) ---
+MODEL_PUSH_KIND = "model_push"
+
+
+class ModelPushRequest(BaseModel):
+    version: str
+    repo: str | None = None          # <user>/<name>; default <user>/syntra-<group>
+    public: bool = False
+    include_data: bool = True
+
+
+def _model_card(group: str, version: str, run: Path, ds_dir: Path | None) -> str:
+    m = _metrics(run)
+    man = layout.read_json(ds_dir / "manifest.json", {}) if ds_dir else {}
+    names = []
+    if ds_dir and (ds_dir / "data.yaml").exists():
+        from app.training.dataset_builder import read_data_yaml_names
+        names = read_data_yaml_names(ds_dir / "data.yaml")
+    lines = [f"# {group} {version}", "", "YOLO detector trained with Syntra AI.", "",
+             "| | |", "|---|---|", f"| Classes | {', '.join(names) or group} |",
+             f"| Best validation mAP50 | {m.get('val_map50', '—')} |", f"| Epochs | {m.get('epochs', '—')} |"]
+    if man.get("source"):
+        lines.append(f"| Training data | {man['source']} |")
+    if man.get("gsd_note"):
+        lines.append(f"| Imagery | {man['gsd_note']} |")
+    lines += ["", "Files: `best.pt` (Ultralytics), `best.onnx` when exported, `results.csv` (per epoch)"
+              + (", `data/` (the YOLO dataset it was trained on)." if ds_dir else ".")]
+    return "\n".join(lines) + "\n"
+
+
+def _run_model_push(job_id: str, group: str, version: str, repo: str, token: str, public: bool, include_data: bool) -> None:
+    from app.engine.hf_push import PushError, push_model
+
+    jobs = get_store()
+    jobs.update(job_id, status="processing")
+    run = layout.models_dir() / group / version
+    info = layout.read_json(run / "model.json", {}) or {}
+    ds = layout.datasets_dir() / group / (info.get("dataset_version") or "") if info.get("dataset_version") else None
+    ds = ds if ds and ds.is_dir() else None
+    try:
+        res = push_model(run, ds if include_data else None, repo, token, _model_card(group, version, run, ds),
+                         public=public, progress=lambda p, msg=None: jobs.update(job_id, progress=p, **({"message": msg} if msg else {})))
+        layout.write_json(run / "pushed.json", res)
+        jobs.update(job_id, status="completed", result=res)
+    except PushError as exc:
+        jobs.update(job_id, status="error", error=str(exc))
+    except Exception as exc:  # noqa: BLE001
+        jobs.update(job_id, status="error", error=f"Upload failed: {type(exc).__name__}: {exc}")
+
+
+@router.post("/{group}/push", dependencies=[Depends(_owner)])
+def push_model_version(group: str, body: ModelPushRequest, background_tasks: BackgroundTasks):
+    from app.core.secrets import get_secret
+
+    if not all(part == layout.class_slug(part) for part in group.split("+")):
+        raise HTTPException(status_code=404, detail="No such model group")
+    if body.version not in {p.name for p in layout.versions(layout.models_dir() / group)}:
+        raise HTTPException(status_code=404, detail="No such model version")
+    if not _metrics(layout.models_dir() / group / body.version).get("weights"):
+        raise HTTPException(status_code=409, detail="This version has no trained weights yet")
+    token, user = get_secret("hf_token"), get_secret("hf_user")
+    if not token:
+        raise HTTPException(status_code=409, detail="Add your Hugging Face token in Settings first")
+    repo = (body.repo or f"{user}/syntra-{group.replace('_', '-').replace('+', '-')}").strip()
+    if repo.count("/") != 1 or not all(repo.split("/")):
+        raise HTTPException(status_code=400, detail="Use the form name/repo")
+    job_id = get_store().create(MODEL_PUSH_KIND, progress=0.0, group=group, version=body.version, repo=repo, public=body.public)
+    background_tasks.add_task(_run_model_push, job_id, group, body.version, repo, token, body.public, body.include_data)
+    return {"job_id": job_id, "status": "queued", "repo": repo}
