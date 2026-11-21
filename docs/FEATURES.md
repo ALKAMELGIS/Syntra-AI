@@ -727,3 +727,25 @@ for when it is exposed to a network (all in `backend/.env.example`):
   shared key for scripts and QGIS; people sign in with accounts (above).
 
 Verified by `backend/tests/test_security_offline.py` (19 tests).
+
+## Symbology and selection
+
+Layers > ⋯ > Symbology styles a result or file layer like ArcGIS Online's Styles
+(`frontend/src/components/map/symbology.js`, `SymbologyPanel.jsx`):
+
+| Style | Draws | Options |
+| --- | --- | --- |
+| Location | one symbol for every feature | colour |
+| Types | a colour per value of a field (top 10, the rest as Other) | field, a colour per value |
+| Counts and amounts | colour classes of a number field | field, natural breaks (Fisher-Jenks) / equal interval / quantile, 3-7 classes, 6 ramps, order |
+
+Every style also sets fill opacity, outline width and colour, and point size. The map, the
+Symbology page and the legend under the layer read the same classes. Verified: break values
+checked by script (natural breaks of 1,2,3,10,11,12,50,51,52,100 in 4 classes = 3 · 12 · 52 · 100);
+screenshots of Types and Counts and amounts.
+
+Selection works both ways: a click on the map selects the feature and scrolls the attribute table
+to its row; Ctrl/Shift-click adds or removes; Ctrl-drag draws a box that selects every feature of
+the visible layers it touches (Shift too: adds); a click on empty map clears. Rows selected in the
+table are drawn in the accent colour with a dark halo and brought into view without changing the
+zoom. Verified: screenshot of a 9-feature box selection with the table following.

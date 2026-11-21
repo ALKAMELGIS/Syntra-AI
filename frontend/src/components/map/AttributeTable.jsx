@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { IconClose, IconDownload, IconZoomTo } from "../ui/Icons.jsx";
 import { downloadGeojson, fieldType, fieldsOf, fmtValue, inView } from "./layerUtils.js";
 
@@ -17,6 +17,7 @@ export default function AttributeTable({ open, layers, activeKey, onActive, sele
   const [selectedOnly, setSelectedOnly] = useState(false);
   const [scrollTop, setScrollTop] = useState(0);
   const anchor = useRef(null);
+  const scroller = useRef(null);
   const layer = layers.find((l) => l.key === activeKey) || layers[0];
   const sel = (layer && selection[layer.key]) || new Set();
 
@@ -38,6 +39,16 @@ export default function AttributeTable({ open, layers, activeKey, onActive, sele
     });
     return r;
   }, [layer, query, extentOnly, selectedOnly, sel, view, sort, fields]);
+
+  // a selection made on the map: bring its first row into view
+  const selKey = [...sel].join(",");
+  useEffect(() => {
+    if (!open || !sel.size || !scroller.current) return;
+    const i = rows.findIndex((f) => sel.has(f.id));
+    if (i < 0) return;
+    const el = scroller.current, top = i * ROW, viewH = el.clientHeight - 32;
+    if (top < el.scrollTop || top > el.scrollTop + viewH - ROW) el.scrollTop = Math.max(0, top - viewH / 2);
+  }, [selKey, layer?.key, open]);  
 
   if (!open || !layer) return null;
 
@@ -95,7 +106,7 @@ export default function AttributeTable({ open, layers, activeKey, onActive, sele
           <IconDownload />Export</button>
         <button type="button" className="lp-icon" onClick={onClose} aria-label="Close table"><IconClose /></button>
       </header>
-      <div className="attr-scroll" onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}>
+      <div className="attr-scroll" ref={scroller} onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}>
         <table>
           <thead>
             <tr>

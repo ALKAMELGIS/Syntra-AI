@@ -200,8 +200,10 @@ in [ARCHITECTURE.md](ARCHITECTURE.md).
 | `LayersPanel.jsx` | Layers, beside the map toolbar (replaces Legend and the show/hide-all eye) |
 | `MapDrawTools.jsx` | The map's drawing tools, gathered behind one "Edit" button in the main map toolbar |
 | `MapView.jsx` | Hard ceiling for how far the user can zoom in, on either basemap or on an uploaded image overlay |
+| `SymbologyPanel.jsx` | A layer's Symbology page (Layers > ⋯ > Symbology): pick a style, a field and colours |
 | `basemaps.js` | Base maps |
 | `layerUtils.js` | Shared by the Layers panel, the object pop-up and the attribute table |
+| `symbology.js` | Layer symbology, like ArcGIS Online's Styles: one symbol (Location), a colour per value of a text field (Types… |
 
 **components/remote-sensing/**
 

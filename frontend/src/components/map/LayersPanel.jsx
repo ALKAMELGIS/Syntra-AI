@@ -2,11 +2,13 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { fmtAreaKm2 } from "../../lib/prefs.js";
 import {
   IconPlus, IconArrowDown, IconArrowUp, IconClose, IconDownload, IconEye, IconEyeOff, IconInfo, IconMore,
-  IconTable, IconTrash, IconZoomTo, IconEdit, IconChevronLeft, IconCopy, IconClickAI, IconCheck, IconPolygon,
+  IconTable, IconTrash, IconZoomTo, IconEdit, IconChevronLeft, IconCopy, IconClickAI, IconCheck, IconPolygon, IconSliders,
 } from "../ui/Icons.jsx";
 import { LAYER_COLOURS, downloadGeojson, featuresBounds, fieldType, fieldsOf, unitOf } from "./layerUtils.js";
 import { BASEMAPS, BASEMAP_ORDER, thumbUrl } from "./basemaps.js";
 import { api } from "../../api/client.js";
+import SymbologyPanel, { Legend } from "./SymbologyPanel.jsx";
+import { classesOf } from "./symbology.js";
 
 // Layers, beside the map toolbar (replaces Legend and the show/hide-all eye).
 // Results: one row per detection run, each with its own eye, colour, count and
@@ -34,6 +36,10 @@ function Slider({ label, value, min, max, step, onChange, fmt }) {
 }
 
 function Swatch({ layer }) {
+  if (layer.symbology && layer.symbology.type !== "single" && layer.symbology.field) {
+    const cs = classesOf(layer.symbology, layer.shown, layer.color).slice(0, 3);
+    return <span className="lp-swatch multi" aria-hidden="true">{cs.map((c) => <i key={c.label} style={{ background: c.color }} />)}</span>;
+  }
   const style = layer.isArea
     ? { background: layer.color, opacity: 0.6 }
     : { borderColor: layer.color };
@@ -390,6 +396,10 @@ export default function LayersPanel({
     const l = layers.find((x) => x.key === page.key);
     if (l) return <section className="layers-panel" aria-label="Layers" ref={ref}><VectorProps layer={l} onPatch={(p) => onPatch(l.key, p)} zoom={zoom} onBack={back} onClose={onClose} /></section>;
   }
+  if (page?.kind === "symbology") {
+    const l = layers.find((x) => x.key === page.key);
+    if (l) return <section className="layers-panel" aria-label="Layers" ref={ref}><SymbologyPanel layer={l} onPatch={(p) => onPatch(l.key, p)} onBack={back} onClose={onClose} /></section>;
+  }
   if (page?.kind === "raster" && image?.image_id) {
     return <section className="layers-panel" aria-label="Layers" ref={ref}><RasterProps image={image} imageLayer={imageLayer} onImageLayer={onImageLayer} onBack={back} onClose={onClose} /></section>;
   }
@@ -406,6 +416,7 @@ export default function LayersPanel({
     if (l) items = [
       { label: "Zoom to layer", Icon: IconZoomTo, run: () => onZoom(l.shown) },
       { label: "Show properties", Icon: IconInfo, run: () => setPage({ kind: "vector", key: l.key }) },
+      { label: "Symbology", Icon: IconSliders, run: () => setPage({ kind: "symbology", key: l.key }) },
       { label: "Show table", Icon: IconTable, hint: l.shown.length, run: () => onTable(l.key) },
       "-",
       { slider: true, label: "Transparency", max: 90, value: Math.round((1 - l.opacity) * 100), onChange: (v) => onPatch(l.key, { opacity: 1 - v / 100 }) },
@@ -467,7 +478,8 @@ export default function LayersPanel({
               Results<span className="mono">{layers.reduce((n, l) => n + l.shown.length, 0)}</span>
             </div>
             {layers.map((l) => (
-              <div key={l.key} className={`lp-row ${menu?.key === l.key ? "on" : ""}`}>
+              <React.Fragment key={l.key}>
+              <div className={`lp-row ${menu?.key === l.key ? "on" : ""}`}>
                 <button type="button" className="lp-eye" onClick={() => onPatch(l.key, { visible: !l.visible })}
                         aria-pressed={l.visible} aria-label={l.visible ? `Hide ${l.name}` : `Show ${l.name}`}>
                   {l.visible && allVisible ? <IconEye /> : <IconEyeOff />}
@@ -477,6 +489,11 @@ export default function LayersPanel({
                 <span className="mono lp-val" title={l.taskError || undefined}>{l.task || (l.taskError ? "failed" : l.value)}</span>
                 {moreBtn(l.key, l.name)}
               </div>
+              {l.visible && l.symbology && l.symbology.type !== "single" && l.symbology.field && (
+                <div className="lp-legend"><span className="lp-legend-field mono">{l.symbology.field}</span>
+                  <Legend compact classes={classesOf(l.symbology, l.shown, l.color)} /></div>
+              )}
+              </React.Fragment>
             ))}
           </div>
         )}

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
 import { api } from "../../api/client";
 import { MapContainer, TileLayer, WMSTileLayer, GeoJSON, ImageOverlay, Rectangle, Tooltip, Popup, useMap, useMapEvents } from "react-leaflet";
@@ -9,6 +9,7 @@ import SettingsPanel from "../settings/SettingsPanel.jsx";
 import { usePref, getPref } from "../../lib/prefs.js";
 import { IconExpand, IconBasemap, IconLayers, IconGallery, IconGear, IconAnalysis, IconTrain, IconPerformance, IconDatabase, IconZoomTo, IconTable, IconSatellite, IconEye, IconEyeOff } from "../ui/Icons.jsx";
 import RemoteSensingPanel from "../remote-sensing/RemoteSensingPanel.jsx";
+import { classesOf, styleFor } from "./symbology.js";
 import LayersPanel from "./LayersPanel.jsx";
 import AttributeTable from "./AttributeTable.jsx";
 import { featuresBounds, fieldsOf, fmtValue } from "./layerUtils.js";
@@ -291,12 +292,15 @@ function VectorLayer({ layer, onPick }) {
   const pick = useRef(onPick);
   pick.current = onPick;
   const a = layer.opacity;
+  const sym = layer.symbology || null;
+  const classes = useMemo(() => classesOf(sym, layer.shown, layer.color), [sym, layer.shown, layer.color]);
+  const st = (f) => styleFor(f, sym, classes, layer.color, a, layer.isArea);
   return (
     <GeoJSON
-      key={`${layer.key}-${layer.version}-${layer.color}-${a}-${layer.minScore}-${layer.labels}`}
+      key={`${layer.key}-${layer.version}-${layer.color}-${a}-${layer.minScore}-${layer.labels}-${JSON.stringify(sym)}`}
       data={{ type: "FeatureCollection", features: layer.shown }}
-      style={() => ({ color: layer.color, weight: 1.5, opacity: a, fillColor: layer.color, fillOpacity: (layer.isArea ? 0.22 : 0.3) * a })}
-      pointToLayer={(f, ll) => L.circleMarker(ll, { radius: 5, color: layer.color, weight: 1.5, opacity: a, fillColor: layer.color, fillOpacity: 0.5 * a })}
+      style={st}
+      pointToLayer={(f, ll) => { const s = st(f); return L.circleMarker(ll, { ...s, fillOpacity: Math.min(1, s.fillOpacity + 0.2) }); }}
       onEachFeature={(f, lyr) => {
         if (layer.labels && layer.shown.length <= LABEL_LIMIT) {
           const p = f.properties || {};
@@ -307,22 +311,79 @@ function VectorLayer({ layer, onPick }) {
           const b = document.body.dataset;
           if (b.drawing === "1" || b.labelling === "1") return;
           L.DomEvent.stopPropagation(e);
-          pick.current(layer.key, f.id, e.latlng);
+          const o = e.originalEvent || {};
+          pick.current(layer.key, f.id, e.latlng, o.ctrlKey || o.metaKey || o.shiftKey);
         });
       }}
     />
   );
 }
 
-// The rows selected in the attribute table, outlined on the map.
+// The selected features (from the map or the attribute table), in the accent
+// colour with a dark halo so they read on any imagery.
+const accent = () => getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#6b9bff";
 function SelectionLayer({ features }) {
   if (!features.length) return null;
+  const c = accent();
+  const key = features.map((f) => `${f._layer}:${f.id}`).join(",") + c;
   return (
-    <GeoJSON key={features.map((f) => `${f._layer}:${f.id}`).join(",")}
-             data={{ type: "FeatureCollection", features }} interactive={false}
-             style={() => ({ color: "#ffffff", weight: 2.5, fill: false })}
-             pointToLayer={(f, ll) => L.circleMarker(ll, { radius: 7, color: "#ffffff", weight: 2.5, fill: false, interactive: false })} />
+    <>
+      <GeoJSON key={`halo-${key}`} data={{ type: "FeatureCollection", features }} interactive={false}
+               style={() => ({ color: "#0d0f12", weight: 5, opacity: 0.55, fill: false })}
+               pointToLayer={(f, ll) => L.circleMarker(ll, { radius: 8, color: "#0d0f12", weight: 5, opacity: 0.55, fill: false, interactive: false })} />
+      <GeoJSON key={key} data={{ type: "FeatureCollection", features }} interactive={false}
+               style={() => ({ color: c, weight: 2.5, fill: true, fillColor: c, fillOpacity: 0.18 })}
+               pointToLayer={(f, ll) => L.circleMarker(ll, { radius: 8, color: c, weight: 2.5, fillColor: c, fillOpacity: 0.3, interactive: false })} />
+    </>
   );
+}
+
+// Ctrl + drag draws a box: the features of visible layers inside it are selected
+// (Shift as well adds to the selection). A click on empty map clears it.
+function SelectTools({ onBox, onClear }) {
+  const map = useMap();
+  const box = useRef(null);
+  useEffect(() => {
+    const el = map.getContainer();
+    let start = null, add = false;
+    const down = (e) => {
+      if (!(e.ctrlKey || e.metaKey) || e.button !== 0 || document.body.dataset.drawing === "1" || document.body.dataset.labelling === "1") return;
+      if (e.target.closest(".leaflet-control, .map-toolbar, .leaflet-popup")) return;
+      e.preventDefault(); e.stopPropagation();
+      map.dragging.disable();
+      start = map.mouseEventToContainerPoint(e); add = e.shiftKey;
+      box.current = L.DomUtil.create("div", "select-box", el);
+      Object.assign(box.current.style, { left: `${start.x}px`, top: `${start.y}px`, width: "0px", height: "0px" });
+    };
+    const move = (e) => {
+      if (!start) return;
+      const p = map.mouseEventToContainerPoint(e);
+      Object.assign(box.current.style, { left: `${Math.min(p.x, start.x)}px`, top: `${Math.min(p.y, start.y)}px`,
+        width: `${Math.abs(p.x - start.x)}px`, height: `${Math.abs(p.y - start.y)}px` });
+    };
+    const up = (e) => {
+      if (!start) return;
+      const p = map.mouseEventToContainerPoint(e);
+      box.current?.remove(); box.current = null;
+      map.dragging.enable();
+      const b = L.latLngBounds(map.containerPointToLatLng(start), map.containerPointToLatLng(p));
+      const big = Math.abs(p.x - start.x) > 4 && Math.abs(p.y - start.y) > 4;
+      start = null;
+      if (big) onBox(b, add);
+    };
+    el.addEventListener("mousedown", down, true);
+    window.addEventListener("mousemove", move);
+    window.addEventListener("mouseup", up);
+    return () => { el.removeEventListener("mousedown", down, true); window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up); };
+  }, [map, onBox]);
+  useMapEvents({
+    click: (e) => {
+      const o = e.originalEvent || {};
+      if (o.ctrlKey || o.metaKey || o.shiftKey || document.body.dataset.drawing === "1" || document.body.dataset.labelling === "1") return;
+      onClear();
+    },
+  });
+  return null;
 }
 
 // Keeps the visible map extent, for "Map extent only" and "in view".
@@ -425,7 +486,7 @@ export default function MapView({
       return {
         ...l, baseName: l.name, name: st.name || l.name, color: st.color || l.color,
         visible: st.visible ?? true, opacity: st.opacity ?? 1, minScore, labels: st.labels ?? false, popups: st.popups ?? true,
-        minZoom: st.minZoom ?? null, maxZoom: st.maxZoom ?? null,
+        minZoom: st.minZoom ?? null, maxZoom: st.maxZoom ?? null, symbology: st.symbology || null,
         task: st.task || null, taskError: st.taskError || null, accuracy: st.accuracy || null,
         isArea: l.key.endsWith("vegetation_index"), features, shown, count: shown.length,
         value: /ha$/.test(l.value || "") ? l.value : String(shown.length),
@@ -536,11 +597,41 @@ export default function MapView({
   const patchService = (key, p) => setServices((s) => s.map((x) => (x.key === key ? { ...x, ...p } : x)));
   const removeService = (key) => setServices((s) => s.filter((x) => x.key !== key));
   const openTable = (key) => { setTableKey(key); setTableOpen(true); };
-  const onPick = (key, id, latlng) => {
+  const onPick = (key, id, latlng, add = false) => {
     const l = vlayers.find((x) => x.key === key);
-    setSelection((s) => ({ ...s, [key]: new Set([id]) }));
+    setSelection((s) => {
+      if (!add) return { [key]: new Set([id]) };
+      const next = new Set(s[key] || []);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return { ...s, [key]: next };
+    });
     if (tableOpen) setTableKey(key);
-    if (l?.popups) setPopup({ key, id, latlng });
+    if (l?.popups && !add) setPopup({ key, id, latlng });
+  };
+  // the box from SelectTools: features of the visible layers whose shape meets it
+  const selectBox = useCallback((b, add) => {
+    setSelection((s) => {
+      const out = add ? { ...s } : {};
+      for (const l of vlayers) {
+        if (!l.visible || !detectionsVisible) continue;
+        const hit = l.shown.filter((f) => { try { return L.geoJSON(f).getBounds().intersects(b); } catch { return false; } }).map((f) => f.id);
+        if (hit.length) out[l.key] = new Set([...(add ? s[l.key] || [] : []), ...hit]);
+      }
+      return out;
+    });
+    setPopup(null);
+  }, [vlayers, detectionsVisible]);
+  const clearSelection = useCallback(() => setSelection((s) => (Object.values(s).some((x) => x?.size) ? {} : s)), []);
+  // a selection made in the table: bring it into view without changing the zoom
+  const selectFromTable = (key, set) => {
+    setSelection((s) => ({ ...s, [key]: set }));
+    const l = vlayers.find((x) => x.key === key);
+    if (!map || !l || !set.size) return;
+    const fs = l.shown.filter((f) => set.has(f.id));
+    try {
+      const b = L.geoJSON({ type: "FeatureCollection", features: fs }).getBounds();
+      if (b.isValid() && !map.getBounds().intersects(b)) map.panTo(b.getCenter(), { animate: true, duration: 0.3 });
+    } catch { /* geometry without bounds */ }
   };
   const selectedFeatures = useMemo(() => vlayers.filter((l) => l.visible && detectionsVisible).flatMap((l) => {
     const sel = selection[l.key];
@@ -613,6 +704,7 @@ export default function MapView({
                         opacity={rsOverlay.opacity ?? 0.85} zIndex={15} className="rs-overlay" />
         )}
         <SelectionLayer features={selectedFeatures} />
+        <SelectTools onBox={selectBox} onClear={clearSelection} />
         <ViewTracker onView={setView} />
         {popFeature && (
           <Popup position={popup.latlng} eventHandlers={{ remove: () => setPopup(null) }} className="feature-popup" maxWidth={320} minWidth={260} autoPanPaddingTopLeft={[64, 64]} autoPanPaddingBottomRight={[64, 64]}>
@@ -747,7 +839,7 @@ export default function MapView({
       />
       <AttributeTable
         open={tableOpen && vlayers.length > 0} layers={vlayers} activeKey={tableKey} onActive={setTableKey}
-        selection={selection} onSelect={(key, set) => setSelection((s) => ({ ...s, [key]: set }))}
+        selection={selection} onSelect={selectFromTable}
         view={view} onZoom={zoomTo} onClose={() => setTableOpen(false)} height={tableH} onHeight={setTableH}
       />
     </div>
