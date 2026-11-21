@@ -35,4 +35,7 @@ except Exception:  # noqa: BLE001 - the app works without it
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", "7860")), proxy_headers=True, forwarded_allow_ips="*")
+    # The Space routes to 7860 (GRADIO_SERVER_PORT); PORT may name a port the runtime itself holds.
+    port = int(os.getenv("GRADIO_SERVER_PORT") or 7860)
+    print(f"Syntra on port {port} (PORT={os.getenv('PORT')})", flush=True)
+    uvicorn.run(app, host="0.0.0.0", port=port, proxy_headers=True, forwarded_allow_ips="*")
