@@ -396,6 +396,7 @@ function ViewTracker({ onView }) {
 }
 
 export default function MapView({
+  panel = null, onPanel,
   onRemoveImage, onRemoveResult, onLabelsImported,
   layers, detectionsVisible = true, onToggleDetections,
   aoi, onAoiChange, measurement, onMeasurementChange,
@@ -404,7 +405,20 @@ export default function MapView({
   analysisOpen, onToggleAnalysis, analysisCount, analysisRunning, analysisPanel, focusFeature = null,
 }) {
   const [basemap, setBasemap] = usePref("basemap");
-  const [legendOpen, setLegendOpen] = useState(false);
+  // the panel beside the toolbar is App's `panel`: opening one closes the others
+  const usePanel = (name) => [panel === name, (v) => {
+    const cur = panel === name;
+    const next = typeof v === "function" ? v(cur) : v;
+    if (next === cur) return;
+    if (next) {                                        // App's panels close through their own setters (side effects)
+      if (analysisOpen) onToggleAnalysis?.();
+      if (trainOpen) onToggleTrain?.();
+      if (perfOpen) onTogglePerf?.();
+      if (libOpen) onToggleLib?.();
+    }
+    onPanel?.((p) => (next ? name : p === name ? null : p));
+  }];
+  const [legendOpen, setLegendOpen] = usePanel("layers");
   const [imageLayer, setImageLayerRaw] = useState(() => {
     try { return { visible: true, opacity: 1, ...JSON.parse(localStorage.getItem(LAYER_KEY) || "{}") }; } catch { return { visible: true, opacity: 1 }; }
   });
@@ -420,11 +434,6 @@ export default function MapView({
     setImageLayer({ visible: true, opacity: 1, contrast: 0, brightness: 0, bands: null, stretch: null, displayFor: id, forImage: id });
   }, [sourceImage?.image_id]);  
 
-  // Legend and Analysis both open beside the toolbar: show one at a time.
-  useEffect(() => {
-    if (analysisOpen || trainOpen || perfOpen || libOpen) setLegendOpen(false);
-  }, [analysisOpen, trainOpen, perfOpen, libOpen]);
-
   useEffect(() => {
     if (!legendOpen) return;
     const onKey = (e) => { if (e.key === "Escape") setLegendOpen(false); };
@@ -432,17 +441,10 @@ export default function MapView({
     return () => window.removeEventListener("keydown", onKey);
   }, [legendOpen]);
 
-  function toggleLegend() {
-    setLegendOpen((open) => {
-      if (!open && analysisOpen) onToggleAnalysis?.();
-      if (!open && trainOpen) onToggleTrain?.();
-      if (!open && perfOpen) onTogglePerf?.();
-      return !open;
-    });
-  }
+  const toggleLegend = () => setLegendOpen((o) => !o);
   const [libraryOpen, setLibraryOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [rsOpen, setRsOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = usePanel("settings");
+  const [rsOpen, setRsOpen] = usePanel("rs");
   const [rsOverlay, setRsOverlay] = useState(null);      // {image, bounds, opacity, stats, index}
   const [rsVisible, setRsVisible] = useState(true);
   const [geoOverride, setGeoOverride] = useState({});    // key -> geojson re-read after values were added
@@ -640,21 +642,7 @@ export default function MapView({
   const popLayer = popup && vlayers.find((l) => l.key === popup.key);
   const popFeature = popLayer && popLayer.features.find((f) => f.id === popup.id);
   const imgFilter = `contrast(${1 + (imageLayer.contrast || 0) / 100}) brightness(${1 + (imageLayer.brightness || 0) / 100})`;
-  // one panel beside the toolbar at a time
-  useEffect(() => {
-    if (analysisOpen || trainOpen || perfOpen || legendOpen || libOpen) { setSettingsOpen(false); setRsOpen(false); }
-  }, [analysisOpen, trainOpen, perfOpen, legendOpen, libOpen]);
-  function toggleRs() {
-    setRsOpen((o) => {
-      if (!o) {
-        setLegendOpen(false); setSettingsOpen(false);
-        if (analysisOpen) onToggleAnalysis?.();
-        if (trainOpen) onToggleTrain?.();
-        if (perfOpen) onTogglePerf?.();
-      }
-      return !o;
-    });
-  }
+  const toggleRs = () => setRsOpen((o) => !o);
   async function reloadLayer(l) {
     try {
       const gj = await api.getGeojson(l.jobId, l.resultId);
@@ -738,15 +726,7 @@ export default function MapView({
           legendOpen={legendOpen}
           onLegendToggle={toggleLegend}
           onOpenLibrary={() => setLibraryOpen(true)}
-          onOpenSettings={() => setSettingsOpen((o) => {
-            if (!o) {
-              setLegendOpen(false); setRsOpen(false);
-              if (analysisOpen) onToggleAnalysis?.();
-              if (trainOpen) onToggleTrain?.();
-              if (perfOpen) onTogglePerf?.();
-            }
-            return !o;
-          })}
+          onOpenSettings={() => setSettingsOpen((o) => !o)}
           analysisOpen={analysisOpen}
           onToggleAnalysis={onToggleAnalysis}
           analysisCount={analysisCount}
@@ -773,12 +753,13 @@ export default function MapView({
               annotateOpen={false}
               onToggleAnnotate={onAnnotate}
               canAnnotate={Boolean(sourceImage?.image_id)}
-              otherPanelOpen={analysisOpen || trainOpen || perfOpen || libOpen || legendOpen || settingsOpen || rsOpen}
+              otherPanelOpen={panel != null}
               onMenuOpen={() => {
-                setLegendOpen(false); setSettingsOpen(false); setRsOpen(false);
                 if (analysisOpen) onToggleAnalysis?.();
                 if (trainOpen) onToggleTrain?.();
                 if (perfOpen) onTogglePerf?.();
+                if (libOpen) onToggleLib?.();
+                onPanel?.(null);
               }}
             />
           }

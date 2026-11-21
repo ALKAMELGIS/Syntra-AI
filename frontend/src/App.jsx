@@ -43,26 +43,19 @@ export default function App({ user = null, onSignOut = null }) {
   const [aoi, setAoi] = useState(null);
   const [measurement, setMeasurement] = useState(null);
   const [detectionsVisible, setDetectionsVisible] = useState(true);
-  const [analysisOpen, setAnalysisOpenRaw] = useState(false);
-  // Train panel: one flyout beside the map toolbar at a time (Analysis or Train)
-  const [trainOpen, setTrainOpenRaw] = useState(false);
-  const [perfOpen, setPerfOpenRaw] = useState(false);
+  // One panel beside the map toolbar at a time: every flyout (analysis, train,
+  // performance, library, layers, remote sensing, settings) is a value of `panel`.
+  const [panel, setPanel] = useState(null);
   const [perfModel, setPerfModel] = useState(null);
-  const [libOpen, setLibOpenRaw] = useState(false);
-  function setLibOpen(v) {
-    setLibOpenRaw((prev) => {
-      const next = typeof v === "function" ? v(prev) : v;
-      if (next) { setAnalysisOpenRaw(false); setTrainOpenRaw(false); setPerfOpenRaw(false); setDrawMode(null); setMobilePane("map"); }
-      return next;
-    });
-  }
-  function setPerfOpen(v) {
-    setPerfOpenRaw((prev) => {
-      const next = typeof v === "function" ? v(prev) : v;
-      if (next) { setAnalysisOpenRaw(false); setTrainOpenRaw(false); setLibOpenRaw(false); setDrawMode(null); setMobilePane("map"); }
-      return next;
-    });
-  }
+  // setter for one panel: true opens it (closing any other), false closes it if it is open
+  const panelSetter = (name, onOpen, onClose) => (v) => {
+    const cur = panel === name;
+    const next = typeof v === "function" ? v(cur) : v;
+    if (next && !cur) onOpen?.();
+    if (!next && cur) onClose?.();
+    setPanel((p) => (next ? name : p === name ? null : p));
+  };
+  const analysisOpen = panel === "analysis", trainOpen = panel === "train", perfOpen = panel === "perf", libOpen = panel === "lib";
   const [trainStep, setTrainStep] = useState(0);
   const [annotations, setAnnotations] = useState([]);
   const [extraClasses, setExtraClasses] = useState([]);
@@ -73,21 +66,10 @@ export default function App({ user = null, onSignOut = null }) {
   const [drawMode, setDrawMode] = useState(null);
   const [editId, setEditId] = useState(null);           // the saved label being edited
   const [labelError, setLabelError] = useState(null);
-  function setAnalysisOpen(v) {
-    setAnalysisOpenRaw((prev) => {
-      const next = typeof v === "function" ? v(prev) : v;
-      if (next) { setTrainOpenRaw(false); setPerfOpenRaw(false); setLibOpenRaw(false); }
-      return next;
-    });
-  }
-  function setTrainOpen(v) {
-    setTrainOpenRaw((prev) => {
-      const next = typeof v === "function" ? v(prev) : v;
-      if (next) { setAnalysisOpenRaw(false); setPerfOpenRaw(false); setLibOpenRaw(false); setMobilePane("map"); }
-      if (!next) setDrawMode(null);
-      return next;
-    });
-  }
+  const setAnalysisOpen = panelSetter("analysis");
+  const setTrainOpen = panelSetter("train", () => setMobilePane("map"), () => setDrawMode(null));
+  const setPerfOpen = panelSetter("perf", () => { setDrawMode(null); setMobilePane("map"); });
+  const setLibOpen = panelSetter("lib", () => { setDrawMode(null); setMobilePane("map"); });
   function openTrain(step = 0) { setTrainStep(step); setTrainOpen(true); }
   const pollRef = useRef(null);
 
@@ -426,6 +408,7 @@ export default function App({ user = null, onSignOut = null }) {
           />
           </ErrorBoundary>
           <MapView
+            panel={panel} onPanel={setPanel}
             layers={mapLayers}
             onRemoveResult={removeResult}
             onLabelsImported={(list) => { setAnnotations(list); setLabelError(null); }}
