@@ -27,10 +27,50 @@ from .autoparams import suggest_training_params
 # small built-in base-checkpoint catalogue, matched to the reference tool's
 # "works great on CPU" smallest models by default
 BASE_MODELS = {
-    "nano": "yolov8n.pt",
-    "small": "yolov8s.pt",
-    "medium": "yolov8m.pt",
+    "nano": "yolo11n.pt",
+    "small": "yolo11s.pt",
+    "medium": "yolo11m.pt",
 }
+_SIZE_LETTER = {"nano": "n", "small": "s", "medium": "m"}
+_TASK_SUFFIX = {"detect": "", "obb": "-obb", "segment": "-seg"}
+
+
+def base_model(model_size: str, task: str = "detect") -> str:
+    """Pretrained starting weights for the dataset's task.
+
+    Before: always yolov8 detect weights, so an OBB or segmentation dataset
+    was trained with a box-only model."""
+    letter = _SIZE_LETTER.get(model_size)
+    if letter is None:
+        return model_size                 # an explicit weights file
+    return f"yolo11{letter}{_TASK_SUFFIX.get(task, '')}.pt"
+
+
+def dataset_task(data_yaml: str) -> str:
+    """detect / obb / segment, from data.yaml's task key or the label rows.
+
+    YOLO label rows: detect = class + 4 numbers, obb = class + 8 corner
+    numbers, segment = class + an even number of polygon coordinates (> 8,
+    or 6/8 when the yaml says so)."""
+    p = Path(data_yaml)
+    try:
+        for line in p.read_text().splitlines():
+            if line.strip().startswith("task:"):
+                t = line.split(":", 1)[1].strip().strip("'\"")
+                if t in _TASK_SUFFIX:
+                    return t
+    except OSError:
+        return "detect"
+    for lbl in sorted((p.parent / "labels").rglob("*.txt"))[:200]:
+        for row in lbl.read_text().splitlines():
+            n = len(row.split()) - 1
+            if n == 4:
+                return "detect"
+            if n == 8:
+                return "obb"
+            if n > 8:
+                return "segment"
+    return "detect"
 
 
 class TrainingError(RuntimeError):
@@ -59,7 +99,7 @@ def build_job_config(
     )
     cfg = {
         "data_yaml": data_yaml,
-        "model": BASE_MODELS.get(model_size, model_size),
+        "model": base_model(model_size, dataset_task(data_yaml)),
         "device": device,
         "project": out_dir,
         "name": "run",

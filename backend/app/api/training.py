@@ -17,19 +17,20 @@ test) when there's no saved image annotation set to draw from.
 """
 from __future__ import annotations
 
-import threading
-import uuid
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel
 
 from app.core.config import settings
+from app.core.jobs import get_store
+from app.core.security import confine_path
 
 router = APIRouter(prefix="/api/training", tags=["training"])
 
-_JOBS: dict[str, dict] = {}
-_LOCK = threading.Lock()
+EXPORT_KIND = "dataset_export"
+TRAIN_KIND = "train"
+_LOG_MAX = 500
 
 
 class AnnotationIn(BaseModel):
@@ -48,6 +49,11 @@ class ExportDatasetRequest(BaseModel):
     val_split: float = 0.2
     neg_ratio: float = 0.1
     task: str = "detect"             # "detect" | "obb" | "segment"
+    train_areas_px: list[list[list[float]]] | None = None   # tiles only from inside these (pixel rings)
+    exclude_areas_px: list[list[list[float]]] | None = None # never trained on (accuracy areas)
+    negative_areas_px: list[list[list[float]]] | None = None  # results rejected in review: written as background
+    test_areas_px: list[list[list[float]]] | None = None      # accuracy areas: the test split
+    test_annotations: list[AnnotationIn] | None = None        # their labels (objects inside them)
     augment: bool = True
     img_fmt: str = "jpg"
 
@@ -55,43 +61,119 @@ class ExportDatasetRequest(BaseModel):
 def _run_job(job_id: str, req: ExportDatasetRequest):
     import numpy as np
 
-    with _LOCK:
-        _JOBS[job_id]["status"] = "processing"
+    jobs = get_store()
+    jobs.update(job_id, status="processing")
     try:
         from app.training.dataset_builder import DatasetBuilder
         from app.training.raster_window import RasterReader
 
+        from app.core import layout
+
         reader = RasterReader(req.image_path)
         anns = [{"cls": a.class_id, "pts": np.asarray(a.points_px, dtype=float)} for a in req.annotations]
-        out_dir = req.out_dir or str(settings.DATA_DIR / "datasets" / job_id)
+        test_anns = [{"cls": a.class_id, "pts": np.asarray(a.points_px, dtype=float)} for a in (req.test_annotations or [])]
+        if req.out_dir:
+            out_dir, group, version = req.out_dir, None, None
+        else:                                                  # datasets/<class>/vNNN (app.core.layout)
+            group = layout.group_slug(req.class_names)
+            version, path = layout.next_version(layout.datasets_dir() / group)
+            out_dir = str(path)
+            jobs.update(job_id, dataset_group=group, dataset_version=version, out_dir=out_dir)
 
         def progress(pct, message=None):
-            with _LOCK:
-                _JOBS[job_id]["progress"] = round(pct, 1)
-                if message:
-                    _JOBS[job_id]["message"] = message
+            fields = {"progress": round(pct, 1)}
+            if message:
+                fields["message"] = message
+            jobs.update(job_id, **fields)
 
         def log(message):
-            with _LOCK:
-                _JOBS[job_id].setdefault("log", []).append(message)
+            jobs.append(job_id, "log", message, max_len=_LOG_MAX)
 
         def canceled():
-            with _LOCK:
-                return _JOBS[job_id].get("cancel_requested", False)
+            return bool((jobs.get(job_id) or {}).get("cancel_requested"))
 
+        tile_filter, area_bounds = area_filter(req.train_areas_px, req.exclude_areas_px, req.tile, reader.width, reader.height)
+        if req.train_areas_px or req.exclude_areas_px:
+            log(f"Training areas: {len(req.train_areas_px or [])}, accuracy areas kept out: {len(req.exclude_areas_px or [])}")
         builder = DatasetBuilder(
-            reader, anns, req.class_names, out_dir,
+            reader, anns, req.class_names, out_dir, tile_filter=tile_filter, area_bounds=area_bounds,
+            negative_areas=req.negative_areas_px,
+            test_areas=req.test_areas_px, test_annotations=test_anns,
             tile=req.tile, overlap=req.overlap, val_split=req.val_split, neg_ratio=req.neg_ratio,
             task=req.task, augment=req.augment, img_fmt=req.img_fmt,
             progress=progress, canceled=canceled, log=log,
         )
         yaml_path, info = builder.run()
         reader.close()
-        with _LOCK:
-            _JOBS[job_id].update(status="completed", data_yaml=yaml_path, info=info)
+        if group:
+            write_manifest(Path(out_dir), group, version, req, info)
+        jobs.update(job_id, status="completed", data_yaml=yaml_path, info=info)
     except Exception as exc:
-        with _LOCK:
-            _JOBS[job_id].update(status="error", error=str(exc))
+        jobs.update(job_id, status="error", error=str(exc))
+
+
+def write_manifest(out: Path, group: str, version: str, req, info: dict) -> dict:
+    """manifest.json: what went into this dataset version, so it can be traced and rebuilt."""
+    import hashlib
+
+    from app.annotations import store
+    from app.core import layout
+
+    image = Path(req.image_path)
+    key = store.image_key_for(image)
+    label_files = sorted(layout.classes_dir().glob(f"*/labels/{key}.geojson")) + \
+        sorted(layout.classes_dir().glob(f"_areas/{key}.geojson"))
+    st = info.get("stats", {})
+    manifest = {
+        "dataset": group, "version": version, "created": info.get("created"),
+        "classes": info.get("classes"), "task": info.get("task"),
+        "tile": info.get("tile_size"), "overlap": info.get("overlap"),
+        "split": info.get("split"),
+        "counts": {s: {"images": st.get(f"{s}_images", 0), "objects": st.get(f"{s}_objects", 0)} for s in ("train", "val", "test")},
+        "class_counts": st.get("class_counts"), "buffer_dropped": st.get("buffer_dropped", 0),
+        "background_tiles": st.get("background_tiles", 0),
+        "sources": [{"image": key, "file": image.name, "bytes": image.stat().st_size if image.exists() else None}],
+        "labels": [{"file": str(f.relative_to(layout.classes_dir())),
+                    "sha256": hashlib.sha256(f.read_bytes()).hexdigest()} for f in label_files],
+    }
+    layout.write_json(out / "manifest.json", manifest)
+    return manifest
+
+
+def area_filter(train_areas, exclude_areas, tile: int, width: int, height: int):
+    """(tile_filter, area_bounds) for DatasetBuilder from pixel-ring areas.
+
+    tile_filter(xoff, yoff) -> None (whole tile usable) | False | bool mask:
+    inside a training area (when there are any) and outside every accuracy area.
+    """
+    import cv2
+    import numpy as np
+
+    train_areas, exclude_areas = train_areas or [], exclude_areas or []
+    if not train_areas and not exclude_areas:
+        return None, None
+
+    def ring(poly, xoff, yoff):
+        return np.round(np.asarray(poly, dtype=float) - [xoff, yoff]).astype(np.int32)
+
+    def tile_filter(xoff, yoff):
+        m = np.ones((tile, tile), np.uint8) if not train_areas else np.zeros((tile, tile), np.uint8)
+        for p in train_areas:
+            cv2.fillPoly(m, [ring(p, xoff, yoff)], 1)
+        for p in exclude_areas:
+            cv2.fillPoly(m, [ring(p, xoff, yoff)], 0)
+        if m.all():
+            return None
+        if not m.any():
+            return False
+        return m.astype(bool)
+
+    bounds = None
+    if train_areas:
+        pts = np.concatenate([np.asarray(p, dtype=float) for p in train_areas])
+        bounds = (max(0, int(pts[:, 0].min())), max(0, int(pts[:, 1].min())),
+                  min(width, int(np.ceil(pts[:, 0].max()))), min(height, int(np.ceil(pts[:, 1].max()))))
+    return tile_filter, bounds
 
 
 def _resolve_from_image_id(req: ExportDatasetRequest) -> ExportDatasetRequest:
@@ -102,13 +184,19 @@ def _resolve_from_image_id(req: ExportDatasetRequest) -> ExportDatasetRequest:
     if entry is None:
         raise HTTPException(status_code=404, detail=f"No library image with id '{req.image_id}'.")
     anns = store.load_annotations(entry["path"])
-    if not anns:
-        raise HTTPException(status_code=409, detail="No annotations saved for this image yet — use the Annotate step first.")
     class_names, annotations = store.to_export_payload(anns)
+    if not annotations:
+        raise HTTPException(status_code=409, detail="No labelled objects to train on yet (labels inside accuracy areas are kept out). Draw some in the Label step.")
     return req.model_copy(update={
         "image_path": entry["path"],
         "class_names": class_names,
         "annotations": [AnnotationIn(**a) for a in annotations],
+        "train_areas_px": [a["points_px"] for a in store.areas(anns, store.TRAIN_AREA)] or None,
+        "exclude_areas_px": [a["points_px"] for a in store.areas(anns, store.CHECK_AREA)] or None,
+        "test_areas_px": [a["points_px"] for a in store.areas(anns, store.CHECK_AREA)] or None,
+        "test_annotations": [AnnotationIn(**a) for a in store.objects_for_test(anns, class_names)] or None,
+        "negative_areas_px": [a["points_px"] for a in store.areas(anns, store.TRAIN_AREA)
+                              if (a.get("source") or {}).get("decision") == "reject"] or None,
     })
 
 
@@ -118,24 +206,24 @@ def export_dataset(req: ExportDatasetRequest, background_tasks: BackgroundTasks)
         req = _resolve_from_image_id(req)
     if not req.image_path:
         raise HTTPException(status_code=400, detail="Provide either image_id or image_path.")
-    if not Path(req.image_path).exists():
-        raise HTTPException(status_code=404, detail=f"Image not found: {req.image_path}")
+    req = req.model_copy(update={
+        "image_path": str(confine_path(req.image_path, field="image_path", must_exist=True)),
+        "out_dir": str(confine_path(req.out_dir, field="out_dir")) if req.out_dir else None,
+    })
     if not req.annotations:
         raise HTTPException(status_code=400, detail="At least one annotation is required to export a dataset.")
     if req.overlap >= req.tile:
         raise HTTPException(status_code=400, detail="overlap must be smaller than tile.")
 
-    job_id = str(uuid.uuid4())
-    with _LOCK:
-        _JOBS[job_id] = {"status": "queued", "progress": 0.0}
+    job_id = get_store().create(EXPORT_KIND, progress=0.0, image_id=req.image_id, task=req.task,
+                                class_names=req.class_names, image_name=Path(req.image_path).name)
     background_tasks.add_task(_run_job, job_id, req)
     return {"job_id": job_id, "status": "queued"}
 
 
 @router.get("/export-dataset/{job_id}")
 def export_dataset_status(job_id: str):
-    with _LOCK:
-        job = _JOBS.get(job_id)
+    job = get_store().get(job_id, EXPORT_KIND)
     if job is None:
         raise HTTPException(status_code=404, detail="Unknown job_id")
     return job
@@ -143,17 +231,14 @@ def export_dataset_status(job_id: str):
 
 @router.post("/export-dataset/{job_id}/cancel")
 def export_dataset_cancel(job_id: str):
-    with _LOCK:
-        job = _JOBS.get(job_id)
-        if job is None:
-            raise HTTPException(status_code=404, detail="Unknown job_id")
-        job["cancel_requested"] = True
+    jobs = get_store()
+    if jobs.get(job_id, EXPORT_KIND) is None:
+        raise HTTPException(status_code=404, detail="Unknown job_id")
+    jobs.update(job_id, cancel_requested=True)
     return {"job_id": job_id, "cancel_requested": True}
 
 
 # --------------------------------------------------------------------- Train
-_TRAIN_JOBS: dict[str, dict] = {}
-_TRAIN_LOCK = threading.Lock()
 
 
 class TrainRequest(BaseModel):
@@ -181,13 +266,18 @@ def _count_train_images(data_yaml: str) -> int:
 
 
 def _run_train_job(job_id: str, req: TrainRequest):
-    with _TRAIN_LOCK:
-        _TRAIN_JOBS[job_id]["status"] = "processing"
+    jobs = get_store()
+    jobs.update(job_id, status="processing")
     try:
         from app.training.trainer import build_job_config, run_training
 
-        out_dir = req.out_dir or str(settings.DATA_DIR / "training_runs" / job_id)
-        cancel_flag = str(settings.DATA_DIR / "training_runs" / job_id / "cancel.flag")
+        from app.core import layout
+
+        group, version, mdir = (None, None, None) if req.out_dir else layout.new_model_dir(req.data_yaml)
+        out_dir = req.out_dir or str(mdir or settings.DATA_DIR / "training_runs" / job_id)
+        cancel_flag = str(Path(out_dir) / "cancel.flag")
+        if group:
+            jobs.update(job_id, model_group=group, model_version=version, out_dir=out_dir)
         cfg = build_job_config(
             req.data_yaml, out_dir,
             num_train_images=_count_train_images(req.data_yaml),
@@ -198,44 +288,36 @@ def _run_train_job(job_id: str, req: TrainRequest):
             },
             cancel_flag_path=cancel_flag,
         )
-        with _TRAIN_LOCK:
-            _TRAIN_JOBS[job_id]["config"] = cfg
-            _TRAIN_JOBS[job_id]["cancel_flag_path"] = cancel_flag
+        jobs.update(job_id, config=cfg, cancel_flag_path=cancel_flag)
 
         def on_event(event):
-            with _TRAIN_LOCK:
-                if event.get("type") == "epoch":
-                    _TRAIN_JOBS[job_id]["progress"] = event
-                    _TRAIN_JOBS[job_id].setdefault("history", []).append(event)
-                elif event.get("type") in ("done", "canceled", "error"):
-                    _TRAIN_JOBS[job_id]["status"] = event["type"]
-                    _TRAIN_JOBS[job_id]["result"] = event
+            if event.get("type") == "epoch":
+                jobs.update(job_id, progress=event)
+                jobs.append(job_id, "history", event, max_len=_LOG_MAX)
+            elif event.get("type") in ("done", "canceled", "error"):
+                jobs.update(job_id, status=event["type"], result=event)
 
         final = run_training(cfg, on_event)
-        with _TRAIN_LOCK:
-            if _TRAIN_JOBS[job_id]["status"] == "processing":
-                _TRAIN_JOBS[job_id]["status"] = final.get("type", "error")
-                _TRAIN_JOBS[job_id]["result"] = final
+        if (jobs.get(job_id) or {}).get("status") == "processing":
+            jobs.update(job_id, status=final.get("type", "error"), result=final)
     except Exception as exc:
-        with _TRAIN_LOCK:
-            _TRAIN_JOBS[job_id].update(status="error", error=str(exc))
+        jobs.update(job_id, status="error", error=str(exc))
 
 
 @router.post("/train")
 def start_training(req: TrainRequest, background_tasks: BackgroundTasks):
-    if not Path(req.data_yaml).exists():
-        raise HTTPException(status_code=404, detail=f"data.yaml not found: {req.data_yaml}")
-    job_id = str(uuid.uuid4())
-    with _TRAIN_LOCK:
-        _TRAIN_JOBS[job_id] = {"status": "queued", "data_yaml": req.data_yaml}
+    req = req.model_copy(update={
+        "data_yaml": str(confine_path(req.data_yaml, field="data_yaml", must_exist=True)),
+        "out_dir": str(confine_path(req.out_dir, field="out_dir")) if req.out_dir else None,
+    })
+    job_id = get_store().create(TRAIN_KIND, data_yaml=req.data_yaml)
     background_tasks.add_task(_run_train_job, job_id, req)
     return {"job_id": job_id, "status": "queued"}
 
 
 @router.get("/train/{job_id}")
 def train_status(job_id: str):
-    with _TRAIN_LOCK:
-        job = _TRAIN_JOBS.get(job_id)
+    job = get_store().get(job_id, TRAIN_KIND)
     if job is None:
         raise HTTPException(status_code=404, detail="Unknown job_id")
     return job
@@ -245,11 +327,12 @@ def train_status(job_id: str):
 def train_cancel(job_id: str):
     from app.training.trainer import request_cancel
 
-    with _TRAIN_LOCK:
-        job = _TRAIN_JOBS.get(job_id)
-        if job is None:
-            raise HTTPException(status_code=404, detail="Unknown job_id")
-        flag_path = job.get("cancel_flag_path")
+    job = get_store().get(job_id, TRAIN_KIND)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Unknown job_id")
+    if job.get("status") not in ("queued", "processing"):
+        raise HTTPException(status_code=409, detail=f"This training run is not running (status: {job.get('status')}).")
+    flag_path = job.get("cancel_flag_path")
     if not flag_path:
         raise HTTPException(status_code=409, detail="Training hasn't started yet — nothing to cancel.")
     request_cancel(flag_path)
@@ -267,8 +350,7 @@ def register_trained_model(job_id: str, req: RegisterModelRequest):
     real, selectable catalog entry (app.models.custom_registry), with its
     class names read straight back from the run's own data.yaml — not
     retyped by hand, so they can't drift from what was actually trained."""
-    with _TRAIN_LOCK:
-        job = _TRAIN_JOBS.get(job_id)
+    job = get_store().get(job_id, TRAIN_KIND)
     if job is None:
         raise HTTPException(status_code=404, detail="Unknown job_id")
     if job.get("status") not in ("done", "completed"):

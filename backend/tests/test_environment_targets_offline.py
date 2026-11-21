@@ -12,23 +12,23 @@ from app.diagnostics.environment import parse_requirements, resolve_install_targ
 
 def test_parse_requirements_strips_comments_and_extras():
     lines = parse_requirements()
-    assert lines["fastapi"] == "fastapi==0.115.6"
+    assert lines["fastapi"] == "fastapi>=0.115"                 # from requirements-core.txt via -r
     # bracketed extra ("uvicorn[standard]") must still key on the bare name
-    assert lines["uvicorn"].startswith("uvicorn[standard]==")
-    # inline trailing comment must be stripped
-    assert lines["ultralytics"] == "ultralytics==8.3.49"
+    assert lines["uvicorn"].startswith("uvicorn[standard]>=")
+    # inline trailing comment must be stripped; ml file followed too
+    assert lines["ultralytics"] == "ultralytics>=8.3.49"
 
 
 def test_resolve_install_targets_single_known_module():
     resolved = resolve_install_targets(["cv2"])
-    assert resolved == ["opencv-python-headless==4.10.0.84"]
+    assert resolved == ["opencv-python-headless>=4.10"]
 
 
 def test_resolve_install_targets_multiple_known_modules():
-    resolved = resolve_install_targets(["ultralytics", "segmentation_models_pytorch"])
+    resolved = resolve_install_targets(["ultralytics", "scipy"])
     assert resolved == [
-        "ultralytics==8.3.49",
-        "segmentation-models-pytorch==0.3.4",
+        "ultralytics>=8.3.49",
+        "scipy>=1.13",
     ]
 
 

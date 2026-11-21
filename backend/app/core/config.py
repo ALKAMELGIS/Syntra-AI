@@ -28,7 +28,7 @@ class Settings:
     # --- Paths -----------------------------------------------------------
     BASE_DIR: Path = Path(__file__).resolve().parents[2]
     DATA_DIR: Path = Path(os.getenv("SYNTRA_DATA_DIR", BASE_DIR / "data"))
-    UPLOAD_DIR: Path = DATA_DIR / "uploads"
+    UPLOAD_DIR: Path = DATA_DIR / "images"          # images/<key>/<name>.tif, see app.core.layout
     RESULTS_DIR: Path = DATA_DIR / "results"
     WEIGHTS_DIR: Path = Path(os.getenv("SYNTRA_WEIGHTS_DIR", BASE_DIR / "weights"))
 
@@ -43,6 +43,12 @@ class Settings:
     DEFAULT_NMS_IOU: float = float(os.getenv("SYNTRA_NMS_IOU", 0.45))
     USE_FP16_IF_AVAILABLE: bool = os.getenv("SYNTRA_FP16", "1") == "1"
 
+    # Oriented-box detector pretrained on DOTA (aerial imagery). A bare file
+    # name is downloaded once by ultralytics into the working directory; put
+    # a full path here to use a local copy (offline machines) or a larger
+    # variant (yolo11s-obb.pt, yolo11m-obb.pt) for better accuracy.
+    AERIAL_OBB_WEIGHTS: str = os.getenv("SYNTRA_AERIAL_OBB_WEIGHTS", "yolo11n-obb.pt")
+
     # --- Compute profiles ----------------------------------------------------
     # CPU0 / CPU1 are user-configurable CPU execution profiles (e.g. thread
     # counts / core affinity); GPU uses CUDA when available; AUTO picks the
@@ -50,8 +56,11 @@ class Settings:
     CPU0_THREADS: int = int(os.getenv("SYNTRA_CPU0_THREADS", 4))
     CPU1_THREADS: int = int(os.getenv("SYNTRA_CPU1_THREADS", os.cpu_count() or 8))
 
+    # --- Uploads -------------------------------------------------------------
+    MAX_UPLOAD_MB: int = int(os.getenv("SYNTRA_MAX_UPLOAD_MB", 20480))  # 20 GB: large orthomosaics are normal
+
     # --- API ---------------------------------------------------------------
-    CORS_ORIGINS: list[str] = os.getenv("SYNTRA_CORS_ORIGINS", "http://localhost:5173").split(",")
+    CORS_ORIGINS: list[str] = os.getenv("SYNTRA_CORS_ORIGINS", "http://localhost:5291,http://localhost:5173").split(",")
 
     def ensure_dirs(self) -> None:
         for d in (self.DATA_DIR, self.UPLOAD_DIR, self.RESULTS_DIR, self.WEIGHTS_DIR):

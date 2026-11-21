@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: add-geojson-import-endpoint
+expected_outcome: |
+  A new route that resolves the image by image_id, passes the GeoJSON path through confine_path, is registered with the API-key dependency, and has offline tests including one where a path outside the data dir is refused.

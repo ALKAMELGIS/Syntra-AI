@@ -22,7 +22,7 @@ from app.models.custom_registry import list_custom_models
 CATALOG: dict[str, ModelMetadata] = {
     "palm_tree_detection": ModelMetadata(
         model_id="palm_tree_detection",
-        name="Palm Tree Detection",
+        name="Palms",
         model_type="detection",
         version="0.0.0-unweighted",
         supported_gsd=GsdRange(0.25, 0.75),
@@ -39,7 +39,7 @@ CATALOG: dict[str, ModelMetadata] = {
     ),
     "date_tree_detection": ModelMetadata(
         model_id="date_tree_detection",
-        name="Date Tree Detection",
+        name="Date palms",
         model_type="detection",
         version="0.0.0-unweighted",
         supported_gsd=GsdRange(0.25, 0.75),
@@ -47,7 +47,7 @@ CATALOG: dict[str, ModelMetadata] = {
         supported_formats=["GeoTIFF", "COG"],
         status=ModelStatus.NOT_PRODUCTION_READY,
         hardware_compatibility=["cpu", "cuda"],
-        default_confidence_threshold=0.35,
+        default_confidence_threshold=0.5,
         class_names={0: "date_palm"},
         notes=(
             "No fine-tuned weights. Distinguishing date palms from other palm species requires "
@@ -56,7 +56,7 @@ CATALOG: dict[str, ModelMetadata] = {
     ),
     "tree_detection": ModelMetadata(
         model_id="tree_detection",
-        name="Tree Detection",
+        name="Trees",
         model_type="detection",
         version="0.0.0-unweighted",
         supported_gsd=GsdRange(0.25, 1.00),
@@ -72,45 +72,75 @@ CATALOG: dict[str, ModelMetadata] = {
             "until a labeled vegetation dataset is available."
         ),
     ),
+    "vegetation_index": ModelMetadata(
+        model_id="vegetation_index",
+        name="Vegetation",
+        model_type="index",
+        version="1.0.0-ndvi",
+        supported_gsd=GsdRange(0.05, 10.0),
+        supported_image_sources=["satellite", "drone"],
+        supported_formats=["GeoTIFF", "COG"],
+        status=ModelStatus.VALIDATION,
+        hardware_compatibility=["cpu"],
+        default_confidence_threshold=0.20,
+        class_names={0: "vegetation"},
+        notes=(
+            "Spectral index, no trained model: NDVI from the red and near-infrared bands (VARI for "
+            "RGB-only images). Outputs vegetation polygons with area and an estimated count of tree "
+            "crowns. The 0.20 threshold is a general default, not calibrated for your area."
+        ),
+    ),
     "car_detection": ModelMetadata(
         model_id="car_detection",
-        name="Car Detection",
+        name="Cars",
         model_type="detection",
-        version="0.1.0-generic-coco",
-        supported_gsd=GsdRange(0.25, 0.50),
+        version="0.2.0-dota-obb",
+        supported_gsd=GsdRange(0.1, 0.6),
         supported_image_sources=["satellite", "drone"],
         supported_formats=["GeoTIFF", "COG"],
         status=ModelStatus.VALIDATION,
         hardware_compatibility=["cpu", "cuda"],
-        default_confidence_threshold=0.40,
-        class_names={0: "car"},
+        default_confidence_threshold=0.35,
+        class_names={0: 'car', 1: 'large_vehicle'},
         notes=(
-            "Running on generic YOLOv8 COCO-pretrained weights ('car' class) as a working "
-            "placeholder — NOT fine-tuned on aerial/nadir imagery and NOT benchmarked. Treat "
-            "counts as indicative only until fine-tuned on a labeled aerial car dataset."
+            "Detects small vehicles (cars, vans) and large vehicles (trucks, buses) as separate classes."
+            " Pretrained on DOTA v1 aerial imagery (YOLO11-OBB, rotated boxes), not yet fine-tuned or benchmarked on your own imagery: check results before relying on counts."
         ),
     ),
     "ship_detection": ModelMetadata(
         model_id="ship_detection",
-        name="Ship Detection",
+        name="Ships",
         model_type="detection",
-        version="0.1.0-generic-coco",
-        supported_gsd=GsdRange(0.30, 1.00),
-        supported_image_sources=["satellite"],
+        version="0.2.0-dota-obb",
+        supported_gsd=GsdRange(0.15, 1.5),
+        supported_image_sources=["satellite", "drone"],
         supported_formats=["GeoTIFF", "COG"],
         status=ModelStatus.VALIDATION,
         hardware_compatibility=["cpu", "cuda"],
-        default_confidence_threshold=0.40,
-        class_names={0: "ship"},
+        default_confidence_threshold=0.35,
+        class_names={0: 'ship'},
         notes=(
-            "Running on generic YOLOv8 COCO-pretrained weights ('boat' class as proxy) as a "
-            "working placeholder — NOT fine-tuned for maritime satellite imagery (scale/angle "
-            "mismatch vs. COCO's photos is significant). Needs a labeled ship dataset."
+            "Detects vessels at sea and moored in ports, with their heading as a rotated box."
+            " Pretrained on DOTA v1 aerial imagery (YOLO11-OBB, rotated boxes), not yet fine-tuned or benchmarked on your own imagery: check results before relying on counts."
         ),
+    ),
+    "drone_objects": ModelMetadata(
+        model_id="drone_objects",
+        name="Drone objects",
+        model_type="detection",
+        version="0.1.0-semantic-drone",
+        supported_gsd=GsdRange(0.01, 0.15),
+        supported_image_sources=["drone"],
+        supported_formats=["GeoTIFF", "COG"],
+        status=ModelStatus.VALIDATION,
+        hardware_compatibility=["cpu", "cuda"],
+        default_confidence_threshold=0.30,
+        class_names={0: "tree", 1: "building", 2: "vehicle", 3: "person"},
+        notes="Outlines of trees, roofs, vehicles and people in drone orthomosaics.",
     ),
     "field_boundary_segmentation": ModelMetadata(
         model_id="field_boundary_segmentation",
-        name="Field Agriculture Boundary Detection",
+        name="Field boundaries",
         model_type="segmentation",
         version="0.0.0-unweighted",
         supported_gsd=GsdRange(0.25, 1.00),
@@ -154,7 +184,7 @@ CATALOG: dict[str, ModelMetadata] = {
     ),
     "vacant_land_detection": ModelMetadata(
         model_id="vacant_land_detection",
-        name="Vacant Land",
+        name="Vacant land",
         model_type="segmentation",
         version="0.0.0-unweighted",
         supported_gsd=GsdRange(0.25, 1.00),
@@ -171,7 +201,7 @@ CATALOG: dict[str, ModelMetadata] = {
     ),
     "street_centerline_extraction": ModelMetadata(
         model_id="street_centerline_extraction",
-        name="Street (centerline)",
+        name="Street centerlines",
         model_type="segmentation",
         version="0.0.0-unweighted",
         supported_gsd=GsdRange(0.10, 0.50),
@@ -189,7 +219,7 @@ CATALOG: dict[str, ModelMetadata] = {
     ),
     "construction_waste_detection": ModelMetadata(
         model_id="construction_waste_detection",
-        name="Construction Waste",
+        name="Construction waste",
         model_type="detection",
         version="0.0.0-unweighted",
         supported_gsd=GsdRange(0.10, 0.30),
@@ -208,23 +238,22 @@ CATALOG: dict[str, ModelMetadata] = {
         model_id="aircraft_detection",
         name="Aircraft",
         model_type="detection",
-        version="0.1.0-generic-coco",
-        supported_gsd=GsdRange(0.25, 0.75),
+        version="0.2.0-dota-obb",
+        supported_gsd=GsdRange(0.1, 1.0),
         supported_image_sources=["satellite", "drone"],
         supported_formats=["GeoTIFF", "COG"],
         status=ModelStatus.VALIDATION,
         hardware_compatibility=["cpu", "cuda"],
-        default_confidence_threshold=0.40,
-        class_names={0: "airplane"},
+        default_confidence_threshold=0.35,
+        class_names={0: 'airplane', 1: 'helicopter'},
         notes=(
-            "Running on generic YOLOv8 COCO-pretrained weights ('airplane' class) as a working "
-            "placeholder — NOT fine-tuned on aerial/nadir imagery and NOT benchmarked. Treat "
-            "counts as indicative only until fine-tuned on a labeled aerial-aircraft dataset."
+            "Detects fixed-wing aircraft and helicopters on aprons, runways and helipads."
+            " Pretrained on DOTA v1 aerial imagery (YOLO11-OBB, rotated boxes), not yet fine-tuned or benchmarked on your own imagery: check results before relying on counts."
         ),
     ),
     "unpaved_road_detection": ModelMetadata(
         model_id="unpaved_road_detection",
-        name="Unpaved Road",
+        name="Unpaved roads",
         model_type="segmentation",
         version="0.0.0-unweighted",
         supported_gsd=GsdRange(0.25, 1.00),
@@ -255,24 +284,24 @@ CATALOG: dict[str, ModelMetadata] = {
     ),
     "oil_tank_detection": ModelMetadata(
         model_id="oil_tank_detection",
-        name="Oil Tanks",
+        name="Oil tanks",
         model_type="detection",
-        version="0.0.0-unweighted",
-        supported_gsd=GsdRange(0.25, 0.75),
+        version="0.2.0-dota-obb",
+        supported_gsd=GsdRange(0.15, 1.5),
         supported_image_sources=["satellite", "drone"],
         supported_formats=["GeoTIFF", "COG"],
-        status=ModelStatus.NOT_PRODUCTION_READY,
+        status=ModelStatus.VALIDATION,
         hardware_compatibility=["cpu", "cuda"],
-        default_confidence_threshold=0.45,
-        class_names={0: "oil_tank"},
+        default_confidence_threshold=0.35,
+        class_names={0: 'oil_tank'},
         notes=(
-            "Circular storage tanks have no usable COCO proxy class. Needs a labeled oil-tank "
-            "dataset (e.g. a Kaggle 'Airbus Oil Storage' style corpus) before this can run."
+            "Detects DOTA's 'storage tank' class, which covers oil and other cylindrical storage tanks, so it can include water or chemical tanks."
+            " Pretrained on DOTA v1 aerial imagery (YOLO11-OBB, rotated boxes), not yet fine-tuned or benchmarked on your own imagery: check results before relying on counts."
         ),
     ),
     "oil_tank_shadow_analysis": ModelMetadata(
         model_id="oil_tank_shadow_analysis",
-        name="Oil Shadows",
+        name="Tank shadows",
         model_type="measurement",
         version="0.0.0-unweighted",
         supported_gsd=GsdRange(0.25, 0.75),
@@ -290,7 +319,7 @@ CATALOG: dict[str, ModelMetadata] = {
     ),
     "tank_volume_estimation": ModelMetadata(
         model_id="tank_volume_estimation",
-        name="Tank Volume",
+        name="Tank volume",
         model_type="measurement",
         version="0.0.0-unweighted",
         supported_gsd=GsdRange(0.25, 0.75),
@@ -307,21 +336,24 @@ CATALOG: dict[str, ModelMetadata] = {
     ),
     "bridge_detection": ModelMetadata(
         model_id="bridge_detection",
-        name="Bridge",
+        name="Bridges",
         model_type="detection",
-        version="0.0.0-unweighted",
-        supported_gsd=GsdRange(0.25, 1.00),
+        version="0.2.0-dota-obb",
+        supported_gsd=GsdRange(0.15, 2.0),
         supported_image_sources=["satellite", "drone"],
         supported_formats=["GeoTIFF", "COG"],
-        status=ModelStatus.NOT_PRODUCTION_READY,
+        status=ModelStatus.VALIDATION,
         hardware_compatibility=["cpu", "cuda"],
-        default_confidence_threshold=0.40,
-        class_names={0: "bridge"},
-        notes="No fine-tuned weights or labeled dataset exist. No usable COCO proxy class.",
+        default_confidence_threshold=0.3,
+        class_names={0: 'bridge'},
+        notes=(
+            "Detects bridges over water and roads. Long, thin bridges can be split across tiles; overlap helps."
+            " Pretrained on DOTA v1 aerial imagery (YOLO11-OBB, rotated boxes), not yet fine-tuned or benchmarked on your own imagery: check results before relying on counts."
+        ),
     ),
     "change_detection": ModelMetadata(
         model_id="change_detection",
-        name="Change Detection",
+        name="Change",
         model_type="change_detection",
         version="0.0.0-unweighted",
         supported_gsd=GsdRange(0.25, 1.00),
@@ -392,14 +424,64 @@ def _custom_catalog() -> dict[str, ModelMetadata]:
     return out
 
 
+def _approved_catalog() -> dict[str, ModelMetadata]:
+    """The owner's approved model per class (app.models.approved), re-read on
+    every call so Approve / Roll back in the Library shows at once."""
+    from app.models.approved import list_approved
+
+    out: dict[str, ModelMetadata] = {}
+    for m in list_approved():
+        f1 = (m.test or {}).get("f1")
+        title = " + ".join(n.replace("_", " ").capitalize() for n in m.class_names.values())
+        out[m.model_id] = ModelMetadata(
+            model_id=m.model_id,
+            name=title,
+            model_type="segmentation" if m.task == "segment" else "detection",
+            version=f"{m.version} approved",
+            supported_gsd=GsdRange(0.02, 5.0),
+            supported_image_sources=["satellite", "drone"],
+            supported_formats=["GeoTIFF", "COG"],
+            status=ModelStatus.READY if f1 is not None else ModelStatus.VALIDATION,
+            hardware_compatibility=["cpu", "cuda"],
+            default_confidence_threshold=0.25,
+            class_names=m.class_names,
+            notes=(f"Approved in the Library: {m.version}, trained on dataset {m.dataset_version or '?'}. "
+                   + (f"F1 {f1:.2f} on your accuracy areas (test)." if f1 is not None
+                      else "No test score yet: draw an accuracy area and train again to measure it.")),
+        )
+    return out
+
+
+def _with_pack(meta: ModelMetadata) -> ModelMetadata:
+    """Categories backed by an installable pack (app.models.packs) report
+    whether the weights are on disk instead of a fixed status."""
+    from dataclasses import replace
+
+    from app.models.packs import is_installed, pack_for_model
+
+    pack = pack_for_model(meta.model_id)
+    if pack is None:
+        return meta
+    caveats = " ".join(pack.caveats)
+    if is_installed(pack):
+        return replace(meta, status=ModelStatus.VALIDATION, version=f"pack:{pack.pack_id}",
+                       notes=f"{pack.source} Licence: {pack.licence}. {caveats}".strip())
+    return replace(meta, status=ModelStatus.NOT_INSTALLED, version="not-installed",
+                   notes=f"Open weights available: {pack.title} ({pack.licence}). Install to run. {pack.source}")
+
+
 def list_catalog() -> list[ModelMetadata]:
-    return list(CATALOG.values()) + list(_custom_catalog().values())
+    return ([_with_pack(m) for m in CATALOG.values()] + list(_approved_catalog().values())
+            + list(_custom_catalog().values()))
 
 
 def get_metadata(model_id: str) -> ModelMetadata:
     if model_id in CATALOG:
-        return CATALOG[model_id]
+        return _with_pack(CATALOG[model_id])
     custom = _custom_catalog()
     if model_id in custom:
         return custom[model_id]
+    approved = _approved_catalog()
+    if model_id in approved:
+        return approved[model_id]
     raise KeyError(f"Unknown model_id '{model_id}'. Known: {list(CATALOG) + list(custom)}")

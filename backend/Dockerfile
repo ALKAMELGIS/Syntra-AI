@@ -4,7 +4,7 @@
 # instead (e.g. nvidia/cuda:12.4.1-runtime-ubuntu22.04) and install a
 # matching torch build. GDAL/rasterio need the system libgdal package.
 
-FROM python:3.11-slim
+FROM python:3.13-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         libgdal-dev gdal-bin \
@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /srv/app
 
-COPY requirements.txt .
+COPY requirements*.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app

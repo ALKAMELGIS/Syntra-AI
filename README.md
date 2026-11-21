@@ -1,9 +1,41 @@
-# Syntra AI — Detection Engine (Phase 1)
+# Syntra AI
 
-A satellite/drone imagery AI detection platform. Per the product spec, this
-build prioritizes a **working detection engine** over dashboard polish: the
-engine is fully usable from plain Python (no HTTP layer required) and is
-independently tested.
+Finds objects in satellite and drone GeoTIFFs (trees, date palms, vehicles, ships, buildings,
+fields) and hands them back as GIS layers: GeoJSON, KML, Shapefile, GeoPackage, CSV. It also
+trains your own models from labels you draw, measures their accuracy on your imagery, and maps
+Sentinel-2 spectral indices (NDVI, NDMI, NDWI, …) over an area.
+
+A local web app: a Python engine (FastAPI) and a browser interface (React + Leaflet).
+
+## Start
+
+Windows: double-click `start-local.bat`, then open http://localhost:5291.
+
+By hand:
+
+```bash
+cd backend
+pip install -r requirements.txt        # or requirements-core.txt for the engine alone
+cp .env.example .env
+python -m uvicorn app.main:app --port 8011
+
+cd frontend
+npm install
+VITE_API_PORT=8011 npm run dev         # http://localhost:5291
+```
+
+Tests: `cd backend && pip install -r requirements-dev.txt && python -m pytest -q tests`.
+More (GPU, Docker, Windows pitfalls): [docs/SETUP.md](docs/SETUP.md).
+
+## Where things are
+
+| Read | For |
+| --- | --- |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | How the parts fit: layers, a request's path, where data lives, the rules |
+| [docs/TREE.md](docs/TREE.md) | Every source file and what it does (generated) |
+| [docs/FEATURES.md](docs/FEATURES.md) | Each capability in detail and how it was verified |
+| [docs/API.md](docs/API.md) | The REST API |
+| [.claude/skills/syntra-dev/SKILL.md](.claude/skills/syntra-dev/SKILL.md) | House rules for changing the code |
 
 ## What's real vs. scaffolded — read this first
 
@@ -20,7 +52,7 @@ never verified:
 | Standardized model interface (`load_model/validate_model/predict/postprocess/georeference/export_results`) | ✅ implemented & tested | Exercised end-to-end via an offline stub detector (`app/models/stub_predictor.py` — numpy-only, deterministic, **not** a real detector). |
 | Compute device manager (CPU0/CPU1/GPU/AUTO) | ✅ implemented & tested | `resolve_device()` correctly falls back to CPU when no CUDA device is present (verified here, since this sandbox has no GPU). Dedicated `test_compute_offline.py` (7 cases) locks down every option (CPU0/CPU1/GPU/AUTO), the GPU→CPU1 fallback reason string, and `list_devices()` reporting zero GPUs honestly rather than guessing. |
 | GeoJSON + manifest export | ✅ implemented & tested | Written files were parsed back and checked in the pipeline test. |
-| **Car / Ship detection** (`generic_detector.py`) | ⚠️ real ultralytics code, **not run** | Wraps a stock YOLOv8-COCO model as a working placeholder (`car`/`boat` classes). Needs `pip install -r requirements.txt` + a GPU/CPU box with network access to actually run. Marked `VALIDATION` status, not `READY` — it is unfine-tuned and unbenchmarked for aerial imagery. |
+| **Car / Ship / Aircraft / Oil Tanks / Bridge** (`aerial_obb_detector.py`) | ⚠️ `VALIDATION`: aerial-pretrained, not benchmarked on your imagery | Backed by YOLO11-OBB pretrained on DOTA v1 (aerial and satellite scenes, rotated boxes), replacing the earlier COCO street-photo proxies. Exports rotated polygons. Cars split into `car` / `large_vehicle`, aircraft into `airplane` / `helicopter`; Oil Tanks uses DOTA's generic `storage tank` class, so it can include water or chemical tanks. Weights: `SYNTRA_AERIAL_OBB_WEIGHTS` (default `yolo11n-obb.pt`, auto-downloaded once). Verified offline by `test_aerial_obb_offline.py` (class mapping, rotated-polygon georeferencing) and **run for real**: YOLO11n-OBB on CPU over a 1920×1080 aerial marina scene georeferenced in UTM 40N found 178 ships (246 raw → 178 after cross-tile merge, 6 tiles, ~3 s), each as a tight rotated box on the boat, placed correctly on the map. |
 | **Palm / Date / Tree / Field-boundary** models | ❌ not production-ready | No trained weights or labeled datasets exist. The factory and model classes raise a clear `NotProductionReadyError` instead of fabricating detections — per the spec's final requirement. |
 | React + Leaflet dashboard | 📝 written, **not built/run** | No `npm install` was possible here (no registry access). Standard Vite/React/Leaflet code — run `npm install && npm run dev` in a normal dev environment. |
 | Dataset module (YOLO/COCO/GeoJSON parsing, validation, class balance, geo-separated splitting, versioning) | ✅ implemented & tested | `backend/tests/test_datasets_offline.py`: GeoJSON round-trip, class-balance math, and a split test that asserts two spatial clusters are never divided across train/val/test. |
@@ -43,110 +75,3 @@ part (tiling, georeferencing, duplicate removal, the model contract) — is
 real and has passing tests. The ML models themselves need your GPU box,
 your datasets, and a normal internet connection to install dependencies and
 train/fine-tune.
-
-## Project layout
-
-```
-backend/
-  app/
-    core/        # config, compute device manager (CPU0/CPU1/GPU/AUTO)
-    engine/       # raster I/O + tiling, geo transform, NMS, postprocess/export, pipeline orchestrator, benchmark metrics
-    models/       # standardized model interface, catalog/registry, factory, per-model implementations
-    datasets/     # Section 9: annotation parsing (YOLO/COCO/GeoJSON), validation, geo-separated splitting, versioning
-    api/          # FastAPI routes: images, models, predict, results, compute, datasets, benchmark
-    main.py
-  tests/
-    test_pipeline_offline.py        # numpy-only, runs anywhere, no GPU/network needed
-    test_datasets_offline.py        # dataset parsing/validation/splitting (incl. real YOLO dir parsing)
-    test_benchmark_offline.py       # metric-computation correctness (AP/mAP/precision/recall)
-    test_export_formats_offline.py  # GeoJSON -> KML round-trip
-    test_measurements_offline.py    # field area/perimeter math (real cv2 contour extraction)
-    test_stats_offline.py           # per-model processing-statistics accumulation
-    test_shapefile_export_offline.py  # .shp/.shx/.dbf round-trip + spec-derived file-length check
-    test_compute_offline.py         # CPU0/CPU1/GPU/AUTO resolution + fallback-without-GPU behavior
-  requirements.txt
-  Dockerfile
-frontend/
-  src/
-    components/   # TopBar (Detect/Detection Models tabs), Sidebar (model checklist + upload + run), MapView (Leaflet), AnalysisPanel, ModelsDashboard (Phase 4)
-    api/client.js
-  package.json
-  Dockerfile
-  nginx.conf
-docs/
-  API.md          # full REST API reference — routes, request/response shapes, error codes
-scripts/
-  check_environment.py  # dependency + CUDA doctor; run this on your real machine before `uvicorn`
-docker-compose.yml
-.github/workflows/offline-tests.yml
-```
-
-## Running it for real
-
-```bash
-# 0. Check what your machine actually has before installing anything
-python scripts/check_environment.py
-# Prints an honest pass/fail per dependency (fastapi/rasterio/torch/...),
-# whether CUDA is visible to torch, and an exit code (0 = fully ready).
-
-# Backend
-cd backend
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env
-uvicorn app.main:app --reload --port 8000
-
-# Frontend
-cd frontend
-npm install
-npm run dev   # http://localhost:5173, proxies /api -> :8000
-
-# Offline tests (no GPU/rasterio/torch needed)
-cd backend
-python tests/test_pipeline_offline.py
-python tests/test_datasets_offline.py
-python tests/test_benchmark_offline.py
-python tests/test_export_formats_offline.py
-python tests/test_measurements_offline.py
-python tests/test_stats_offline.py
-python tests/test_shapefile_export_offline.py
-python tests/test_compute_offline.py
-
-# Or with Docker Compose (not yet built/tested here — no registry access in this sandbox):
-docker compose up --build
-```
-
-Full REST endpoint reference (request/response shapes, status codes, and
-which checks are real vs. still to be exercised against a live server): see
-[`docs/API.md`](docs/API.md).
-
-## The six initial detection categories
-
-See `backend/app/models/registry.py` for the full catalog (GSD compatibility
-range, supported formats, status, and honest per-model notes on what's
-missing). Status values: `ready`, `validation` (running but unbenchmarked),
-`not_production_ready`, `loading`, `processing`, `training`, `error`,
-`disabled` — matching the spec's Model Management Interface section.
-
-## Roadmap (spec's Section 10, Development Priorities)
-
-- [x] **Phase 1** — detection engine architecture: tiling, model interface, NMS, georeferencing, GeoJSON export. Working placeholder for car/ship; honest stubs for palm/date/tree/field-boundary pending datasets. Also includes the Section 9 dataset module (YOLO/COCO/GeoJSON parsing, validation, geo-separated splitting, versioning) a turn ahead of where the phase list put it, since training anything in Phase 1 needs it.
-- [x] **Phase 2** — CPU0 / CPU1 / GPU / AUTO SELECT compute manager.
-- [ ] **Phase 3** — validated at scale against real multi-GB orthomosaics (needs a real deployment box).
-- [x] **Phase 4** — Model Management dashboard: full registry fields + live processing statistics in a dedicated table view, toggled from the top bar. Dataset-version UI (listing `/api/datasets/{model_id}/versions`) is not built yet.
-- [x] **Phase 5** — GeoJSON → KML export (`GET /api/results/{job_id}/{model_id}/kml`), ESRI Shapefile export (`GET /api/results/{job_id}/{model_id}/shapefile`), and field area/perimeter measurement math (`app/engine/measurements.py`), all implemented and tested. Layer styling / measurement *tools* (interactive, in the dashboard) are still open — the underlying math and export formats are done; the UI affordances for them are not.
-- [x] **Phase 6 (tooling only)** — `app/engine/benchmark.py` computes real precision/recall/F1/mAP50/mAP50-95/throughput/false-positive-rate from predictions + ground truth, unit-tested against hand-verified numbers. Nothing has actually been benchmarked yet — that still requires trained weights and a labeled held-out test set, which don't exist for any model in the catalog.
-
-## What's needed from you to move past Phase 1
-
-1. Labeled datasets (or existing weights) for palm, date-palm, tree, and
-   field-boundary-polygon classes — YOLO/COCO/GeoJSON annotation formats are
-   all parsed and validated by `app/datasets/` already; point it at real
-   annotation files via `POST /api/datasets/prepare` to get a geographically
-   separated train/val/test split and a versioned manifest.
-2. A GPU-equipped host (or at least a normal networked machine) to install
-   `requirements.txt` and actually run/benchmark the models.
-3. Confirmation on the "reference" UI: the dashboard here is an **original**
-   layout/branding inspired by the same category of product (map + model
-   checklist + run button + results panel) — it does not reuse any other
-   vendor's name, logo, or visual assets.

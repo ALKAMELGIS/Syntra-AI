@@ -10,6 +10,8 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from app.core.security import confine_path
+
 from app.core.config import settings
 from app.datasets.annotations import (
     AnnotationError,
@@ -40,6 +42,11 @@ class PrepareDatasetRequest(BaseModel):
 
 @router.post("/prepare")
 def prepare_dataset(req: PrepareDatasetRequest):
+    req = req.model_copy(update={
+        field: str(confine_path(value, field=field, must_exist=True))
+        for field in ("annotation_path", "images_dir", "labels_dir", "classes_file")
+        if (value := getattr(req, field))
+    })
     try:
         if req.annotation_format == AnnotationFormat.COCO:
             if not req.images_dir:

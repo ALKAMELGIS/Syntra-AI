@@ -10,7 +10,7 @@ from app.models.base import DetectionModel, ModelStatus
 from app.models.registry import get_metadata
 
 
-def build_model(model_id: str) -> DetectionModel:
+def build_model(model_id: str, version: str | None = None) -> DetectionModel:
     from app.core.config import settings
     from app.models.custom_registry import get_custom_model
 
@@ -19,11 +19,43 @@ def build_model(model_id: str) -> DetectionModel:
         from app.models.custom_detector import CustomYoloDetector
         return CustomYoloDetector(get_metadata(model_id), weights_path=custom_entry.weights_path)
 
+    from app.models.approved import get_approved
+
+    approved = get_approved(model_id)
+    if approved is not None:                      # the Library's approved version of a class
+        from app.models.approved import weights_of
+        from app.models.custom_detector import CustomYoloDetector
+        # a run keeps the version it was started with, even if the owner approves another meanwhile
+        weights = weights_of(approved.group, version) if version and version != approved.version else approved.weights
+        return CustomYoloDetector(get_metadata(model_id), weights_path=weights or approved.weights,
+                                  training_gsd_m=approved.training_gsd_m)
+
     metadata = get_metadata(model_id)
 
-    if model_id in ("car_detection", "ship_detection", "aircraft_detection"):
-        from app.models.generic_detector import GenericYoloDetector
-        return GenericYoloDetector(metadata)
+    from app.models.packs import is_installed, pack_for_model, pack_path
+    pack = pack_for_model(model_id)
+    if pack is not None:
+        if not is_installed(pack):
+            from app.models.segmentation import NotProductionReadyError
+            raise NotProductionReadyError(f"{metadata.name}: model pack '{pack.pack_id}' is not installed.")
+        if pack.runtime == "geodeep_detector":
+            from app.models.geodeep_onnx import GeoDeepDetector
+            return GeoDeepDetector(metadata, str(pack_path(pack)))
+        if pack.runtime == "yolo_seg":
+            from app.models.drone_seg_detector import DroneSegDetector
+            return DroneSegDetector(metadata, str(pack_path(pack)), training_gsd_m=pack.training_gsd_m or 0.04)
+        if pack.runtime == "palm_segformer":
+            from app.models.palm_segformer import PalmSegformerDetector
+            return PalmSegformerDetector(metadata, str(pack_path(pack)), training_gsd_m=pack.training_gsd_m or 0.31)
+        raise KeyError(f"{model_id} is a segmentation pack; it runs through app.engine.segmentation_run.")
+
+    from app.models.aerial_obb_detector import DOTA_CLASS_MAP
+    if model_id in DOTA_CLASS_MAP:
+        from app.models.aerial_obb_detector import AerialObbDetector
+        return AerialObbDetector(metadata)
+
+    if model_id == "vegetation_index":
+        raise KeyError("vegetation_index is a spectral-index analysis run by app.engine.vegetation, not a tile detector.")
 
     if model_id == "field_boundary_segmentation":
         from app.models.segmentation import FieldBoundarySegmenter

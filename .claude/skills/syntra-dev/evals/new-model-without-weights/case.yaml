@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: new-model-without-weights
+expected_outcome: |
+  Solar Panels is added to the registry as NOT_PRODUCTION_READY with notes on what is missing, building it raises NotProductionReadyError, no placeholder detections are produced, the registry tests still pass and the README status row mentions it.

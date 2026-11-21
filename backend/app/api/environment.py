@@ -15,22 +15,22 @@ from __future__ import annotations
 
 import subprocess
 import sys
-import threading
-import uuid
+import time
 from enum import Enum
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from pydantic import BaseModel
 
+from app.core.jobs import get_store
+from app.core.security import environment_actions_allowed
 from app.diagnostics.environment import build_report, resolve_install_targets
 
 router = APIRouter(prefix="/api/environment", tags=["environment"])
 
 REQUIREMENTS_PATH = Path(__file__).resolve().parent.parent.parent / "requirements.txt"
 
-_JOBS: dict[str, dict] = {}
-_LOCK = threading.Lock()
+KIND = "environment"
 _LOG_TAIL_LINES = 400
 
 # Published PyTorch wheel indexes for CPU-only vs CUDA builds — same choice
@@ -80,41 +80,52 @@ def _pip_command(action: ActionKind, build: BuildOption, targets: list[str] | No
 
 
 def _run_job(job_id: str, cmd: list[str]):
-    with _LOCK:
-        _JOBS[job_id]["status"] = "running"
-        _JOBS[job_id]["command"] = " ".join(cmd)
+    jobs = get_store()
+    jobs.update(job_id, status="running", command=" ".join(cmd))
     log_lines: list[str] = []
     try:
         proc = subprocess.Popen(
             cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             text=True, bufsize=1,
         )
+        last_flush = 0.0
         for line in proc.stdout:  # type: ignore[union-attr]
             log_lines.append(line.rstrip("\n"))
-            with _LOCK:
-                _JOBS[job_id]["log_tail"] = log_lines[-_LOG_TAIL_LINES:]
+            # pip can print thousands of lines; persist the tail at most
+            # every 0.5 s instead of one database write per line.
+            now = time.monotonic()
+            if now - last_flush >= 0.5:
+                jobs.update(job_id, log_tail=log_lines[-_LOG_TAIL_LINES:])
+                last_flush = now
         returncode = proc.wait()
-        with _LOCK:
-            _JOBS[job_id].update(
-                status="completed" if returncode == 0 else "error",
-                returncode=returncode,
-                log_tail=log_lines[-_LOG_TAIL_LINES:],
-            )
-    except FileNotFoundError as exc:
-        with _LOCK:
-            _JOBS[job_id].update(status="error", returncode=None, error=str(exc), log_tail=log_lines)
-    except Exception as exc:  # pip itself crashing, permissions, etc.
-        with _LOCK:
-            _JOBS[job_id].update(status="error", returncode=None, error=str(exc), log_tail=log_lines)
+        jobs.update(
+            job_id,
+            status="completed" if returncode == 0 else "error",
+            returncode=returncode,
+            log_tail=log_lines[-_LOG_TAIL_LINES:],
+        )
+    except Exception as exc:  # pip missing, crashing, permissions, etc.
+        jobs.update(job_id, status="error", returncode=None, error=str(exc), log_tail=log_lines[-_LOG_TAIL_LINES:])
 
 
 @router.get("")
-def get_environment():
-    return build_report()
+def get_environment(request: Request):
+    report = build_report()
+    if isinstance(report, dict):
+        report["actions_allowed"] = environment_actions_allowed(request)
+    return report
 
 
 @router.post("/actions")
-def start_action(req: ActionRequest, background_tasks: BackgroundTasks):
+def start_action(req: ActionRequest, background_tasks: BackgroundTasks, request: Request):
+    if not environment_actions_allowed(request):
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Installing packages from the web UI is disabled for remote clients. "
+                "Run it on the server itself, or set SYNTRA_ALLOW_ENV_ACTIONS=1 in backend/.env."
+            ),
+        )
     if not REQUIREMENTS_PATH.exists():
         raise HTTPException(status_code=500, detail=f"requirements.txt not found at {REQUIREMENTS_PATH}")
 
@@ -123,20 +134,17 @@ def start_action(req: ActionRequest, background_tasks: BackgroundTasks):
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
-    job_id = str(uuid.uuid4())
-    with _LOCK:
-        _JOBS[job_id] = {
-            "status": "queued", "action": req.action.value, "build": req.build.value,
-            "targets": req.targets or [], "log_tail": [],
-        }
+    job_id = get_store().create(
+        KIND, action=req.action.value, build=req.build.value,
+        targets=req.targets or [], log_tail=[],
+    )
     background_tasks.add_task(_run_job, job_id, cmd)
     return {"job_id": job_id, "status": "queued", "command": " ".join(cmd)}
 
 
 @router.get("/actions/{job_id}")
 def action_status(job_id: str):
-    with _LOCK:
-        job = _JOBS.get(job_id)
+    job = get_store().get(job_id, KIND)
     if job is None:
         raise HTTPException(status_code=404, detail="Unknown job_id")
     return job

@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: style-new-panel
+expected_outcome: |
+  A card built from the existing CSS tokens: sentence case labels, figures in the mono readout class with tabular numbers, no gradients or new hardcoded colours, works in the light theme, and the frontend build succeeds.

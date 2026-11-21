@@ -64,7 +64,7 @@ def test_build_job_config_applies_overrides(tmp_path):
     )
     assert cfg["epochs"] == 5
     assert cfg["batch"] == 4
-    assert cfg["model"] == "yolov8n.pt"          # default model_size="nano"
+    assert cfg["model"] == "yolo11n.pt"          # default model_size="nano", no dataset -> detect
     assert cfg["data_yaml"].endswith("data.yaml")
 
 
@@ -101,3 +101,23 @@ def test_run_training_honors_cancel_flag(tmp_path):
     # stops within a couple of epochs of the cancel request, not after all 50
     assert len(epoch_events) <= 4
     assert final["type"] == "canceled"
+
+
+def test_base_weights_follow_the_dataset_task(tmp_path):
+    """An OBB or segmentation dataset must start from OBB / seg weights (it used to get yolov8 detect)."""
+    from app.training.trainer import base_model, dataset_task
+
+    y = tmp_path / "data.yaml"
+    y.write_text("path: x\ntrain: images/train\nval: images/val\ntask: obb\nnc: 1\nnames:\n  0: ship\n")
+    assert dataset_task(str(y)) == "obb"
+    cfg = build_job_config(str(y), str(tmp_path / "out"), num_train_images=10, model_size="small")
+    assert cfg["model"] == "yolo11s-obb.pt"
+    assert base_model("medium", "segment") == "yolo11m-seg.pt" and base_model("nano") == "yolo11n.pt"
+    # no task key: read the label rows
+    d = tmp_path / "old"
+    (d / "labels" / "train").mkdir(parents=True)
+    (d / "data.yaml").write_text("names: [ship]\n")
+    (d / "labels" / "train" / "a.txt").write_text("0 0.1 0.1 0.2 0.1 0.2 0.2 0.1 0.2\n")
+    assert dataset_task(str(d / "data.yaml")) == "obb"
+    (d / "labels" / "train" / "a.txt").write_text("0 0.1 0.1 0.2 0.1 0.25 0.2 0.2 0.3 0.1 0.2\n")
+    assert dataset_task(str(d / "data.yaml")) == "segment"
