@@ -1,3 +1,4 @@
+// Every call the interface makes to the engine (/api/...), in one place.
 const BASE = "/api";
 
 // Optional shared API key (matches SYNTRA_API_KEY on the backend). Set

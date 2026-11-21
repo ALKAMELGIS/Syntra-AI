@@ -161,7 +161,7 @@ reimplement them.
 
 ## 4. Interface conventions
 
-The tokens are at the top of `frontend/src/styles.css`, with the design
+The tokens are at the in `frontend/src/styles/tokens.css` (rules in `styles/app.css`), with the design
 direction in a comment. Work inside them:
 
 - **Colour.** Graphite ramp (`--bg`, `--panel`, `--hover-bg`), three text
@@ -182,10 +182,10 @@ direction in a comment. Work inside them:
   entries are in that state; "Unvalidated" is amber; errors and missing
   dependencies are red.
 - **Preferences** (theme, accent, units, basemap, restore) live in
-  `frontend/src/prefs.js`: read with `usePref`/`getPref`, format areas with
+  `frontend/src/lib/prefs.js`: read with `usePref`/`getPref`, format areas with
   `fmtAreaM2`/`fmtAreaKm2`. A new option goes in Settings as a row (label +
   segmented control), never as a toggle scattered in a panel.
-- **Icons** come from `components/Icons.jsx` (inline SVG, one stroke). No
+- **Icons** come from `components/ui/Icons.jsx` (inline SVG, one stroke). No
   emoji in the UI.
 - **Map panels.** Map tools live in the one toolbar on the right. A tool
   with content (Edit, Legend, Analysis, Train, Model performance) opens a
@@ -250,12 +250,24 @@ direction in a comment. Work inside them:
   catalog by hand. Its status is Ready only when that version has a test F1,
   and each predict job stores `model_version` so a result names what made it.
 
-## 5. Shipping a change
+## 5. Where code goes
+
+The layers and folders are in `docs/ARCHITECTURE.md`; every file is listed in
+`docs/TREE.md`. A new backend module goes in the package that owns its job
+(`api` for routes only, `engine` for the work, `models` for detectors); a new
+interface component goes in its feature folder under `frontend/src/components/`
+(`map`, `detection`, `labels`, `training`, `remote-sensing`, `settings`, `shell`,
+`images`, `auth`, `ui`). Start every new file with one line saying what it does,
+then run `python scripts/make_tree.py`. Dependencies go in
+`backend/requirements-core.txt` (engine) or `requirements-ml.txt` (models), as
+floors; model weights never go in git.
+
+## 6. Shipping a change
 
 1. Branch from `main`.
 2. Make the change with its test, update the README status row and
    `.env.example` for any new setting.
-3. Run backend tests and the frontend build.
+3. Run backend tests, `npx eslint src` (no warnings) and the frontend build.
 4. Commit with a message that says what changed and how it was verified.
 5. Open a pull request whose description lists what is verified and what
    still needs checking on the user's machine (GPU, real GeoTIFFs, Windows).

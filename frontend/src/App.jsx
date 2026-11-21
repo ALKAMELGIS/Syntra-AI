@@ -1,15 +1,16 @@
+// The app: one project (image, models, AOI, results) shared by the sidebar, the map and its panels.
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import TopBar from "./components/TopBar.jsx";
-import ErrorBoundary from "./components/ErrorBoundary.jsx";
-import Sidebar from "./components/Sidebar.jsx";
-import MapView from "./components/MapView.jsx";
-import AnalysisPanel from "./components/AnalysisPanel.jsx";
-import TrainPanel from "./components/TrainPanel.jsx";
-import PerformancePanel from "./components/PerformancePanel.jsx";
-import LibraryPanel from "./components/LibraryPanel.jsx";
-import { IconMap, IconSliders } from "./components/Icons.jsx";
+import TopBar from "./components/shell/TopBar.jsx";
+import ErrorBoundary from "./components/ui/ErrorBoundary.jsx";
+import Sidebar from "./components/shell/Sidebar.jsx";
+import MapView from "./components/map/MapView.jsx";
+import AnalysisPanel from "./components/detection/AnalysisPanel.jsx";
+import TrainPanel from "./components/training/TrainPanel.jsx";
+import PerformancePanel from "./components/training/PerformancePanel.jsx";
+import LibraryPanel from "./components/training/LibraryPanel.jsx";
+import { IconMap, IconSliders } from "./components/ui/Icons.jsx";
 import { api } from "./api/client.js";
-import { getPref, detectionOptions } from "./prefs.js";
+import { getPref, detectionOptions } from "./lib/prefs.js";
 
 const PALETTE = ["#5b8cff", "#b48ead", "#f5a623", "#ff5d6c", "#c678dd", "#56c7d6", "#e8a87c", "#a8e6cf"];
 
@@ -272,7 +273,7 @@ export default function App({ user = null, onSignOut = null }) {
     if (image?.image_id && !image.preview_bounds_wgs84 && image.bounds_wgs84) {
       api.getImage(image.image_id).then((fresh) => fresh && setImage((cur) => (cur?.image_id === fresh.image_id ? { ...cur, ...fresh } : cur))).catch(() => {});
     }
-  }, [image?.image_id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [image?.image_id]);  
 
   // training labels for the current image
   useEffect(() => {
@@ -282,7 +283,7 @@ export default function App({ user = null, onSignOut = null }) {
   const trainClasses = [...new Set([...annotations.map((a) => a.class_name), ...extraClasses])].filter((c) => !c.startsWith("__"));
   useEffect(() => {
     if (!activeClass && trainClasses.length) setActiveClass(trainClasses[0]);
-  }, [trainClasses.join("|")]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [trainClasses.join("|")]);  
 
   async function saveLabel(latlngs, meta = {}) {
     if (!image?.image_id || !activeClass) return;

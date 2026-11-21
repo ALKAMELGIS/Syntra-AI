@@ -26,3 +26,8 @@ weights/*.onnx
 # Everything the engine writes at run time: images (often licensed), labels,
 # datasets, models, keys, jobs, results. Never in git.
 backend/data/
+
+# Model weights: downloaded on demand (Install in the model list), never in git
+*.pt
+*.onnx
+*.safetensors
