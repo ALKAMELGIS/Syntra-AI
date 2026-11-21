@@ -60,6 +60,10 @@ The Space `Alkamelgis/SYNTRA-AI` runs the engine and the built interface in one 
 secret `HF_TOKEN` (a Hugging Face token with write access) exists; Actions > Deploy > Run workflow
 deploys by hand.
 
+From this computer instead: `deploy-space.bat` builds the interface and uploads the Space with
+`scripts/deploy_space.py`. It uses the Hugging Face token saved in Syntra (Settings > Services),
+or `HF_TOKEN`, or `hf auth login`; the token needs write access.
+
 Space settings: variable `SYNTRA_PUBLIC_URL=https://alkamelgis-syntra-ai.hf.space` (set), secret
 `SYNTRA_OWNER_EMAIL` (the owner's email: only it may create the first account). Open the app at that
 address, not inside the Hugging Face page (the sign-in cookie needs it). The Space's disk is reset on
