@@ -21,6 +21,17 @@ os.environ.setdefault("SYNTRA_DATA_DIR", "/data" if Path("/data").is_dir() and o
 os.environ.setdefault("SYNTRA_STATIC_DIR", str(HERE / "static"))
 os.environ.setdefault("SYNTRA_ALLOW_SIGNUP", "1")
 
+try:                                   # ZeroGPU hardware: import spaces before torch, and declare a GPU function
+    import spaces
+
+    @spaces.GPU(duration=15)
+    def gpu_check() -> bool:
+        """ZeroGPU stops a Space that declares no GPU function; detection itself runs on CPU here."""
+        import torch
+        return bool(torch.cuda.is_available())
+except ImportError:                    # CPU hardware or a local run
+    spaces = None
+
 from app.main import app  # noqa: E402
 
 try:                                   # a small Gradio page at /gradio: the SDK this Space runs on
