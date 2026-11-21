@@ -111,6 +111,13 @@ export default function MapDrawTools({
     setMenuOpen(false);
   }
 
+  // another panel asks for a drawing tool (Remote sensing: "Rectangle", "Polygon")
+  useEffect(() => {
+    const on = (e) => { if (TOOLS.some((t) => t.id === e.detail)) { drawState.current.points = []; setMode(e.detail); setMenuOpen(false); } };
+    window.addEventListener("syntra:draw", on);
+    return () => window.removeEventListener("syntra:draw", on);
+  }, []);
+
   // Clicks and scrolls on the menu must not reach the map underneath, or a
   // click on a menu item would also drop a point for the active tool.
   useEffect(() => {

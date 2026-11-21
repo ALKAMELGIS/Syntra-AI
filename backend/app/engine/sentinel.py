@@ -139,8 +139,8 @@ def grid(b, res_m: float = GROUND_RES_M, max_side: int = MAX_SIDE_PX) -> tuple[i
     w = max(1, round((b[2] - b[0]) * scale / res_m))
     h = max(1, round((b[3] - b[1]) * scale / res_m))
     if max(w, h) > max_side:
-        raise ValueError(f"The area is {w} × {h} Sentinel-2 pixels; draw one under {max_side} px a side "
-                         f"(about {max_side * res_m / 1000:.0f} km)")
+        raise ValueError(f"Zoom in: the area is about {max(w, h) * res_m / 1000:,.0f} km across, "
+                         f"the limit is {max_side * res_m / 1000:.0f} km")
     return max(w, 2), max(h, 2)
 
 

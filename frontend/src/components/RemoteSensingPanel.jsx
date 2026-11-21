@@ -51,7 +51,13 @@ function Timeline({ data, index }) {
   );
 }
 
-export default function RemoteSensingPanel({ open, onClose, aoi, layers, overlay, onOverlay, onLayerValues, onZoom }) {
+// Names shown before the engine answers (the ramps come with its answer)
+const INDEX_NAMES = [["ndvi", "NDVI", "Vegetation health"], ["ndre", "NDRE", "Early crop stress"], ["savi", "SAVI", "Sparse vegetation on soil"],
+  ["msavi", "MSAVI", "Sparse vegetation, no soil factor"], ["evi", "EVI", "Dense vegetation"], ["ndmi", "NDMI", "Vegetation moisture"],
+  ["ndwi", "NDWI", "Open water"], ["ndsi", "NDSI", "Snow and ice"], ["ndbi", "NDBI", "Built-up areas"], ["bsi", "BSI", "Bare soil"],
+  ["nbr", "NBR", "Burnt areas"]].map(([id, name, use]) => ({ id, name, use }));
+
+export default function RemoteSensingPanel({ open, onClose, aoi, layers, overlay, onOverlay, onLayerValues, onZoom, onUseView }) {
   const [st, setSt] = useState(null);
   const [index, setIndex] = useState("ndvi");
   const [cloud, setCloud] = useState(20);
@@ -67,7 +73,13 @@ export default function RemoteSensingPanel({ open, onClose, aoi, layers, overlay
   const [added, setAdded] = useState(null);
   const ticket = useRef(0);
 
-  useEffect(() => { if (open && !st) api.rsStatus().then(setSt).catch((e) => setErr(e.message)); }, [open, st]);
+  const [down, setDown] = useState(false);               // the running engine has no Remote sensing yet
+  const [nonce, setNonce] = useState(0);
+  useEffect(() => {
+    if (!open || st) return;
+    api.rsStatus().then((r) => { setSt(r); setDown(false); })
+      .catch((e) => (/not found/i.test(e.message) || /404/.test(e.message) ? setDown(true) : setErr(e.message)));
+  }, [open, st, nonce]);
   const idx = useMemo(() => st?.indices?.find((i) => i.id === index), [st, index]);
   const span = scene === "composite" ? { start, end } : { date: scene };
   const body = { index, max_cloud: cloud, mask_clouds: mask, ...span };
@@ -93,7 +105,7 @@ export default function RemoteSensingPanel({ open, onClose, aoi, layers, overlay
       .then((r) => { if (my === ticket.current) { onOverlay({ ...r, opacity: overlay?.opacity ?? 0.85 }); setBusy(null); } })
       .catch((e) => { if (my === ticket.current) { setErr(e.message); setBusy(null); } }), 600);
     return () => clearTimeout(t);
-  }, [open, st?.configured, aoiKey, index, cloud, start, end, scene, mask]);   // eslint-disable-line react-hooks/exhaustive-deps
+  }, [open, st?.configured, aoiKey, index, cloud, start, end, scene, mask, nonce]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { setTl(null); }, [aoiKey, index, cloud, start, end, mask]);
   useEffect(() => { if (!target && targets.length) setTarget(targets[0].key); }, [targets.length]); // eslint-disable-line
@@ -139,10 +151,16 @@ export default function RemoteSensingPanel({ open, onClose, aoi, layers, overlay
         <button type="button" className="panel-close-btn" onClick={onClose} aria-label="Close"><IconClose /></button>
       </header>
       <div className="rs-body">
+        {down && (
+          <div className="rs-note rs-note-act">
+            <span>Restart the engine to load this tool</span>
+            <button type="button" className="quiet-button" onClick={() => setNonce((n) => n + 1)}>Retry</button>
+          </div>
+        )}
         {st && !st.configured && <p className="rs-note">Add <span className="mono">SENTINELHUB_INSTANCE_ID</span> to .env, then restart</p>}
         <label className="rs-field"><span>Index</span>
           <select className="train-select" value={index} onChange={(e) => setIndex(e.target.value)}>
-            {(st?.indices || []).map((i) => <option key={i.id} value={i.id}>{i.name} · {i.use}</option>)}
+            {(st?.indices || INDEX_NAMES).map((i) => <option key={i.id} value={i.id}>{i.name} · {i.use}</option>)}
           </select>
         </label>
         <label className="rs-field">
@@ -168,7 +186,16 @@ export default function RemoteSensingPanel({ open, onClose, aoi, layers, overlay
           </div>
         </div>
 
-        {!aoi && <p className="rs-note">Draw an AOI</p>}
+        {!aoi && (
+          <div className="rs-aoi">
+            <span className="rs-aoi-label">Area</span>
+            <div className="rs-aoi-btns">
+              <button type="button" className="quiet-button" onClick={() => window.dispatchEvent(new CustomEvent("syntra:draw", { detail: "rect" }))}>Rectangle</button>
+              <button type="button" className="quiet-button" onClick={() => window.dispatchEvent(new CustomEvent("syntra:draw", { detail: "pencil" }))}>Polygon</button>
+              <button type="button" className="quiet-button" onClick={onUseView} disabled={!onUseView}>Map view</button>
+            </div>
+          </div>
+        )}
         {aoi && idx && (
           <div className="rs-legend">
             <div className="rs-legend-head"><b>{idx.name}</b><span className="mono">{overlay?.time || ""}</span>
@@ -195,7 +222,12 @@ export default function RemoteSensingPanel({ open, onClose, aoi, layers, overlay
 
         {aoi && st?.configured && (
           <>
-            <button type="button" className="quiet-button" onClick={timeline} disabled={!!busy}>Timeline</button>
+            <div className="rs-actions">
+              <button type="button" className="rs-primary" onClick={() => setNonce((n) => n + 1)} disabled={!!busy}>
+                {busy === "Loading" ? "Loading…" : "Show index"}
+              </button>
+              <button type="button" className="quiet-button" onClick={timeline} disabled={!!busy}>{busy === "Timeline" ? "…" : "Timeline"}</button>
+            </div>
             {tl && idx && <Timeline data={tl} index={idx} />}
             <div className="rs-attr">
               <select className="train-select" value={target} onChange={(e) => setTarget(e.target.value)} disabled={!targets.length} aria-label="Result layer">

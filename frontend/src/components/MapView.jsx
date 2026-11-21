@@ -705,6 +705,12 @@ export default function MapView({
       <RemoteSensingPanel
         open={rsOpen} onClose={() => setRsOpen(false)} aoi={aoi} layers={vlayers}
         overlay={rsOverlay} onOverlay={setRsOverlay} onLayerValues={reloadLayer}
+        onUseView={() => {
+          if (!map) return;
+          const b = map.getBounds().pad(-0.08);
+          const [w, s, e, n] = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()];
+          onAoiChange?.({ type: "Feature", properties: {}, geometry: { type: "Polygon", coordinates: [[[w, s], [e, s], [e, n], [w, n], [w, s]]] } });
+        }}
         onZoom={() => { const b = rsOverlay?.bounds; if (map && b) map.flyToBounds([[b[0], b[1]], [b[2], b[3]]], { padding: [40, 40], duration: 0.4 }); }}
       />
       <SettingsPanel
