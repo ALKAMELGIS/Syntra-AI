@@ -57,6 +57,9 @@ def main() -> None:
     from huggingface_hub import HfApi
 
     tok = token()
+    if not tok and sys.stdin.isatty():
+        import getpass
+        tok = getpass.getpass("Hugging Face token (Write, hidden as you paste): ").strip() or None
     if not tok:
         sys.exit("No Hugging Face token. Run: hf auth login   (or save one in Syntra: Settings > Services)")
     with tempfile.TemporaryDirectory() as tmp:
