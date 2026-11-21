@@ -6,6 +6,7 @@ import { useOptimizeJob } from "./OptimizeNote.jsx";
 import React, { useEffect, useRef, useState } from "react";
 import { api, formatDuration } from "../api/client.js";
 import { IconUpload, IconFolder, IconPlay, IconClose, IconDashboard } from "./Icons.jsx";
+import { fmtAreaKm2 } from "../prefs.js";
 
 function formatBytes(bytes) {
   const mb = bytes / (1024 * 1024);
@@ -302,7 +303,7 @@ export default function Sidebar({ models, selectedModels, onToggleModel, onModel
       )}
       {mode !== "batch" && estimate && !running && (
         <p className="run-estimate mono" title={estimate.seconds == null ? "The time shows after this model has run once on this computer" : `Measured on this computer (${estimate.device})`}>
-          {[estimate.area_km2 != null ? `${estimate.area_km2 < 10 ? estimate.area_km2.toFixed(2) : Math.round(estimate.area_km2)} km²` : null,
+          {[estimate.area_km2 != null ? fmtAreaKm2(estimate.area_km2, estimate.area_km2 < 10 ? 2 : 0) : null,
             estimate.seconds != null ? `about ${formatDuration(estimate.seconds)}` : null].filter(Boolean).join(" · ")}
         </p>
       )}

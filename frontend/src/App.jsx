@@ -9,6 +9,7 @@ import PerformancePanel from "./components/PerformancePanel.jsx";
 import LibraryPanel from "./components/LibraryPanel.jsx";
 import { IconMap, IconSliders } from "./components/Icons.jsx";
 import { api } from "./api/client.js";
+import { getPref } from "./prefs.js";
 
 const PALETTE = ["#5b8cff", "#b48ead", "#f5a623", "#ff5d6c", "#c678dd", "#56c7d6", "#e8a87c", "#a8e6cf"];
 
@@ -96,7 +97,7 @@ export default function App({ user = null, onSignOut = null }) {
   const restoring = useRef(true);
   useEffect(() => {
     let saved = null;
-    try { saved = JSON.parse(localStorage.getItem(PROJECT_KEY) || "null"); } catch { saved = null; }
+    try { saved = getPref("restore") === "on" ? JSON.parse(localStorage.getItem(PROJECT_KEY) || "null") : null; } catch { saved = null; }
     if (saved?.selectedModels?.length) setSelectedModels(saved.selectedModels);
     if (saved?.aoi) setAoi(saved.aoi);
     if (typeof saved?.minScore === "number") setMinScore(saved.minScore);

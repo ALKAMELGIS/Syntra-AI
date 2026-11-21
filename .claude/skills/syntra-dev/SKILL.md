@@ -177,6 +177,10 @@ direction in a comment. Work inside them:
 - **Status.** "Not ready" is quiet (outlined, muted) because most catalog
   entries are in that state; "Unvalidated" is amber; errors and missing
   dependencies are red.
+- **Preferences** (theme, accent, units, basemap, restore) live in
+  `frontend/src/prefs.js`: read with `usePref`/`getPref`, format areas with
+  `fmtAreaM2`/`fmtAreaKm2`. A new option goes in Settings as a row (label +
+  segmented control), never as a toggle scattered in a panel.
 - **Icons** come from `components/Icons.jsx` (inline SVG, one stroke). No
   emoji in the UI.
 - **Map panels.** Map tools live in the one toolbar on the right. A tool

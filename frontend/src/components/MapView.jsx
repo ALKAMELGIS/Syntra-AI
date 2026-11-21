@@ -6,6 +6,7 @@ import MapDrawTools from "./MapDrawTools.jsx";
 import AnnotationLayer from "./AnnotationTool.jsx";
 import ImageLibrary from "./ImageLibrary.jsx";
 import SettingsPanel from "./SettingsPanel.jsx";
+import { usePref, getPref } from "../prefs.js";
 import { IconExpand, IconBasemap, IconLayers, IconGallery, IconGear, IconAnalysis, IconTrain, IconPerformance, IconDatabase, IconZoomTo, IconTable } from "./Icons.jsx";
 import LayersPanel from "./LayersPanel.jsx";
 import AttributeTable from "./AttributeTable.jsx";
@@ -224,7 +225,7 @@ function AutoFitSourceImage({ sourceImage }) {
     // after a refresh, go back to where the user was on this image
     let saved = null;
     try { saved = JSON.parse(localStorage.getItem(VIEW_KEY) || "null"); } catch { saved = null; }
-    if (saved?.image_id === sourceImage.image_id && Array.isArray(saved.center)) {
+    if (getPref("restore") === "on" && saved?.image_id === sourceImage.image_id && Array.isArray(saved.center)) {
       map.setView(saved.center, saved.zoom, { animate: false });
     } else {
       map.fitBounds([[b.south, b.west], [b.north, b.east]], { padding: [40, 40] });
@@ -328,8 +329,7 @@ export default function MapView({
   onSelectLibraryImage, currentImageId, sourceImage,
   analysisOpen, onToggleAnalysis, analysisCount, analysisRunning, analysisPanel, focusFeature = null,
 }) {
-  const [basemap, setBasemapState] = useState(() => { try { return localStorage.getItem("syntra_basemap") || "satellite"; } catch { return "satellite"; } });
-  const setBasemap = (k) => { setBasemapState(k); try { localStorage.setItem("syntra_basemap", k); } catch { /* private window */ } };
+  const [basemap, setBasemap] = usePref("basemap");
   const [legendOpen, setLegendOpen] = useState(false);
   const [imageLayer, setImageLayerRaw] = useState(() => {
     try { return { visible: true, opacity: 1, ...JSON.parse(localStorage.getItem(LAYER_KEY) || "{}") }; } catch { return { visible: true, opacity: 1 }; }
@@ -535,7 +535,7 @@ export default function MapView({
   useEffect(() => {
     if (analysisOpen || trainOpen || perfOpen || legendOpen) setSettingsOpen(false);
   }, [analysisOpen, trainOpen, perfOpen, legendOpen]);
-  const [iconStyle, setIconStyle] = useState(() => localStorage.getItem("syntra_icon_style") || "mono");
+  const [iconStyle] = usePref("icons");
   const bm = BASEMAPS[basemap] || null;
   // Basemap health: tiles that never load (offline, firewall) leave the map
   // black with no explanation; say so in one line.
@@ -545,11 +545,6 @@ export default function MapView({
   // The preview is drawn in Web Mercator; only its own corners place it exactly.
   // (Without them the overlay is not drawn: the old lat/lon box misplaced it.)
   const overlayBounds = sourceImage?.preview_bounds_wgs84 || null;
-
-  function changeIconStyle(style) {
-    setIconStyle(style);
-    localStorage.setItem("syntra_icon_style", style);
-  }
 
   return (
     <div className={`map-area icon-style-${iconStyle} ${libraryOpen ? "library-open" : ""} ${tableOpen && vlayers.length ? "table-open" : ""}`}
@@ -676,8 +671,6 @@ export default function MapView({
       <SettingsPanel
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
-        iconStyle={iconStyle}
-        onChangeIconStyle={changeIconStyle}
       />
       <LayersPanel
         open={legendOpen} onClose={() => setLegendOpen(false)}

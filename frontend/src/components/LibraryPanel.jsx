@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { api } from "../api/client.js";
 import { classColor } from "./AnnotationTool.jsx";
 import { IconClose } from "./Icons.jsx";
+import { fmtAreaKm2 } from "../prefs.js";
 
 // The sample library, beside the map toolbar. It shows the data folder as it
 // is, by class: samples (classes/<class>/labels), areas, dataset versions
@@ -221,8 +222,8 @@ export default function LibraryPanel({ open, onClose, device = "cpu", onModelsCh
               <div className="lib-sec">
                 <div className="lib-sec-head"><span>Areas</span><span className="train-dim">where every object is labelled</span></div>
                 <div className="lib-cards">
-                  <div><b className="mono">{c.areas.complete.count}</b>complete · {c.areas.complete.km2} km²</div>
-                  <div><b className="mono">{c.areas.accuracy.count}</b>accuracy · {c.areas.accuracy.km2} km²</div>
+                  <div><b className="mono">{c.areas.complete.count}</b>complete · {fmtAreaKm2(c.areas.complete.km2, 3)}</div>
+                  <div><b className="mono">{c.areas.accuracy.count}</b>accuracy · {fmtAreaKm2(c.areas.accuracy.km2, 3)}</div>
                   <div><b className="mono">{c.new_since_last ?? c.samples}</b>{c.datasets.length ? `new since ${c.datasets.at(-1).version}` : "not built yet"}</div>
                 </div>
                 {!c.areas.accuracy.count && <p className="train-dim">Draw an accuracy area to get a test score</p>}

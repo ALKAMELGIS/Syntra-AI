@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/client.js";
 import { IconCheck, IconChevronLeft, IconClose } from "./Icons.jsx";
+import { fmtAreaM2 } from "../prefs.js";
 
 // Review one run's results: accept or reject each object, least sure first,
 // then add the review to training (accepted -> labels, rejected -> "not this").
@@ -11,7 +12,7 @@ const LIMIT = 300;
 
 function size(p) {
   if (p.length_m != null && p.width_m != null) return `${Math.round(p.length_m)} × ${Math.round(p.width_m)} m`;
-  if (p.area_m2 != null) return `${Math.round(p.area_m2)} m²`;
+  if (p.area_m2 != null) return fmtAreaM2(p.area_m2);
   return "";
 }
 

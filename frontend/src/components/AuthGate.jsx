@@ -141,10 +141,6 @@ export default function AuthGate({ children }) {
   const [status, setStatus] = useState(null);       // /api/auth/status
   const [up, setUp] = useState(null);
 
-  useEffect(() => {
-    const theme = localStorage.getItem("syntra_theme") || "dark";
-    document.documentElement.classList.toggle("theme-light", theme === "light");
-  }, []);
 
   const load = useCallback(() => {
     setUp(null);

@@ -5,6 +5,10 @@ import "./styles.css";
 import App from "./App.jsx";
 import AuthGate from "./components/AuthGate.jsx";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
+import { applyAppearance, watchSystemTheme } from "./prefs.js";
+
+applyAppearance();
+watchSystemTheme();
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>

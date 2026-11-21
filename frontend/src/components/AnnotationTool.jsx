@@ -60,7 +60,7 @@ function ringArea(map, latlngs) {
   return Math.abs(a) / 2;
 }
 
-export const fmtArea = (m2) => (m2 >= 1e6 ? `${(m2 / 1e6).toFixed(2)} km²` : `${Math.round(m2).toLocaleString()} m²`);
+export { fmtAreaM2 as fmtArea } from "../prefs.js";
 
 // Vertex, midpoint and rotate handles for editing a saved label
 const VX = L.divIcon({ className: "edit-vx", iconSize: [10, 10] });

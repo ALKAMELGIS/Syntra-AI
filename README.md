@@ -176,7 +176,7 @@ so a 20 000 px orthomosaic is as sharp on screen as on disk. Tests: a marker in 
 and south-up rasters lands within 0.6 m in the preview and within 0.5 m in a zoom-20 tile.
 
 The layout no longer scrolls the page (at 1280×720 it was 964 px tall and scrolled 244 px, hiding
-the top bar), Settings is a map panel instead of a cut-off modal, the Edit menu closes when another
+the top bar), Settings fits the window at every size (see Settings below), the Edit menu closes when another
 panel opens, and panels stay clear of the image library. Checked with an overlap audit of every
 panel state at four screen sizes: no overlaps. When the satellite basemap can't load, a one-line
 notice says so instead of a black map.
@@ -210,6 +210,22 @@ Two bugs found and fixed on the way (both changed results everywhere, not only i
 The Analysis panel has a *Min score* slider that filters results on the map and in the counts
 without rerunning. The model list puts models suited to the image's resolution first; the others
 are muted with the reason in their tooltip.
+
+## Settings
+
+One window from the map toolbar (gear), five sections. Every choice applies at once and is kept
+in this browser (`frontend/src/prefs.js`); keys and tokens go to the engine and are never shown again.
+
+| Section | Options |
+|---|---|
+| General | Reopen last project (on/off), area unit (km² · m² or ha), engine status, data folder, version |
+| Theme | Mode (dark, light, system), accent (5, each with a dark and a light shade), toolbar icons, motion |
+| Map | Basemap gallery, Google Map Tiles key |
+| Services | Hugging Face, RunPod |
+| System | Python environment check |
+
+Verified: `npx vite build`, and screenshots of General, Theme (dark) and Theme (light, teal) at
+1440×900 with the engine running. Not run on the user's Windows machine yet.
 
 ## Model performance
 
@@ -485,7 +501,7 @@ for when it is exposed to a network (all in `backend/.env.example`):
   showed F1 80 %, precision 66.7 %, recall 100 %. **Not run with the real
   SAM weights or a trained model**: the 95-98 % target needs a trained
   class model and labelled accuracy areas, and this page is how to check it.
-- **Train on a RunPod GPU (plan stage 3).** Settings > GPU training: paste
+- **Train on a RunPod GPU (plan stage 3).** Settings > Services > RunPod: paste
   a RunPod API key (checked, kept in `secrets.json`). Train > Where: RunPod
   GPU (RTX 4090 / 5090, L40S, A40; Community or Secure; a stop-after limit in
   hours). Needs the samples saved to Hugging Face first: the pod reads them
@@ -515,7 +531,7 @@ for when it is exposed to a network (all in `backend/.env.example`):
   inside the area only, and rejected objects are written as background tiles
   on purpose. Live: 20 training tiles + 1 check tile from the same review
   (`test_review_reaches_the_dataset`, fails on the old builder).
-- **Samples saved to Hugging Face (plan stage 2).** Settings > Training
+- **Samples saved to Hugging Face (plan stage 2).** Settings > Services > Hugging Face
   samples: paste a Write token once; the engine checks it, keeps it in
   `SYNTRA_DATA_DIR/secrets.json` and never sends it back. After Train >
   Build dataset, Save to Hugging Face uploads the YOLO export as one folder

@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { fmtAreaKm2 } from "../prefs.js";
 import {
   IconPlus, IconArrowDown, IconArrowUp, IconClose, IconDownload, IconEye, IconEyeOff, IconInfo, IconMore,
   IconTable, IconTrash, IconZoomTo, IconEdit, IconChevronLeft, IconCopy, IconClickAI, IconCheck, IconPolygon,
@@ -211,7 +212,7 @@ function RasterProps({ image, imageLayer, onImageLayer, onBack, onClose }) {
           {gsd && (<><dt>Resolution</dt><dd className="mono">{gsd < 1 ? `${Math.round(gsd * 100)} cm` : `${+gsd.toFixed(2)} m`}</dd></>)}
           {nBands > 0 && (<><dt>Bands</dt><dd className="mono">{nBands}{image.dtype ? ` · ${image.dtype}` : ""}</dd></>)}
           {image.crs && (<><dt>CRS</dt><dd className="mono">{image.crs}</dd></>)}
-          {image.area_km2 && (<><dt>Area</dt><dd className="mono">{Math.round(image.area_km2).toLocaleString("en-US")} km²</dd></>)}
+          {image.area_km2 && (<><dt>Area</dt><dd className="mono">{fmtAreaKm2(image.area_km2, 0)}</dd></>)}
           {b && (<><dt>Extent</dt><dd className="mono">{b.west.toFixed(4)} – {b.east.toFixed(4)} E<br />{b.south.toFixed(4)} – {b.north.toFixed(4)} N</dd></>)}
         </dl>
       </div>
@@ -298,7 +299,7 @@ function AddLayer({ onFile, onService, onDone }) {
   );
 }
 
-function BasemapGallery({ basemap, onBasemap }) {
+export function BasemapGallery({ basemap, onBasemap }) {
   const [google, setGoogle] = useState(null);           // {configured}
   const [keyOpen, setKeyOpen] = useState(false);
   const [key, setKey] = useState("");

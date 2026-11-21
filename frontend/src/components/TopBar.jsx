@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { api } from "../api/client.js";
 import { IconFolder, IconClose, IconUpload, IconSun, IconMoon, IconSignOut } from "./Icons.jsx";
+import { usePref, resolvedTheme } from "../prefs.js";
 
 function useOutsideClose(ref, close) {
   useEffect(() => {
@@ -205,13 +206,9 @@ function AccountMenu({ user, usage, onSignOut }) {
 }
 
 export default function TopBar({ devices, enabledGpus, onToggleGpu, hasImage, hasJob, onExport, user = null, onSignOut = null }) {
-  const [theme, setTheme] = useState(() => localStorage.getItem("syntra_theme") || "dark");
+  const [themePref, setTheme] = usePref("theme");
+  const theme = themePref === "system" ? resolvedTheme() : themePref;
   const [usage, setUsage] = useState(null);
-
-  useEffect(() => {
-    document.documentElement.classList.toggle("theme-light", theme === "light");
-    localStorage.setItem("syntra_theme", theme);
-  }, [theme]);
 
   useEffect(() => {
     api.usageSummary().then(setUsage).catch(() => setUsage(null));
@@ -231,7 +228,7 @@ export default function TopBar({ devices, enabledGpus, onToggleGpu, hasImage, ha
       <div className="topbar-right">
         <button
           className="theme-toggle-btn"
-          onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
+          onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
           title={theme === "dark" ? "Light theme" : "Dark theme"}
           aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
         >

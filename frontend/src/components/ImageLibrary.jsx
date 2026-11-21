@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { api } from "../api/client.js";
 import { IconClose, IconTrash } from "./Icons.jsx";
+import { fmtAreaKm2 } from "../prefs.js";
 
 // Every GeoTIFF this engine has on disk (GET /api/images), as a gallery: the
 // image's own preview, a short name read from the file name (sensor and
@@ -127,7 +128,7 @@ export default function ImageLibrary({ open, onClose, onSelectImage, currentImag
         {cards.map((e) => {
           const onMap = e.copies.some((c) => c.image_id && c.image_id === currentImageId);
           const empty = noData(e);
-          const meta = [e.d.taken || day(e.uploaded_at), fmtGsd(e.gsd_x_m), e.area_km2 ? `${Math.round(e.area_km2)} km²` : null].filter(Boolean).join(" · ");
+          const meta = [e.d.taken || day(e.uploaded_at), fmtGsd(e.gsd_x_m), e.area_km2 ? fmtAreaKm2(e.area_km2, 0) : null].filter(Boolean).join(" · ");
           return (
             <div key={e.path} className="gal-wrap">
             <button type="button" className={`gal-card ${onMap ? "on" : ""} ${!e.image_id || empty ? "dim" : ""}`}
