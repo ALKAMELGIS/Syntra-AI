@@ -1,6 +1,22 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/client.js";
-import { IconClose, IconDownload, IconZoomTo } from "./Icons.jsx";
+import { IconClose, IconDownload, IconZoomTo, IconRectangle, IconPolygon, IconExpand } from "./Icons.jsx";
+import { fmtAreaM2 } from "../prefs.js";
+
+// area of the AOI's outer rings in m² (spherical, good to a fraction of a percent at field scale)
+function ringArea(g) {
+  const geom = g?.geometry || g;
+  const polys = geom?.type === "Polygon" ? [geom.coordinates] : geom?.type === "MultiPolygon" ? geom.coordinates : [];
+  const R = 6378137, rad = Math.PI / 180;
+  let a = 0;
+  for (const p of polys) {
+    const r = p[0] || [];
+    let s = 0;
+    for (let i = 0; i < r.length - 1; i++) s += (r[i + 1][0] - r[i][0]) * rad * (2 + Math.sin(r[i][1] * rad) + Math.sin(r[i + 1][1] * rad));
+    a += Math.abs((s * R * R) / 2);
+  }
+  return a;
+}
 
 // Remote sensing: a Sentinel-2 index over the AOI, live. Every change of
 // index, scene or cloud limit redraws the layer (debounced, answers cached
@@ -57,7 +73,7 @@ const INDEX_NAMES = [["ndvi", "NDVI", "Vegetation health"], ["ndre", "NDRE", "Ea
   ["ndwi", "NDWI", "Open water"], ["ndsi", "NDSI", "Snow and ice"], ["ndbi", "NDBI", "Built-up areas"], ["bsi", "BSI", "Bare soil"],
   ["nbr", "NBR", "Burnt areas"]].map(([id, name, use]) => ({ id, name, use }));
 
-export default function RemoteSensingPanel({ open, onClose, aoi, layers, overlay, onOverlay, onLayerValues, onZoom, onUseView }) {
+export default function RemoteSensingPanel({ open, onClose, aoi, layers, overlay, onOverlay, onLayerValues, onZoom, onUseView, onShowAoi }) {
   const [st, setSt] = useState(null);
   const [index, setIndex] = useState("ndvi");
   const [cloud, setCloud] = useState(20);
@@ -153,7 +169,7 @@ export default function RemoteSensingPanel({ open, onClose, aoi, layers, overlay
       <div className="rs-body">
         {down && (
           <div className="rs-note rs-note-act">
-            <span>Restart the engine to load this tool</span>
+            <span>Engine out of date: close the “Syntra engine” window, run start-local.bat</span>
             <button type="button" className="quiet-button" onClick={() => setNonce((n) => n + 1)}>Retry</button>
           </div>
         )}
@@ -186,16 +202,18 @@ export default function RemoteSensingPanel({ open, onClose, aoi, layers, overlay
           </div>
         </div>
 
-        {!aoi && (
-          <div className="rs-aoi">
-            <span className="rs-aoi-label">Area</span>
-            <div className="rs-aoi-btns">
-              <button type="button" className="quiet-button" onClick={() => window.dispatchEvent(new CustomEvent("syntra:draw", { detail: "rect" }))}>Rectangle</button>
-              <button type="button" className="quiet-button" onClick={() => window.dispatchEvent(new CustomEvent("syntra:draw", { detail: "pencil" }))}>Polygon</button>
-              <button type="button" className="quiet-button" onClick={onUseView} disabled={!onUseView}>Map view</button>
-            </div>
+        <div className="rs-aoi">
+          <span className="rs-aoi-label">Area</span>
+          <span className="rs-aoi-size mono">{aoi ? fmtAreaM2(ringArea(aoi)) : "None"}</span>
+          <div className="rs-aoi-btns" role="group" aria-label="Area">
+            <button type="button" className="rs-icon" title="Draw rectangle" aria-label="Draw rectangle"
+                    onClick={() => window.dispatchEvent(new CustomEvent("syntra:draw", { detail: "rect" }))}><IconRectangle /></button>
+            <button type="button" className="rs-icon" title="Draw polygon" aria-label="Draw polygon"
+                    onClick={() => window.dispatchEvent(new CustomEvent("syntra:draw", { detail: "pencil" }))}><IconPolygon /></button>
+            <button type="button" className="rs-icon" title="Use map view" aria-label="Use map view" onClick={onUseView}><IconExpand /></button>
+            <button type="button" className="rs-icon" title="Show AOI on map" aria-label="Show AOI on map" disabled={!aoi} onClick={onShowAoi}><IconZoomTo /></button>
           </div>
-        )}
+        </div>
         {aoi && idx && (
           <div className="rs-legend">
             <div className="rs-legend-head"><b>{idx.name}</b><span className="mono">{overlay?.time || ""}</span>

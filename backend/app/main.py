@@ -94,5 +94,9 @@ async def explain_errors(request, exc):
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "service": "syntra-ai-detection-engine"}
+    # api: bumped when the interface needs routes an older running engine lacks
+    return {"status": "ok", "service": "syntra-ai-detection-engine", "api": API_LEVEL}
+
+
+API_LEVEL = 2          # 2: /api/rs (remote sensing)
 

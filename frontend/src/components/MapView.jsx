@@ -705,6 +705,11 @@ export default function MapView({
       <RemoteSensingPanel
         open={rsOpen} onClose={() => setRsOpen(false)} aoi={aoi} layers={vlayers}
         overlay={rsOverlay} onOverlay={setRsOverlay} onLayerValues={reloadLayer}
+        onShowAoi={() => {
+          if (!map || !aoi) return;
+          const b = L.geoJSON(aoi).getBounds();
+          if (b.isValid()) map.flyToBounds(b, { padding: [48, 48], duration: 0.4 });
+        }}
         onUseView={() => {
           if (!map) return;
           const b = map.getBounds().pad(-0.08);
