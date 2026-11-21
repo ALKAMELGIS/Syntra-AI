@@ -1,8 +1,10 @@
 @echo off
 rem Starts Syntra on this computer only (http://localhost:5291).
 cd /d "%~dp0"
-rem stop a Syntra that is still running from before, so the ports are free
-powershell -NoProfile -Command "Get-NetTCPConnection -LocalPort 8010,5291 -State Listen -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }"
-timeout /t 1 /nobreak >nul
-start "Syntra engine" cmd /k "cd /d "%~dp0backend" && python -m uvicorn app.main:app --port 8010"
-start "Syntra interface" cmd /k "cd /d "%~dp0frontend" && npm run dev"
+set SYNTRA_PORT=8011
+rem Stop any Syntra still running from before: by port, and any engine by its command line
+rem (an old engine can keep answering on a shared port after its window is closed).
+powershell -NoProfile -Command "Get-NetTCPConnection -LocalPort 8010,8011,5291 -State Listen -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }; Get-CimInstance Win32_Process | Where-Object { $_.Name -like 'python*' -and $_.CommandLine -like '*uvicorn*app.main:app*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
+timeout /t 2 /nobreak >nul
+start "Syntra engine" cmd /k "cd /d "%~dp0backend" && python -m uvicorn app.main:app --port %SYNTRA_PORT%"
+start "Syntra interface" cmd /k "cd /d "%~dp0frontend" && set VITE_API_PORT=%SYNTRA_PORT%&& npm run dev"
