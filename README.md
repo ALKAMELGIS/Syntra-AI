@@ -10,6 +10,7 @@ A local web app: a Python engine (FastAPI) and a browser interface (React + Leaf
 ## Start
 
 Windows: double-click `start-local.bat`, then open http://localhost:5291.
+To update from GitHub: double-click `update.bat` (pulls `main`, installs what changed, starts Syntra).
 
 By hand:
 
