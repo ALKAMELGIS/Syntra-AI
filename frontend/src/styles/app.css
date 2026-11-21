@@ -92,7 +92,7 @@ html, body, #root { height: 100%; overflow: hidden; }
 
 .device-dropdown {
   position: absolute; top: calc(100% + 8px); right: 0; z-index: var(--z-popover);
-  min-width: 260px; background: var(--panel); border: 1px solid var(--panel-border);
+  width: 264px; background: var(--panel); border: 1px solid var(--panel-border);
   border-radius: var(--radius); padding: 12px; box-shadow: var(--shadow-panel);
 }
 .device-dropdown-title {
@@ -104,6 +104,10 @@ html, body, #root { height: 100%; overflow: hidden; }
 }
 .device-row:last-child { border-bottom: none; }
 .device-row.dim { color: var(--text-muted); font-size: var(--fs-12); }
+.device-row > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.device-row.dim > span:first-child { white-space: normal; }
+.device-row .device-tag { flex: none; margin-left: 8px; }
+.device-note { margin-top: 4px; font-size: var(--fs-11); color: var(--text-muted); }
 .device-tag {
   font-family: var(--font-mono); font-size: var(--fs-11); padding: 2px 8px; border-radius: 4px;
   background: var(--bg); color: var(--text-dim);

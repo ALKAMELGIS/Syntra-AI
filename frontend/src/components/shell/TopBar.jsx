@@ -125,7 +125,7 @@ function GpuMenu({ devices, enabledGpus, onToggleGpu }) {
           {gpuCount > 0 ? (
             devices.gpu.map((g) => (
               <label className="device-row gpu-checkbox-row" key={g.index}>
-                <span>
+                <span title={`GPU ${g.index} — ${g.name}`}>
                   <input
                     type="checkbox"
                     checked={enabledGpus[g.index] !== false}
@@ -142,9 +142,7 @@ function GpuMenu({ devices, enabledGpus, onToggleGpu }) {
             </div>
           )}
           {gpuCount > 0 && (
-            <div className="note" style={{ marginTop: 6 }}>
-              Unchecked GPUs are excluded from AUTO/GPU device selection for new prediction runs.
-            </div>
+            <div className="device-note">New runs skip unchecked GPUs</div>
           )}
         </div>
       )}
