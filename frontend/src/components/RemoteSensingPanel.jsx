@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/client.js";
-import { IconClose, IconDownload, IconZoomTo, IconRectangle, IconPolygon, IconExpand } from "./Icons.jsx";
+import { IconClose, IconDownload, IconZoomTo, IconEye, IconAnalysis, IconRectangle, IconPolygon, IconExpand } from "./Icons.jsx";
 import { fmtAreaM2 } from "../prefs.js";
 
 // area of the AOI's outer rings in m² (spherical, good to a fraction of a percent at field scale)
@@ -242,9 +242,9 @@ export default function RemoteSensingPanel({ open, onClose, aoi, layers, overlay
           <>
             <div className="rs-actions">
               <button type="button" className="rs-primary" onClick={() => setNonce((n) => n + 1)} disabled={!!busy}>
-                {busy === "Loading" ? "Loading…" : "Show index"}
+                <IconEye />{busy === "Loading" ? "Loading…" : "Show on map"}
               </button>
-              <button type="button" className="quiet-button" onClick={timeline} disabled={!!busy}>{busy === "Timeline" ? "…" : "Timeline"}</button>
+              <button type="button" className="quiet-button" onClick={timeline} disabled={!!busy}><IconAnalysis />{busy === "Timeline" ? "…" : "Timeline"}</button>
             </div>
             {tl && idx && <Timeline data={tl} index={idx} />}
             <div className="rs-attr">

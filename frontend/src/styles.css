@@ -1377,6 +1377,8 @@ html, body, #root { height: 100%; overflow: hidden; }
   background: var(--primary-bg); color: var(--primary-fg); font-size: 13px; font-weight: 500;
   transition: background-color 0.12s var(--ease);
 }
+.rs-primary, .rs-actions .quiet-button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.rs-primary svg, .rs-actions .quiet-button svg { width: 16px; height: 16px; }
 .rs-primary:hover:not(:disabled) { background: var(--primary-hover); }
 .rs-primary:disabled { background: var(--hover-bg); color: var(--text-muted); cursor: default; }
 .rs-actions .quiet-button, .rs-attr .quiet-button, .rs-attr .train-select, .rs-export { height: 36px; }

@@ -7,7 +7,7 @@ import AnnotationLayer from "./AnnotationTool.jsx";
 import ImageLibrary from "./ImageLibrary.jsx";
 import SettingsPanel from "./SettingsPanel.jsx";
 import { usePref, getPref } from "../prefs.js";
-import { IconExpand, IconBasemap, IconLayers, IconGallery, IconGear, IconAnalysis, IconTrain, IconPerformance, IconDatabase, IconZoomTo, IconTable, IconSatellite } from "./Icons.jsx";
+import { IconExpand, IconBasemap, IconLayers, IconGallery, IconGear, IconAnalysis, IconTrain, IconPerformance, IconDatabase, IconZoomTo, IconTable, IconSatellite, IconEye, IconEyeOff } from "./Icons.jsx";
 import RemoteSensingPanel from "./RemoteSensingPanel.jsx";
 import LayersPanel from "./LayersPanel.jsx";
 import AttributeTable from "./AttributeTable.jsx";
@@ -28,7 +28,7 @@ function MapToolbar({
   layers, sourceImage, basemap, onBasemapChange, legendOpen, onLegendToggle,
   onOpenLibrary, onOpenSettings, analysisOpen, onToggleAnalysis, analysisCount, analysisRunning,
   detectionsVisible, onToggleDetections, trainOpen, onToggleTrain, perfOpen, onTogglePerf, libOpen, onToggleLib, editMenu,
-  rsOpen, onToggleRs,
+  rsOpen, onToggleRs, rsLayer, rsVisible, onToggleRsVisible,
 }) {
   const map = useMap();
   const toolbarRef = useRef(null);
@@ -95,6 +95,13 @@ function MapToolbar({
               aria-expanded={rsOpen} onClick={onToggleRs}>
         <IconSatellite />
       </button>
+      {rsLayer && (
+        <button className={`map-tool-btn ${rsVisible ? "active" : ""}`} data-tool="rs-layer"
+                title={rsVisible ? "Index layer on map · hide" : "Index layer · show on map"}
+                aria-pressed={rsVisible} onClick={onToggleRsVisible}>
+          {rsVisible ? <IconEye /> : <IconEyeOff />}
+        </button>
+      )}
       <button className="map-tool-btn" data-tool="settings" title="Settings" onClick={onOpenSettings}>
         <IconGear />
       </button>
@@ -376,6 +383,7 @@ export default function MapView({
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [rsOpen, setRsOpen] = useState(false);
   const [rsOverlay, setRsOverlay] = useState(null);      // {image, bounds, opacity, stats, index}
+  const [rsVisible, setRsVisible] = useState(true);
   const [geoOverride, setGeoOverride] = useState({});    // key -> geojson re-read after values were added
 
   // --- Layers: per-layer state, order, removed layers, attribute table, pop-up ---
@@ -599,7 +607,7 @@ export default function MapView({
         {services.filter((sv) => sv.visible).map((sv, i) => (sv.kind === "wms"
           ? <WMSTileLayer key={sv.key} url={sv.url} params={{ layers: sv.layers, format: "image/png", transparent: true }} opacity={sv.opacity} zIndex={20 + i} maxZoom={MAX_ZOOM} />
           : <TileLayer key={sv.key} url={sv.url} opacity={sv.opacity} zIndex={20 + i} maxZoom={MAX_ZOOM} />))}
-        {rsOverlay?.image && aoi && (
+        {rsOverlay?.image && aoi && rsVisible && (
           <ImageOverlay key={rsOverlay.image.length + rsOverlay.time + rsOverlay.index?.id} url={rsOverlay.image}
                         bounds={[[rsOverlay.bounds[0], rsOverlay.bounds[1]], [rsOverlay.bounds[2], rsOverlay.bounds[3]]]}
                         opacity={rsOverlay.opacity ?? 0.85} zIndex={15} className="rs-overlay" />
@@ -661,6 +669,9 @@ export default function MapView({
           onToggleLib={onToggleLib}
           rsOpen={rsOpen}
           onToggleRs={toggleRs}
+          rsLayer={Boolean(rsOverlay?.image && aoi)}
+          rsVisible={rsVisible}
+          onToggleRsVisible={() => setRsVisible((v) => !v)}
           editMenu={
             <MapDrawTools
               aoi={aoi}
@@ -704,7 +715,7 @@ export default function MapView({
       />
       <RemoteSensingPanel
         open={rsOpen} onClose={() => setRsOpen(false)} aoi={aoi} layers={vlayers}
-        overlay={rsOverlay} onOverlay={setRsOverlay} onLayerValues={reloadLayer}
+        overlay={rsOverlay} onOverlay={(o) => { setRsOverlay(o); if (o) setRsVisible(true); }} onLayerValues={reloadLayer}
         onShowAoi={() => {
           if (!map || !aoi) return;
           const b = L.geoJSON(aoi).getBounds();
