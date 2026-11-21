@@ -52,6 +52,19 @@ Models you train are kept in `backend/data/models/`.
 - An old engine left running can keep answering after its window is closed: `start-local.bat`
   stops it by command line.
 
+## Hugging Face Space (hosted)
+
+The Space `Alkamelgis/SYNTRA-AI` runs the engine and the built interface in one process
+(`deploy/space/app.py`, Gradio SDK on the free ZeroGPU hardware: Docker Spaces and CPU Basic need PRO).
+`.github/workflows/deploy-space.yml` builds and pushes it on every push to `main` once the repository
+secret `HF_TOKEN` (a Hugging Face token with write access) exists; Actions > Deploy > Run workflow
+deploys by hand.
+
+Space settings: variable `SYNTRA_PUBLIC_URL=https://alkamelgis-syntra-ai.hf.space` (set), secret
+`SYNTRA_OWNER_EMAIL` (the owner's email: only it may create the first account). Open the app at that
+address, not inside the Hugging Face page (the sign-in cookie needs it). The Space's disk is reset on
+restart: accounts, credits and images are kept only if a storage bucket is mounted at `/data`.
+
 ## Docker
 
 `docker compose up --build` builds the engine (Python 3.13, CPU) and the interface behind nginx.

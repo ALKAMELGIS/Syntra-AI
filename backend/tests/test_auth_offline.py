@@ -87,9 +87,17 @@ def test_signin_is_throttled_after_five_failures(client):
 
 def test_first_account_only_from_this_machine(client, monkeypatch):
     import app.api.auth as api_auth
+    import app.core.security as sec
 
     monkeypatch.setattr(api_auth, "is_loopback", lambda req: False)
+    monkeypatch.setattr(sec, "is_loopback", lambda req: False)
+    monkeypatch.delenv("SYNTRA_OWNER_EMAIL", raising=False)
     assert _signup(client).status_code == 403
+    # a hosted install names its owner: only that email may make the first account
+    monkeypatch.setenv("SYNTRA_OWNER_EMAIL", "owner@x.co")
+    assert _signup(client).status_code == 403
+    r = _signup(client, email="Owner@X.co")
+    assert r.status_code == 200 and r.json()["user"]["is_admin"] is True
 
 
 def test_api_key_still_works_without_a_session(client, monkeypatch):

@@ -102,5 +102,35 @@ def health():
     return {"status": "ok", "service": "syntra-ai-detection-engine", "api": API_LEVEL}
 
 
-API_LEVEL = 2          # 2: /api/rs (remote sensing)
+API_LEVEL = 3          # 2: /api/rs (remote sensing) · 3: accounts, credits, admin
+
+
+# One process for both: when SYNTRA_STATIC_DIR names the built interface (frontend/dist),
+# the engine serves it too (hosted installs: a Hugging Face Space, a single server).
+def _serve_interface() -> None:
+    import os
+    from pathlib import Path
+
+    from fastapi.responses import FileResponse
+    from fastapi.staticfiles import StaticFiles
+
+    root = os.getenv("SYNTRA_STATIC_DIR")
+    if not root or not (Path(root) / "index.html").is_file():
+        return
+    root = Path(root).resolve()
+    if (root / "assets").is_dir():
+        app.mount("/assets", StaticFiles(directory=root / "assets"), name="assets")
+
+    @app.get("/{path:path}", include_in_schema=False)
+    def interface(path: str):
+        if path.startswith("api/"):
+            from fastapi import HTTPException
+            raise HTTPException(status_code=404, detail="Not found")
+        f = (root / path).resolve()
+        if path and root in f.parents and f.is_file():
+            return FileResponse(f)
+        return FileResponse(root / "index.html")       # the app's own routes
+
+
+_serve_interface()
 

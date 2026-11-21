@@ -110,7 +110,6 @@ def _fail(msg: str) -> RedirectResponse:
 @router.get("/{provider}/callback")
 def callback(provider: str, request: Request, code: str = "", state: str = ""):
     from app.api.auth import _set_cookie
-    from app.core.security import is_loopback
 
     creds = _creds(provider) if provider in PROVIDERS else None
     saved = request.cookies.get(STATE_COOKIE, "")
@@ -128,7 +127,7 @@ def callback(provider: str, request: Request, code: str = "", state: str = ""):
             store.link_provider(user.id, provider, ident["id"])    # same verified email: the same person
         else:
             n = store.count()
-            if n == 0 and not is_loopback(request):
+            if n == 0 and not auth.may_create_first(request, ident["email"]):
                 return _fail("Create the first account on the computer running Syntra")
             if n > 0 and not auth.signup_open():
                 return _fail("New accounts are closed. Ask the owner")

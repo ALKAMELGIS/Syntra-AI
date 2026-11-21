@@ -1,6 +1,8 @@
 """Sign in, create account, sign out. Open routes: they are how a session starts."""
 from __future__ import annotations
 
+import os
+
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
@@ -38,7 +40,7 @@ def status(request: Request):
         "signup_open": n == 0 or auth.signup_open(),
         "user": user.public() if user else None,
         # the very first account can only be made from this machine
-        "first_run_here": n == 0 and is_loopback(request),
+        "first_run_here": n == 0 and (is_loopback(request) or bool(os.getenv("SYNTRA_OWNER_EMAIL"))),
         "oauth": __import__("app.api.oauth", fromlist=["providers"]).providers(),
     }
 
@@ -47,7 +49,7 @@ def status(request: Request):
 async def signup(body: SignUp, request: Request, response: Response):
     store = auth.get_auth_store()
     n = store.count()
-    if n == 0 and not is_loopback(request):
+    if n == 0 and not auth.may_create_first(request, body.email):
         raise HTTPException(403, detail={"field": None, "message": "Create the first account on the computer running Syntra"})
     if n > 0 and not auth.signup_open():
         raise HTTPException(403, detail={"field": None, "message": "New accounts are closed. Ask the admin"})

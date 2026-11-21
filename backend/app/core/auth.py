@@ -58,6 +58,17 @@ def signup_open() -> bool:
     return os.getenv("SYNTRA_ALLOW_SIGNUP", "1").strip().lower() not in ("0", "off", "false", "no")
 
 
+def may_create_first(request: Request, email: str | None) -> bool:
+    """The first (owner) account: from the computer Syntra runs on, or on a server
+    whose SYNTRA_OWNER_EMAIL names this email (a hosted install has no local screen)."""
+    from app.core.security import is_loopback
+
+    if is_loopback(request):
+        return True
+    owner = os.getenv("SYNTRA_OWNER_EMAIL", "").strip().lower()
+    return bool(owner) and (email or "").strip().lower() == owner
+
+
 def welcome(user: "User") -> None:
     """A new account (not the owner) starts with the free credits of the price list."""
     if user.is_admin:
