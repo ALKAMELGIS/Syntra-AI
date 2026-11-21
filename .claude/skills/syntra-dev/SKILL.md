@@ -185,6 +185,10 @@ direction in a comment. Work inside them:
   `frontend/src/lib/prefs.js`: read with `usePref`/`getPref`, format areas with
   `fmtAreaM2`/`fmtAreaKm2`. A new option goes in Settings as a row (label +
   segmented control), never as a toggle scattered in a panel.
+- **No hue in the chrome.** The default accent is graphite (matte near-black in the
+  light theme, light grey in the dark). Toolbar icons, active states and badges use
+  the text and primary tokens, never a colour per tool. Hue belongs to the imagery,
+  the detection layers and meaningful status (ready, warning, error).
 - **Icons** come from `components/ui/Icons.jsx` (inline SVG, one stroke). No
   emoji in the UI.
 - **Map panels.** Map tools live in the one toolbar on the right. A tool

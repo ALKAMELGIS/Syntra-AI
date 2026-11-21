@@ -6,9 +6,8 @@ import { useEffect, useState } from "react";
 
 const KEYS = {
   theme: ["syntra_theme", "dark"],          // dark | light | system
-  accent: ["syntra_accent", "blue"],
+  accent: ["syntra_accent", "graphite"],   // quiet by default: no hue in the chrome
   motion: ["syntra_motion", "full"],        // full | reduced
-  icons: ["syntra_icon_style", "mono"],     // mono | colour
   basemap: ["syntra_basemap", "satellite"],
   restore: ["syntra_restore", "on"],        // on | off: reopen the last project
   area: ["syntra_area_unit", "metric"],     // metric | ha
@@ -31,11 +30,11 @@ export function detectionOptions() {
 
 // Each accent has a dark-theme and a light-theme shade, both 4.5:1 on their surface
 export const ACCENTS = {
+  graphite: { label: "Graphite", dark: "#c3c8d0", light: "#33383f" },
   blue: { label: "Blue", dark: "#6b9bff", light: "#2f62d0" },
   teal: { label: "Teal", dark: "#4cc0b0", light: "#0f7c70" },
   amber: { label: "Amber", dark: "#e0a43b", light: "#9a6300" },
   rose: { label: "Rose", dark: "#ee7f95", light: "#b8344f" },
-  graphite: { label: "Graphite", dark: "#c3c8d0", light: "#3c434d" },
 };
 
 export function getPref(name) {
@@ -77,7 +76,7 @@ export function applyAppearance() {
   const mode = resolvedTheme();
   root.classList.toggle("theme-light", mode === "light");
   root.classList.toggle("reduce-motion", read("motion") === "reduced");
-  const a = ACCENTS[read("accent")] || ACCENTS.blue;
+  const a = ACCENTS[read("accent")] || ACCENTS.graphite;
   const hex = a[mode];
   root.style.setProperty("--accent", hex);
   const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));

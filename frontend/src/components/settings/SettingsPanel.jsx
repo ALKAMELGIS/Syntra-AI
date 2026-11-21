@@ -88,7 +88,6 @@ function General() {
 function Theme() {
   const [theme, setTheme] = usePref("theme");
   const [accent, setAccent] = usePref("accent");
-  const [icons, setIcons] = usePref("icons");
   const [motion, setMotion] = usePref("motion");
   return (
     <>
@@ -106,9 +105,6 @@ function Theme() {
         </Row>
       </Group>
       <Group title="Interface">
-        <Row label="Toolbar icons">
-          <Seg label="Toolbar icons" value={icons} onChange={setIcons} options={[["mono", "Grey"], ["colour", "Colour"]]} />
-        </Row>
         <Row label="Motion">
           <Seg label="Motion" value={motion} onChange={setMotion} options={[["full", "Full"], ["reduced", "Reduced"]]} />
         </Row>

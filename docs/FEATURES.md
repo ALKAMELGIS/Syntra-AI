@@ -227,7 +227,7 @@ in this browser (`frontend/src/lib/prefs.js`); keys and tokens go to the engine 
 |---|---|
 | General | Reopen last project (on/off), area unit (km² · m² or ha), engine status, data folder, version |
 | Detection | Minimum score, match training scale, tile size, overlap, default export format |
-| Theme | Mode (dark, light, system), accent (5, each with a dark and a light shade), toolbar icons, motion |
+| Theme | Mode (dark, light, system), accent (graphite by default; 5, each with a dark and a light shade), motion. Toolbar icons are one colour (the text colour): the multicolour option was removed |
 | Map | Basemap gallery, Google Map Tiles key |
 | Services | Hugging Face, RunPod |
 | System | Python environment check |

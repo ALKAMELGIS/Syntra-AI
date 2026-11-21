@@ -649,7 +649,6 @@ export default function MapView({
       setGeoOverride((g) => ({ ...g, [l.key]: gj }));
     } catch { /* the values are saved; the next refresh shows them */ }
   }
-  const [iconStyle] = usePref("icons");
   const bm = BASEMAPS[basemap] || null;
   // Basemap health: tiles that never load (offline, firewall) leave the map
   // black with no explanation; say so in one line.
@@ -661,7 +660,7 @@ export default function MapView({
   const overlayBounds = sourceImage?.preview_bounds_wgs84 || null;
 
   return (
-    <div className={`map-area icon-style-${iconStyle} ${libraryOpen ? "library-open" : ""} ${tableOpen && vlayers.length ? "table-open" : ""}`}
+    <div className={`map-area ${libraryOpen ? "library-open" : ""} ${tableOpen && vlayers.length ? "table-open" : ""}`}
          style={{ "--raster-filter": imgFilter, ...(tableOpen && vlayers.length ? { "--dock-h": `${tableH}px` } : {}) }}>
       <MapContainer center={[24.7, 46.7]} zoom={5} maxZoom={MAX_ZOOM} scrollWheelZoom ref={setMap}>
         {bm && <TileLayer

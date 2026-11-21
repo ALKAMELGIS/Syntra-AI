@@ -213,10 +213,10 @@ html, body, #root { height: 100%; overflow: hidden; }
   cursor: pointer; display: flex; align-items: center; justify-content: center;
 }
 .map-tool-btn:hover { background: var(--hover-bg); color: var(--text); }
-.map-tool-btn.active { background: var(--accent-soft); color: var(--accent); }
+.map-tool-btn.active { background: var(--hover-bg); color: var(--text); box-shadow: inset 0 0 0 1px var(--border-strong); }
 .map-tool-badge {
   position: absolute; top: -4px; right: -4px; min-width: 16px; height: 16px;
-  padding: 0 4px; border-radius: 8px; background: var(--accent); color: var(--primary-fg);
+  padding: 0 4px; border-radius: 8px; background: var(--primary-bg); color: var(--primary-fg);
   font-size: var(--fs-11); font-weight: 500; line-height: 16px; text-align: center;
 }
 
@@ -900,16 +900,6 @@ html, body, #root { height: 100%; overflow: hidden; }
 .map-draw-hint svg { font-size: var(--fs-16); color: var(--accent); }
 
 /* --- Icon style: Monochrome (default) vs Colour, set in Settings --- */
-.icon-style-colour .map-tool-btn[data-tool="fit"] { color: #6b9bff; }
-.icon-style-colour .map-tool-btn[data-tool="basemap"] { color: #4cc38a; }
-.icon-style-colour .map-tool-btn[data-tool="legend"] { color: #e0a43b; }
-.icon-style-colour .map-tool-btn[data-tool="visibility"] { color: #56c7d6; }
-.icon-style-colour .map-tool-btn[data-tool="edit"] { color: var(--aoi); }
-.icon-style-colour .map-tool-btn[data-tool="library"] { color: #c678dd; }
-.icon-style-colour .map-tool-btn[data-tool="dataset"] { color: #c678dd; }
-.icon-style-colour .map-tool-btn[data-tool="settings"] { color: #56c7d6; }
-.icon-style-colour .map-tool-btn[data-tool="analysis"] { color: #6b9bff; }
-.icon-style-colour .map-tool-btn.active { background: var(--accent-soft); }
 
 /* --- Settings modal --- */
 .settings-modal-backdrop {
