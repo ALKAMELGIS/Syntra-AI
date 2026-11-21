@@ -11,7 +11,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from pydantic import BaseModel
 
 from app.core.compute import DeviceOption
@@ -132,6 +132,7 @@ def _run_job(job_id: str, req: PredictRequest):
     except Exception as exc:
         jobs.update(job_id, status="error", error=str(exc))
         record_run(settings.DATA_DIR, req.model_id, status="error")
+        _refund(job_id)
 
 
 def _count_aoi_tiles(path: str, aoi, tile: int, overlap: float) -> int:
@@ -219,8 +220,51 @@ class EstimateRequest(BaseModel):
     aoi: dict | None = None
 
 
+def run_area_km2(image_path: str, entry: dict | None, aoi) -> float | None:
+    """The ground area a Run covers: the AOI, else the image's valid pixels."""
+    try:
+        from app.engine.raster_io import raster_crs_and_size
+        if aoi:
+            from app.engine.aoi import prepare_aoi
+            return prepare_aoi(image_path, aoi).area_m2 / 1e6
+        health = (entry or {}).get("health") or {}
+        valid = health.get("valid_fraction")
+        valid = 1.0 if valid is None else float(valid)
+        gsd = health.get("gsd_m") or (entry or {}).get("gsd_x_m")
+        _, width, height = raster_crs_and_size(image_path)
+        return width * height * gsd ** 2 * valid / 1e6 if gsd else None
+    except Exception:  # noqa: BLE001 - unreadable: the first tier applies
+        return None
+
+
+def _charge(job_id: str, request: Request, area_km2: float | None) -> int:
+    """Take a Run's credits before it starts (the owner is never charged). 402 when short."""
+    from app.core import auth, billing
+
+    if auth.is_owner(request):
+        return 0
+    uid = auth.acting_user_id(request)
+    if uid is None:
+        return 0
+    cost = billing.run_cost(area_km2)
+    try:
+        billing.get_ledger().change(uid, -cost, f"Run · {area_km2:,.1f} km²" if area_km2 else "Run", ref=job_id)
+    except billing.InsufficientCredits as e:
+        raise HTTPException(status_code=402, detail={"message": str(e), "needed": e.needed, "balance": e.balance})
+    return cost
+
+
+def _refund(job_id: str) -> None:
+    job = get_store().get(job_id) or {}
+    cost, uid = int(job.get("credits_charged") or 0), job.get("owner_id")
+    if cost and uid and not job.get("refunded"):
+        from app.core import billing
+        billing.get_ledger().change(int(uid), cost, "Refund · Run failed", ref=job_id)
+        get_store().update(job_id, refunded=True)
+
+
 @router.post("/estimate")
-def estimate(req: EstimateRequest):
+def estimate(req: EstimateRequest, request: Request):
     """Area and, once this machine has run the model before, the time a Run will take.
 
     Same tile count as the job (the model's own tile size, the AOI's tiles);
@@ -259,8 +303,10 @@ def estimate(req: EstimateRequest):
     device = resolve_device(DeviceOption.AUTO).resolved
     spt = seconds_per_tile(settings.DATA_DIR, req.model_id, device, tile)
     model_tiles = max(1, round(tiles * valid))
+    from app.core import auth, billing
+    cost = 0 if auth.is_owner(request) else billing.run_cost(area_km2)
     return {"tiles": tiles, "area_km2": round(area_km2, 2) if area_km2 is not None else None,
-            "device": device, "seconds": round(model_tiles * spt) if spt else None}
+            "device": device, "seconds": round(model_tiles * spt) if spt else None, "credits": cost}
 
 
 def _refuse_no_data(req: PredictRequest) -> None:
@@ -290,7 +336,7 @@ def _refuse_wrong_scale(meta, image_path: str) -> None:
 
 
 @router.post("")
-def start_prediction(req: PredictRequest, background_tasks: BackgroundTasks):
+def start_prediction(req: PredictRequest, background_tasks: BackgroundTasks, request: Request):
     meta = get_metadata(req.model_id)
     if meta.status == ModelStatus.NOT_INSTALLED:
         raise HTTPException(status_code=409, detail=f"'{meta.name}' is not installed yet. Install its model first.")
@@ -302,6 +348,11 @@ def start_prediction(req: PredictRequest, background_tasks: BackgroundTasks):
                 f"Refusing to generate fake detections. Details: {meta.notes}"
             ),
         )
+    if req.image_id:                              # a user runs only on their own images
+        from app.core.auth import can_see_any
+        e = find_entry_by_image_id(settings.UPLOAD_DIR, req.image_id)
+        if e is not None and not can_see_any(request, e.get("owners")):
+            raise HTTPException(status_code=404, detail="Unknown image")
     req = req.model_copy(update={"image_path": _resolve_image_path(req)})
     try:
         from app.engine.raster_io import raster_crs_and_size
@@ -328,18 +379,25 @@ def start_prediction(req: PredictRequest, background_tasks: BackgroundTasks):
         model_version = get_metadata(req.model_id).version
     except KeyError:
         model_version = None
-    job_id = get_store().create(
-        KIND, model_id=req.model_id, image_id=req.image_id, model_version=model_version,
+    import uuid as _uuid
+    job_id = str(_uuid.uuid4())
+    entry = find_entry_by_image_id(settings.UPLOAD_DIR, req.image_id) if req.image_id else None
+    area = run_area_km2(req.image_path, entry, req.aoi)
+    cost = _charge(job_id, request, area)           # 402 before anything is created
+    get_store().create(
+        KIND, job_id=job_id, model_id=req.model_id, image_id=req.image_id, model_version=model_version,
         image_name=_display_name(req.image_path), tiles_processed=0, has_aoi=req.aoi is not None,
+        area_km2=round(area, 2) if area else None, credits_charged=cost,
     )
     background_tasks.add_task(_run_job, job_id, req)
     return {"job_id": job_id, "status": "queued"}
 
 
 @router.get("/{job_id}")
-def job_status(job_id: str):
+def job_status(job_id: str, request: Request):
+    from app.core.auth import can_see
     job = get_store().get(job_id, KIND)
-    if job is None:
+    if job is None or not can_see(request, job.get("owner_id")):
         raise HTTPException(status_code=404, detail="Unknown job_id")
     return job
 

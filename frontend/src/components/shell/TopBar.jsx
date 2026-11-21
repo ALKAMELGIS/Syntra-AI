@@ -1,7 +1,8 @@
 // The top bar: brand, File menu (open, save, export), theme toggle, compute devices and the account menu.
 import React, { useEffect, useRef, useState } from "react";
-import { api } from "../../api/client.js";
-import { IconFolder, IconClose, IconUpload, IconSun, IconMoon, IconSignOut } from "../ui/Icons.jsx";
+import { api, NEED_CREDITS, CREDITS_CHANGED } from "../../api/client.js";
+import CreditsDialog from "../billing/CreditsDialog.jsx";
+import { IconFolder, IconClose, IconUpload, IconSun, IconMoon, IconSignOut, IconDatabase } from "../ui/Icons.jsx";
 import { usePref, resolvedTheme } from "../../lib/prefs.js";
 
 function useOutsideClose(ref, close) {
@@ -158,11 +159,13 @@ function initials(user) {
 }
 
 // Who is signed in, and the run counter. One badge; the menu holds sign out.
-function AccountMenu({ user, usage, onSignOut }) {
+function AccountMenu({ user, usage, onSignOut, onCredits }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   useOutsideClose(ref, () => setOpen(false));
   const runs = usage ? `${usage.total_runs} runs` : "…";
+  const owner = !user || user.role === "owner" || user.is_admin;
+  const badge = owner ? runs : `${Number(user.credits || 0).toLocaleString("en-US")} credits`;
 
   if (!user) {
     return (
@@ -179,7 +182,7 @@ function AccountMenu({ user, usage, onSignOut }) {
         <span className="usage-badge-avatar" aria-hidden="true">{initials(user)}</span>
         <span className="usage-badge-text">
           <span className="usage-badge-label">{user.name}</span>
-          <span className="usage-badge-value">{runs}</span>
+          <span className="usage-badge-value">{badge}</span>
         </span>
       </button>
       {open && (
@@ -187,9 +190,12 @@ function AccountMenu({ user, usage, onSignOut }) {
           <div className="account-menu-who">
             <span className="account-menu-name">{user.name}</span>
             <span className="account-menu-email mono">{user.email}</span>
-            <span className="account-menu-role">{user.is_admin ? "Admin" : "Member"}</span>
+            <span className="account-menu-role">{owner ? "Owner" : "Member"}</span>
           </div>
           <div className="file-menu-divider" />
+          <button type="button" role="menuitem" className="file-menu-item" onClick={() => { setOpen(false); onCredits?.(); }}>
+            <IconDatabase /> Credits{!owner && <span className="file-menu-hint mono">{Number(user.credits || 0).toLocaleString("en-US")}</span>}
+          </button>
           <button type="button" role="menuitem" className="file-menu-item" onClick={() => { setOpen(false); onSignOut?.(); }}>
             <IconSignOut /> Sign out
           </button>
@@ -203,10 +209,27 @@ export default function TopBar({ devices, enabledGpus, onToggleGpu, hasImage, ha
   const [themePref, setTheme] = usePref("theme");
   const theme = themePref === "system" ? resolvedTheme() : themePref;
   const [usage, setUsage] = useState(null);
+  const [credits, setCredits] = useState(null);       // null | {need}
+  const [me, setMe] = useState(user);
 
   useEffect(() => {
     api.usageSummary().then(setUsage).catch(() => setUsage(null));
   }, [hasJob]);
+  // the balance on the badge: re-read after a Run starts, credits are bought or the window closes
+  useEffect(() => {
+    if (!user) return undefined;
+    const read = () => api.billingMe().then((b) => setMe({ ...user, credits: b.credits ?? user.credits })).catch(() => {});
+    read();
+    const need = (e) => setCredits({ need: e.detail || {} });
+    window.addEventListener(CREDITS_CHANGED, read);
+    window.addEventListener(NEED_CREDITS, need);
+    const q = new URLSearchParams(window.location.search).get("credits");
+    if (q) {                                             // back from the checkout page
+      window.history.replaceState(null, "", window.location.pathname);
+      setCredits({ need: null });
+    }
+    return () => { window.removeEventListener(CREDITS_CHANGED, read); window.removeEventListener(NEED_CREDITS, need); };
+  }, [user, hasJob]);
 
   return (
     <div className="topbar">
@@ -229,7 +252,8 @@ export default function TopBar({ devices, enabledGpus, onToggleGpu, hasImage, ha
           {theme === "dark" ? <IconSun /> : <IconMoon />}
         </button>
         <GpuMenu devices={devices} enabledGpus={enabledGpus} onToggleGpu={onToggleGpu} />
-        <AccountMenu user={user} usage={usage} onSignOut={onSignOut} />
+        <AccountMenu user={me || user} usage={usage} onSignOut={onSignOut} onCredits={() => setCredits({ need: null })} />
+        <CreditsDialog open={!!credits} need={credits?.need} onClose={() => { setCredits(null); window.dispatchEvent(new Event(CREDITS_CHANGED)); }} />
       </div>
     </div>
   );

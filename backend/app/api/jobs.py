@@ -10,7 +10,9 @@ memory.
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
+
+from app.core.auth import can_see
 
 from app.core.jobs import get_store
 
@@ -21,6 +23,7 @@ _KINDS = {"predict", "dataset_export", "train", "environment", "model_install", 
 
 @router.get("")
 def list_jobs(
+    request: Request,
     kind: str | None = Query(default=None, description="predict | dataset_export | train | environment"),
     status: str | None = None,
     limit: int = Query(default=50, ge=1, le=500),
@@ -30,7 +33,8 @@ def list_jobs(
     if kind is not None and kind not in _KINDS:
         raise HTTPException(status_code=400, detail=f"Unknown kind '{kind}'. Use one of: {', '.join(sorted(_KINDS))}.")
     jobs = get_store().list(kind, limit=500 if (image_id or not include_hidden) else limit, status=status)
-    jobs = [j for j in jobs if (include_hidden or not j.get("hidden")) and (not image_id or j.get("image_id") == image_id)][:limit]
+    jobs = [j for j in jobs if (include_hidden or not j.get("hidden")) and (not image_id or j.get("image_id") == image_id)
+            and can_see(request, j.get("owner_id"))][:limit]
     for job in jobs:
         # Training/export logs can be long; the list view only needs a summary.
         job.pop("log", None)
@@ -40,20 +44,20 @@ def list_jobs(
 
 
 @router.post("/{job_id}/hide")
-def hide_job(job_id: str):
+def hide_job(job_id: str, request: Request):
     """Take a finished run off the map for good (its files stay on disk):
     the dashboard no longer restores it after a reload."""
     store = get_store()
     job = store.get(job_id)
-    if job is None:
+    if job is None or not can_see(request, job.get("owner_id")):
         raise HTTPException(status_code=404, detail="Unknown job_id")
     store.update(job_id, hidden=True)
     return {"job_id": job_id, "hidden": True}
 
 
 @router.get("/{job_id}")
-def get_job(job_id: str):
+def get_job(job_id: str, request: Request):
     job = get_store().get(job_id)
-    if job is None:
+    if job is None or not can_see(request, job.get("owner_id")):
         raise HTTPException(status_code=404, detail="Unknown job_id")
     return job

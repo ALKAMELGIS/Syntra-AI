@@ -110,7 +110,7 @@ async def import_local(body: LocalImport, request: Request, background_tasks: Ba
     # the same file opened again (a refresh, a second click): reuse its entry
     for e in list_library(settings.UPLOAD_DIR):
         if e.get("source_path") == str(src) and e.get("source_mtime") == st.st_mtime and e.get("size_bytes") == st.st_size:
-            return {**_fresh(e), "reused": True}
+            return {**_fresh(_claim(e, request)), "reused": True}
 
     filename = safe_filename(src.name)
     image_id = str(uuid.uuid4())
@@ -134,8 +134,27 @@ async def import_local(body: LocalImport, request: Request, background_tasks: Ba
     return entry
 
 
+def _claim(entry: dict, request: Request) -> dict:
+    """Record who added the image: a user sees only their own images (the owner sees all)."""
+    from app.core.auth import acting_user_id
+
+    uid = acting_user_id(request)
+    if uid is not None and uid not in (entry.get("owners") or []):
+        entry["owners"] = [*(entry.get("owners") or []), uid]
+        _save(entry)
+    return entry
+
+
+def _visible(entry: dict | None, request: Request) -> dict:
+    from app.core.auth import can_see_any
+
+    if entry is None or not can_see_any(request, entry.get("owners")):
+        raise HTTPException(status_code=404, detail="No library image with this id.")
+    return entry
+
+
 @router.post("")
-async def upload_image(file: UploadFile, background_tasks: BackgroundTasks, metadata: UploadFile | None = None):
+async def upload_image(file: UploadFile, background_tasks: BackgroundTasks, request: Request, metadata: UploadFile | None = None):
     """Upload a GeoTIFF, optionally with the product's metadata XML (e.g. the
     SuperView/WorldView sidecar). The XML carries calibration gains and the
     sensor id, which vegetation indices and band detection use."""
@@ -186,7 +205,7 @@ async def upload_image(file: UploadFile, background_tasks: BackgroundTasks, meta
         # and read_calibration_gains() look for it
         dest.with_suffix(".xml").write_bytes(xml_bytes)
 
-    return await _register(dest, filename, image_id, background_tasks)
+    return _claim(await _register(dest, filename, image_id, background_tasks), request)
 
 
 def _library_path(image_id: str, filename: str) -> Path:
@@ -344,27 +363,24 @@ def _save(entry: dict) -> None:
 
 
 @router.get("")
-def list_images():
+def list_images(request: Request):
+    from app.core.auth import can_see_any
+
     settings.ensure_dirs()
-    return [_fresh(e) for e in list_library(settings.UPLOAD_DIR)]
+    return [_fresh(e) for e in list_library(settings.UPLOAD_DIR) if can_see_any(request, e.get("owners"))]
 
 
 @router.get("/{image_id}")
-def get_image(image_id: str):
+def get_image(image_id: str, request: Request):
     settings.ensure_dirs()
-    entry = find_entry_by_image_id(settings.UPLOAD_DIR, image_id)
-    if entry is None:
-        raise HTTPException(status_code=404, detail=f"No library image with id '{image_id}'.")
-    return _fresh(entry)
+    return _fresh(_visible(find_entry_by_image_id(settings.UPLOAD_DIR, image_id), request))
 
 
 @router.get("/{image_id}/health")
-def get_image_health(image_id: str):
+def get_image_health(image_id: str, request: Request):
     """Re-run the raster health check (CRS, resolution, bit depth, layout...)."""
     settings.ensure_dirs()
-    entry = find_entry_by_image_id(settings.UPLOAD_DIR, image_id)
-    if entry is None:
-        raise HTTPException(status_code=404, detail=f"No library image with id '{image_id}'.")
+    entry = _visible(find_entry_by_image_id(settings.UPLOAD_DIR, image_id), request)
     try:
         from app.engine.raster_health import check_raster
         return check_raster(entry["path"]).to_dict()
@@ -389,7 +405,7 @@ def _empty_png() -> bytes:
 
 
 @router.delete("/library/{folder}")
-def delete_library_copy(folder: str):
+def delete_library_copy(folder: str, request: Request):
     """Delete one copy of an image from the library (backend/data/images/<folder>).
 
     Only Syntra's own copy goes: an image opened from your computer is a hard
@@ -407,6 +423,12 @@ def delete_library_copy(folder: str):
     if target.parent != root or not target.is_dir():
         raise HTTPException(status_code=404, detail="No such image in the library.")
     rasters = [p for p in target.iterdir() if p.is_file() and p.suffix.lower() in (".tif", ".tiff")]
+    from app.core.auth import is_owner
+    if not is_owner(request):              # a user deletes only an image no one else holds
+        uid = __import__("app.core.auth", fromlist=["acting_user_id"]).acting_user_id(request)
+        entries = [e for e in list_library(settings.UPLOAD_DIR) if Path(e["path"]).resolve().parent == target]
+        if not entries or any((e.get("owners") or []) != [uid] for e in entries):
+            raise HTTPException(status_code=404, detail="No such image in the library.")
     labelled = sum(len(store.load_annotations(p)) for p in rasters)
     if labelled:
         raise HTTPException(status_code=409, detail=f"This image has {labelled} label(s). Delete or move them first; the image was kept.")
@@ -416,7 +438,7 @@ def delete_library_copy(folder: str):
 
 
 @router.get("/{image_id}/tiles/{z}/{x}/{y}.png")
-def get_image_tile(image_id: str, z: int, x: int, y: int, bands: str | None = None, stretch: str | None = None):
+def get_image_tile(image_id: str, z: int, x: int, y: int, request: Request, bands: str | None = None, stretch: str | None = None):
     """Full-resolution XYZ tile (Web Mercator, 256 px) cut from the GeoTIFF.
 
     Optional display choice for the map only: `bands=4,3,2` and
@@ -428,9 +450,7 @@ def get_image_tile(image_id: str, z: int, x: int, y: int, bands: str | None = No
         disp_bands, disp_stretch = parse_display(bands, stretch)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None
-    entry = find_entry_by_image_id(settings.UPLOAD_DIR, image_id)
-    if entry is None:
-        raise HTTPException(status_code=404, detail=f"No library image with id '{image_id}'.")
+    entry = _visible(find_entry_by_image_id(settings.UPLOAD_DIR, image_id), request)
     try:
         from app.engine.tiles import cached_tile
         png = cached_tile(entry["path"], z, x, y, disp_bands, disp_stretch)
@@ -454,9 +474,7 @@ def get_image_preview(image_id: str, request: Request):
     import os
 
     settings.ensure_dirs()
-    entry = find_entry_by_image_id(settings.UPLOAD_DIR, image_id)
-    if entry is None:
-        raise HTTPException(status_code=404, detail=f"No library image with id '{image_id}'.")
+    entry = _visible(find_entry_by_image_id(settings.UPLOAD_DIR, image_id), request)
     path = Path(entry["path"])
     try:
         st = path.stat()

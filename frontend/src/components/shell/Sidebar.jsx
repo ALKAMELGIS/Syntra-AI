@@ -41,7 +41,8 @@ function useRunEstimate(image, selectedModels, aoi) {
           const ok = rs.filter(Boolean);
           if (!ok.length) return setEst(null);
           const seconds = ok.length === rs.length && ok.every((r) => r.seconds != null) ? ok.reduce((a, r) => a + r.seconds, 0) : null;
-          setEst({ area_km2: ok[0].area_km2, seconds, device: ok[0].device });
+          const credits = ok.every((r) => r.credits != null) ? ok.reduce((a, r) => a + r.credits, 0) : null;
+          setEst({ area_km2: ok[0].area_km2, seconds, device: ok[0].device, credits });
         });
     }, 300);
     return () => { live = false; clearTimeout(t); };
@@ -304,7 +305,8 @@ export default function Sidebar({ models, selectedModels, onToggleModel, onModel
       {mode !== "batch" && estimate && !running && (
         <p className="run-estimate mono" title={estimate.seconds == null ? "The time shows after this model has run once on this computer" : `Measured on this computer (${estimate.device})`}>
           {[estimate.area_km2 != null ? fmtAreaKm2(estimate.area_km2, estimate.area_km2 < 10 ? 2 : 0) : null,
-            estimate.seconds != null ? `about ${formatDuration(estimate.seconds)}` : null].filter(Boolean).join(" · ")}
+            estimate.seconds != null ? `about ${formatDuration(estimate.seconds)}` : null,
+            estimate.credits ? `${estimate.credits.toLocaleString("en-US")} credits` : null].filter(Boolean).join(" · ")}
         </p>
       )}
       <button className="run-button" disabled={!canRun} onClick={handleRunClick}>

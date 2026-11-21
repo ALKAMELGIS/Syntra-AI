@@ -3,7 +3,8 @@
 Finds objects in satellite and drone GeoTIFFs (trees, date palms, vehicles, ships, buildings,
 fields) and hands them back as GIS layers: GeoJSON, KML, Shapefile, GeoPackage, CSV. It also
 trains your own models from labels you draw, measures their accuracy on your imagery, and maps
-Sentinel-2 spectral indices (NDVI, NDMI, NDWI, …) over an area.
+Sentinel-2 spectral indices (NDVI, NDMI, NDWI, …) over an area. Several accounts can share one
+installation, each with its own data and a credit balance; the owner manages them in Settings > Admin.
 
 A local web app: a Python engine (FastAPI) and a browser interface (React + Leaflet).
 

@@ -74,6 +74,13 @@ class JobStore:
     def create(self, kind: str, *, job_id: str | None = None, status: str = "queued", **fields: Any) -> str:
         job_id = job_id or str(uuid.uuid4())
         now = _now()
+        if "owner_id" not in fields:               # the account whose request started it (None = the owner)
+            try:
+                from app.core.auth import acting_user_id, current_request
+                req = current_request()
+                fields["owner_id"] = acting_user_id(req) if req is not None else None
+            except Exception:  # noqa: BLE001 - no request context (startup, scripts)
+                fields["owner_id"] = None
         data = {**fields, "status": status}
         with self._lock:
             self._conn.execute(

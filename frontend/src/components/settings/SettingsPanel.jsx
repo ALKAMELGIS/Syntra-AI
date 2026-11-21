@@ -2,7 +2,8 @@ import React, { useEffect, useState } from "react";
 import EnvironmentPanel from "./EnvironmentPanel.jsx";
 import { HfSettings, RunPodSettings } from "../training/SamplesStore.jsx";
 import BasemapGallery from "../map/BasemapGallery.jsx";
-import { IconClose, IconGear, IconSun, IconMap, IconDatabase, IconRaster, IconClickAI } from "../ui/Icons.jsx";
+import { IconClose, IconGear, IconSun, IconMap, IconDatabase, IconRaster, IconClickAI, IconTable, IconSliders, IconSignOut } from "../ui/Icons.jsx";
+import { Users, Prices, Payments, SignIn } from "./AdminSections.jsx";
 import { EXPORTS } from "../shell/TopBar.jsx";
 import { api, auth } from "../../api/client.js";
 import { ACCENTS, usePref } from "../../lib/prefs.js";
@@ -185,7 +186,16 @@ function System() {
   );
 }
 
-const BODY = { general: General, theme: Theme, detection: Detection, map: MapSection, services: Services, system: System };
+// the owner's console: shown only to the owner
+const ADMIN = [
+  { id: "users", label: "Users", icon: IconTable },
+  { id: "prices", label: "Prices", icon: IconSliders },
+  { id: "payments", label: "Payments", icon: IconDatabase },
+  { id: "signin", label: "Sign-in", icon: IconSignOut },
+];
+
+const BODY = { general: General, theme: Theme, detection: Detection, map: MapSection, services: Services, system: System,
+  users: Users, prices: Prices, payments: Payments, signin: SignIn };
 
 export default function SettingsPanel({ open, onClose }) {
   const [tab, setTab] = useState(() => { try { return sessionStorage.getItem("syntra_settings_tab") || "general"; } catch { return "general"; } });
@@ -196,20 +206,26 @@ export default function SettingsPanel({ open, onClose }) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
+  const [owner, setOwner] = useState(false);
+  useEffect(() => { if (open) api.billingMe().then((b) => setOwner(!!b.owner)).catch(() => setOwner(false)); }, [open]);
   if (!open) return null;
-  const Body = BODY[tab] || General;
-  const current = SECTIONS.find((s) => s.id === tab) || SECTIONS[0];
+  const all = owner ? [...SECTIONS, ...ADMIN] : SECTIONS;
+  const current = all.find((s) => s.id === tab) || SECTIONS[0];
+  const Body = BODY[current.id] || General;
 
   return (
     <div className="set-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="set-window" role="dialog" aria-modal="true" aria-label="Settings">
         <nav className="set-nav" aria-label="Settings sections">
           <span className="set-nav-title">Settings</span>
-          {SECTIONS.map(({ id, label, icon: Icon }) => (
-            <button key={id} type="button" className={`set-nav-item ${tab === id ? "on" : ""}`}
-                    aria-current={tab === id ? "page" : undefined} onClick={() => setTab(id)}>
-              <Icon /><span>{label}</span>
-            </button>
+          {all.map(({ id, label, icon: Icon }) => (
+            <React.Fragment key={id}>
+              {id === "users" && <span className="set-nav-sub">Admin</span>}
+              <button type="button" className={`set-nav-item ${current.id === id ? "on" : ""}`}
+                      aria-current={current.id === id ? "page" : undefined} onClick={() => setTab(id)}>
+                <Icon /><span>{label}</span>
+              </button>
+            </React.Fragment>
           ))}
         </nav>
         <div className="set-main">

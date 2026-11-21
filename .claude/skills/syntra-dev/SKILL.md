@@ -136,6 +136,13 @@ reimplement them.
 - **Anything that runs a subprocess on the server** (pip, training) must be
   gated like `environment_actions_allowed()`: loopback by default, explicit
   env flag otherwise.
+- **Accounts.** A member sees only data stamped with their id: images keep an
+  `owners` list, jobs an `owner_id` (set by `JobStore.create` from the request).
+  New routes that return images, jobs or results check `can_see` / `can_see_any`
+  from `core/auth.py`, answering 404 (not 403) for someone else's data. Owner-only
+  routes depend on `require_owner`. Anything that costs credits goes through
+  `core/billing.py` (charge at start, refund on failure, 402 when short); the owner
+  is never charged.
 - Long work runs as a background job stored with `get_store()` from
   `app/core/jobs.py` (create, update, append, get by kind), with a pollable
   status endpoint. Never keep job state in a module-level dict: it vanishes

@@ -46,12 +46,21 @@ export function failureMessage(status, detail, upload = false) {
 // expired): tell the sign-in gate, which swaps the app for the sign-in page.
 export const SIGNED_OUT = "syntra:signed-out";
 
+// 402 from a Run: not enough credits. The top bar opens the credits window.
+export const NEED_CREDITS = "syntra:need-credits";
+// any change to the balance (a Run started, credits bought): the top bar re-reads it
+export const CREDITS_CHANGED = "syntra:credits-changed";
+
 async function handle(res) {
   if (res.status === 401 && !res.url.includes("/api/auth/")) window.dispatchEvent(new Event(SIGNED_OUT));
+  if (res.status === 402) {
+    const body = await res.clone().json().catch(() => ({}));
+    window.dispatchEvent(new CustomEvent(NEED_CREDITS, { detail: body.detail || {} }));
+  }
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     const detail = body.detail;
-    const message = failureMessage(res.status, detail);
+    const message = res.status === 402 && detail?.message ? detail.message : failureMessage(res.status, detail);
     const err = new Error(message);
     err.detail = detail;
     throw err;
@@ -83,6 +92,24 @@ export const api = {
   pushStatus: (jobId) => request(`${BASE}/samples/push/${jobId}`).then(handle),
   // --- sample library: classes, dataset versions, models (data/classes, datasets, models) ---
   library: () => request(`${BASE}/library`).then(handle),
+  // --- credits: the signed-in account ---
+  billingMe: () => request(`${BASE}/billing/me`).then(handle),
+  billingCheckout: (packageId) => request(`${BASE}/billing/checkout`, json({ package_id: packageId })).then(handle),
+  // --- the owner's console ---
+  adminSummary: () => request(`${BASE}/admin/summary`).then(handle),
+  adminUsers: () => request(`${BASE}/admin/users`).then(handle),
+  adminCredits: (id, body) => request(`${BASE}/admin/users/${id}/credits`, json(body)).then(handle),
+  adminPatchUser: (id, body) => request(`${BASE}/admin/users/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).then(handle),
+  adminDeleteUser: (id) => request(`${BASE}/admin/users/${id}`, { method: "DELETE" }).then(handle),
+  adminLedger: (userId) => request(`${BASE}/admin/ledger${userId ? `?user_id=${userId}` : ""}`).then(handle),
+  adminPayments: () => request(`${BASE}/admin/payments`).then(handle),
+  adminPricing: () => request(`${BASE}/admin/pricing`).then(handle),
+  adminSavePricing: (p) => request(`${BASE}/admin/pricing`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) }).then(handle),
+  adminStripe: () => request(`${BASE}/admin/stripe`).then(handle),
+  adminSaveStripe: (b) => request(`${BASE}/admin/stripe`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(b) }).then(handle),
+  adminSignin: () => request(`${BASE}/admin/signin`).then(handle),
+  adminSaveSignin: (b) => request(`${BASE}/admin/signin`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(b) }).then(handle),
+
   // --- remote sensing: Sentinel-2 indices over an AOI ---
   rsStatus: () => request(`${BASE}/rs`).then(handle),
   rsScenes: (body) => request(`${BASE}/rs/scenes`, json(body)).then(handle),
@@ -162,7 +189,7 @@ export const api = {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
-    }).then(handle),
+    }).then(handle).then((r) => { window.dispatchEvent(new Event(CREDITS_CHANGED)); return r; }),
   job: (jobId) => request(`${BASE}/jobs/${jobId}`).then(handle),
   listJobs: (kind, limit = 20, imageId = null) =>
     request(`${BASE}/jobs?kind=${kind}&limit=${limit}${imageId ? `&image_id=${encodeURIComponent(imageId)}` : ""}`).then(handle),

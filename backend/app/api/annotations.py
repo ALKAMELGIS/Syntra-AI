@@ -30,7 +30,9 @@ class AddAnnotationRequest(BaseModel):
 def _entry_or_404(image_id: str) -> dict:
     settings.ensure_dirs()
     entry = find_entry_by_image_id(settings.UPLOAD_DIR, image_id)
-    if entry is None:
+    from app.core.auth import can_see_any, current_request
+    req = current_request()
+    if entry is None or (req is not None and not can_see_any(req, entry.get("owners"))):
         raise HTTPException(status_code=404, detail=f"No library image with id '{image_id}'.")
     if not entry.get("bounds_wgs84") or not entry.get("width") or not entry.get("height"):
         raise HTTPException(

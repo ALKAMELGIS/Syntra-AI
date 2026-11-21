@@ -37,6 +37,13 @@ def _result_path(job_id: str, model_id: str) -> Path:
     path = (settings.RESULTS_DIR / job_id / f"{model_id}.geojson").resolve()
     if root not in path.parents or not path.exists():
         raise HTTPException(status_code=404, detail="No results found for this job/model.")
+    from app.core.auth import can_see, current_request
+    from app.core.jobs import get_store
+    req = current_request()
+    if req is not None:                        # a user reads only the results of their own runs
+        job = get_store().get(job_id) or {}
+        if not can_see(req, job.get("owner_id")):
+            raise HTTPException(status_code=404, detail="No results found for this job/model.")
     return path
 
 

@@ -749,3 +749,33 @@ to its row; Ctrl/Shift-click adds or removes; Ctrl-drag draws a box that selects
 the visible layers it touches (Shift too: adds); a click on empty map clears. Rows selected in the
 table are drawn in the accent colour with a dark halo and brought into view without changing the
 zoom. Verified: screenshot of a 9-feature box selection with the table following.
+
+## Accounts, credits and the owner's console
+
+| Who | Can |
+| --- | --- |
+| Owner (the first account, an API-key caller, or anyone with sign-in off) | Everything, free and unlimited; sees every account's data; Settings > Admin |
+| Member | Their own images, runs and results only; spends credits on Runs |
+
+- **Sign-in:** email and password, or Google / GitHub (OAuth 2.0 code flow, `api/oauth.py`) once the owner
+  saves each provider's client id and secret in Settings > Admin > Sign-in (the callback URL to register is
+  shown there). A verified email that matches an existing account links to it.
+- **Credits** (`core/billing.py`): a new member gets the free credits (5,000). A Run costs by its area:
+  up to 100 km² 150, up to 1,000 km² 200, then +50 per started 1,000 km². Charged when the Run starts,
+  refunded if it fails; refused with 402 when the balance is short, and the credits window opens. Every
+  change is a ledger row (who, why, balance after).
+- **Packages:** $20 = 2,500 · $50 = 6,500 · $100 = 15,000 credits (125, 130, 150 credits per dollar, so a
+  bigger package is never a worse buy). Paid with Stripe Checkout: the owner saves a secret key (and a
+  webhook secret on a public server). Credits are added once per checkout, by the webhook or when the buyer
+  returns and the engine confirms the session with Stripe.
+- **Owner's console** (Settings > Admin): Users (totals, search, balance, runs, last seen; add or set
+  credits with a note, disable, delete; ledger per account), Prices (all of the above editable), Payments
+  (Stripe keys, payment list), Sign-in (open or close new accounts, Google and GitHub apps).
+- **Data per account:** images record who added them; jobs and results record who ran them; a member sees
+  and opens only their own (404 otherwise). Data from before accounts belongs to the owner. Labels and the
+  model library stay shared and owner-managed.
+
+Verified: `test_billing_offline.py` (costs, price validation, welcome credits, charge/refuse/refund, owner
+console, data visibility, Stripe signature and once-only crediting, OAuth link and create with the
+provider mocked); screenshots of Users, Credits and the sign-in page. Not yet run against live Stripe,
+Google or GitHub.

@@ -18,10 +18,12 @@ in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 | File | What it does |
 | --- | --- |
+| `admin.py` | The owner's console: accounts, credits, prices, payments and sign-in methods |
 | `annotations.py` | Per-image object annotations: the real "Annotate" step |
 | `auth.py` | Sign in, create account, sign out |
 | `basemaps.py` | Google satellite as a base map, through the official Map Tiles API |
 | `benchmark.py` | Benchmark endpoint: computes real metrics from submitted predictions + ground truth |
+| `billing.py` | Credits for the signed-in account: balance, prices, history, and buying a package with Stripe Checkout |
 | `cloud.py` | Train on a RunPod GPU: the API key, start, watch, stop |
 | `compute.py` | Compute device inventory: backs the top-bar GPU/CPU status widget |
 | `datasets.py` | Dataset management API: spec Section 9 |
@@ -30,6 +32,7 @@ in [ARCHITECTURE.md](ARCHITECTURE.md).
 | `jobs.py` | Job history across every kind of background job (app.core.jobs) |
 | `library.py` | The sample library, by class: what is labelled, which dataset versions and models exist, which model is approv… |
 | `models.py` | GET endpoints for the Detection Models dashboard (Phase 4) |
+| `oauth.py` | Sign in with Google or GitHub (OAuth 2.0 authorization code flow) |
 | `predict.py` | Run-prediction endpoint |
 | `remote_sensing.py` | Remote sensing: Sentinel-2 L2A spectral indices over an AOI, and per-feature index values written into a resul… |
 | `results.py` | Serve exported GeoJSON + manifest files for a completed run |
@@ -44,6 +47,7 @@ in [ARCHITECTURE.md](ARCHITECTURE.md).
 | File | What it does |
 | --- | --- |
 | `auth.py` | Accounts and sign-in sessions |
+| `billing.py` | Credits: every account has a balance |
 | `compute.py` | Compute device manager: Phase 2 of the roadmap |
 | `config.py` | Global configuration for the Syntra AI Detection Engine |
 | `image_library.py` | Source-image library: sidecar metadata for uploaded GeoTIFFs |
@@ -167,6 +171,12 @@ in [ARCHITECTURE.md](ARCHITECTURE.md).
 | `AuthGate.jsx` | Sign in / Create account, shown in place of the app until a session exists |
 | `EarthGlobe.jsx` | The sign-in globe: NASA's Blue Marble drawn on a real orthographic sphere (not a scrolling flat image), lit fr… |
 
+**components/billing/**
+
+| File | What it does |
+| --- | --- |
+| `CreditsDialog.jsx` | Credits: the balance, what a Run costs, the packages to buy and recent changes |
+
 **components/detection/**
 
 | File | What it does |
@@ -218,6 +228,7 @@ in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 | File | What it does |
 | --- | --- |
+| `AdminSections.jsx` | The owner's console inside Settings: Users (balances, runs, add credits, disable), Prices (free credits, Run c… |
 | `EnvironmentPanel.jsx` | Settings > System: checks the Python packages the engine needs and installs what is missing (this computer onl… |
 | `SettingsPanel.jsx` | Settings: one window, a section list on the left, rows of label + control |
 

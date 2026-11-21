@@ -39,6 +39,7 @@ def status(request: Request):
         "user": user.public() if user else None,
         # the very first account can only be made from this machine
         "first_run_here": n == 0 and is_loopback(request),
+        "oauth": __import__("app.api.oauth", fromlist=["providers"]).providers(),
     }
 
 
@@ -62,6 +63,8 @@ async def signup(body: SignUp, request: Request, response: Response):
         user = await run_in_threadpool(store.create, email, name, body.password)
     except ValueError:
         raise HTTPException(409, detail={"field": "email", "message": "An account with this email exists. Sign in instead"})
+    auth.welcome(user)
+    user = store.get(user.id)
     _set_cookie(response, request, store.new_session(user.id))
     return {"user": user.public()}
 
