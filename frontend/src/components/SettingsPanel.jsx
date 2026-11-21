@@ -2,7 +2,8 @@ import React, { useEffect, useState } from "react";
 import EnvironmentPanel from "./EnvironmentPanel.jsx";
 import { HfSettings, RunPodSettings } from "./SamplesStore.jsx";
 import { BasemapGallery } from "./LayersPanel.jsx";
-import { IconClose, IconGear, IconSun, IconMap, IconDatabase, IconRaster } from "./Icons.jsx";
+import { IconClose, IconGear, IconSun, IconMap, IconDatabase, IconRaster, IconClickAI } from "./Icons.jsx";
+import { EXPORTS } from "./TopBar.jsx";
 import { api, auth } from "../api/client.js";
 import { ACCENTS, usePref } from "../prefs.js";
 
@@ -12,6 +13,7 @@ import { ACCENTS, usePref } from "../prefs.js";
 const SECTIONS = [
   { id: "general", label: "General", icon: IconGear },
   { id: "theme", label: "Theme", icon: IconSun },
+  { id: "detection", label: "Detection", icon: IconClickAI },
   { id: "map", label: "Map", icon: IconMap },
   { id: "services", label: "Services", icon: IconDatabase },
   { id: "system", label: "System", icon: IconRaster },
@@ -121,6 +123,42 @@ function Theme() {
   );
 }
 
+function Detection() {
+  const [conf, setConf] = usePref("conf");
+  const [tile, setTile] = usePref("tile");
+  const [overlap, setOverlap] = usePref("overlap");
+  const [gsd, setGsd] = usePref("gsdmatch");
+  const [exp, setExp] = usePref("export");
+  return (
+    <>
+      <Group title="Run">
+        <Row label="Minimum score" hint="Model uses each model's own default">
+          <select className="set-select mono" value={conf} onChange={(e) => setConf(e.target.value)} aria-label="Minimum score">
+            <option value="model">Model</option>
+            {["0.1", "0.2", "0.25", "0.3", "0.4", "0.5", "0.6", "0.7", "0.8", "0.9"].map((v) => <option key={v} value={v}>{v}</option>)}
+          </select>
+        </Row>
+        <Row label="Match training scale" hint="Tiles are read at the GSD the model learned, when known">
+          <Seg label="Match training scale" value={gsd} onChange={setGsd} options={[["on", "On"], ["off", "Off"]]} />
+        </Row>
+        <Row label="Tile size" hint="When the scale is not matched">
+          <Seg label="Tile size" value={tile} onChange={setTile} options={[["auto", "Auto"], ["512", "512"], ["640", "640"], ["1024", "1024"], ["2048", "2048"]]} />
+        </Row>
+        <Row label="Tile overlap">
+          <Seg label="Tile overlap" value={overlap} onChange={setOverlap} options={[["0.1", "10%"], ["0.2", "20%"], ["0.3", "30%"]]} />
+        </Row>
+      </Group>
+      <Group title="Export">
+        <Row label="Default format" hint="Listed first in File">
+          <select className="set-select" value={exp} onChange={(e) => setExp(e.target.value)} aria-label="Default export format">
+            {EXPORTS.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+          </select>
+        </Row>
+      </Group>
+    </>
+  );
+}
+
 function MapSection() {
   const [basemap, setBasemap] = usePref("basemap");
   return (
@@ -151,7 +189,7 @@ function System() {
   );
 }
 
-const BODY = { general: General, theme: Theme, map: MapSection, services: Services, system: System };
+const BODY = { general: General, theme: Theme, detection: Detection, map: MapSection, services: Services, system: System };
 
 export default function SettingsPanel({ open, onClose }) {
   const [tab, setTab] = useState(() => { try { return sessionStorage.getItem("syntra_settings_tab") || "general"; } catch { return "general"; } });

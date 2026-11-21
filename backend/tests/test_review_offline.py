@@ -130,3 +130,17 @@ def test_review_reaches_the_dataset(run):
     assert neg and all(p.read_text().strip() == "" for p in neg)          # "not a ship": no label rows
     pos = [p for p in labels if "_neg_" not in p.name and p.read_text().strip()]
     assert pos and all(len(row.split()) == 9 for p in pos for row in p.read_text().splitlines())   # OBB rows
+
+
+def test_fix_relabels_to_another_class(run):
+    c, job_id, img = run
+    url = f"/api/results/{job_id}/ship_detection/review"
+    r = c.put(url, json={"changes": {"0": "fix: tug ", "2": "accept"}}).json()
+    assert (r["fixed"], r["accepted"], r["open"]) == (1, 1, 1)
+    assert c.get(url).json()["decisions"]["0"] == "fix:tug"
+    assert c.put(url, json={"changes": {"1": "fix:../x"}}).status_code == 400
+    assert c.put(url, json={"changes": {"1": "fix:"}}).status_code == 400
+    r = c.post(url + "/apply").json()
+    assert (r["fixed"], r["accepted"]) == (1, 1)
+    anns = c.get(f"/api/images/{img['image_id']}/annotations").json()["annotations"]
+    assert [a["class_name"] for a in anns if a["class_name"] in ("ship", "tug")].count("tug") == 1

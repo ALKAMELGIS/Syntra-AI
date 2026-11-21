@@ -44,6 +44,7 @@ class PredictRequest(BaseModel):
     aoi: dict | None = None               # WGS84 GeoJSON Polygon/Feature drawn on the map; analyse only inside it
     index_bands: list[int] | None = None  # vegetation: [red, nir] for NDVI or [red, green, blue] for VARI
     index_threshold: float | None = None  # vegetation: index value above which a pixel counts as vegetation
+    match_gsd: bool = True                # read tiles at the scale the model was trained at, when known
 
 
 def _run_job(job_id: str, req: PredictRequest):
@@ -81,11 +82,13 @@ def _run_job(job_id: str, req: PredictRequest):
                         eta_seconds=eta.update(n, total_ref["n"]))
 
         source_crs, width, height = raster_crs_and_size(req.image_path)
-        if hasattr(model, "preferred_tile_size"):
+        if req.match_gsd and hasattr(model, "preferred_tile_size"):
             # read tiles at the scale the model was trained at
             from app.engine.segmentation_run import ground_gsd_m
-            req = req.model_copy(update={"tile_size": model.preferred_tile_size(ground_gsd_m(req.image_path))})
-            jobs.update(job_id, tile_size=req.tile_size)
+            matched = model.preferred_tile_size(ground_gsd_m(req.image_path))
+            if matched:
+                req = req.model_copy(update={"tile_size": matched})
+                jobs.update(job_id, tile_size=req.tile_size, gsd_matched=True)
         aoi = None
         if req.aoi:
             from app.engine.aoi import prepare_aoi
@@ -242,7 +245,7 @@ def estimate(req: EstimateRequest):
     try:
         model = build_model(req.model_id)
         if hasattr(model, "preferred_tile_size") and gsd:
-            tile = model.preferred_tile_size(gsd)
+            tile = model.preferred_tile_size(gsd) or tile
     except Exception:
         pass
     if req.aoi:

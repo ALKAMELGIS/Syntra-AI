@@ -29,6 +29,10 @@ real, what is written but unrun, and how it was verified.
   `plan_rgb()` + `iter_tiles(rgb_plan=...)`: chosen RGB bands, scene-wide
   8-bit stretch, empty tiles skipped. New sensors with a known band layout
   go in `SENSOR_RGB` with a note on how the order was established.
+- Remote sensing goes through `app/engine/sentinel.py`: fetch FLOAT32 values once,
+  draw the colours, legend and attributes from those same numbers, cache the answer.
+  Never put a per-feature index value on a feature smaller than a few source pixels;
+  write a `_note` instead.
 - Anything new a GeoTIFF can get wrong belongs in `raster_health.py` as a
   finding with a level, a plain explanation and the fix.
 - Accuracy claims come from `score_layer` (results vs labels inside the

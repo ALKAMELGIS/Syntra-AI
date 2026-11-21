@@ -9,7 +9,7 @@ import PerformancePanel from "./components/PerformancePanel.jsx";
 import LibraryPanel from "./components/LibraryPanel.jsx";
 import { IconMap, IconSliders } from "./components/Icons.jsx";
 import { api } from "./api/client.js";
-import { getPref } from "./prefs.js";
+import { getPref, detectionOptions } from "./prefs.js";
 
 const PALETTE = ["#5b8cff", "#b48ead", "#f5a623", "#ff5d6c", "#c678dd", "#56c7d6", "#e8a87c", "#a8e6cf"];
 
@@ -229,6 +229,7 @@ export default function App({ user = null, onSignOut = null }) {
             image_id: img.image_id,
             model_id: modelId,
             gpu_indices: gpuIndices,
+            ...detectionOptions(),
             ...(aoi ? { aoi } : {}),
           });
           setJobs((prev) => ({

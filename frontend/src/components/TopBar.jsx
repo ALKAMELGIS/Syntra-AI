@@ -13,7 +13,10 @@ function useOutsideClose(ref, close) {
   }, [ref, close]);
 }
 
+export const EXPORTS = [["geojson", "GeoJSON"], ["kml", "KML"], ["shapefile", "Shapefile"], ["gpkg", "GeoPackage"], ["csv", "CSV"]];
+
 function FileMenu({ hasImage, hasJob, onExport }) {
+  const [preferred] = usePref("export");
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   useOutsideClose(ref, () => setOpen(false));
@@ -77,21 +80,11 @@ function FileMenu({ hasImage, hasJob, onExport }) {
           <button className="file-menu-item" disabled={!hasImage} onClick={saveProject}><IconUpload style={{ transform: "rotate(180deg)" }} /> Save project</button>
           <button className="file-menu-item" disabled={!hasImage} onClick={closeProject}><IconClose /> Close project</button>
           <div className="file-menu-divider" />
-          <button className="file-menu-item" disabled={!hasJob} onClick={() => onExport("geojson")}>
-            Export GeoJSON
-          </button>
-          <button className="file-menu-item" disabled={!hasJob} onClick={() => onExport("kml")}>
-            Export KML
-          </button>
-          <button className="file-menu-item" disabled={!hasJob} onClick={() => onExport("shapefile")}>
-            Export Shapefile
-          </button>
-          <button className="file-menu-item" disabled={!hasJob} onClick={() => onExport("gpkg")}>
-            Export GeoPackage
-          </button>
-          <button className="file-menu-item" disabled={!hasJob} onClick={() => onExport("csv")}>
-            Export CSV
-          </button>
+          {EXPORTS.slice().sort((a, b) => (b[0] === preferred) - (a[0] === preferred)).map(([k, label]) => (
+            <button key={k} className="file-menu-item" disabled={!hasJob} onClick={() => onExport(k)}>
+              Export {label}{k === preferred && <span className="file-menu-hint">Default</span>}
+            </button>
+          ))}
         </div>
       )}
     </div>

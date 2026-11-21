@@ -12,7 +12,22 @@ const KEYS = {
   basemap: ["syntra_basemap", "satellite"],
   restore: ["syntra_restore", "on"],        // on | off: reopen the last project
   area: ["syntra_area_unit", "metric"],     // metric | ha
+  conf: ["syntra_conf", "model"],           // model | 0.1 … 0.9: minimum score a detection must reach
+  tile: ["syntra_tile", "auto"],            // auto (engine default) | 512 | 640 | 1024 | 2048 px
+  overlap: ["syntra_overlap", "0.2"],       // share of a tile that neighbours overlap
+  gsdmatch: ["syntra_gsd_match", "on"],     // read tiles at the model's training scale when known
+  export: ["syntra_export", "geojson"],     // the format File lists first
 };
+
+// Options for a detection run, from Settings > Detection
+export function detectionOptions() {
+  const o = { match_gsd: read("gsdmatch") !== "off", overlap: Number(read("overlap")) || 0.2 };
+  const c = read("conf");
+  if (c !== "model" && isFinite(Number(c))) o.confidence_threshold = Number(c);
+  const t = read("tile");
+  if (t !== "auto" && isFinite(Number(t))) o.tile_size = Number(t);
+  return o;
+}
 
 // Each accent has a dark-theme and a light-theme shade, both 4.5:1 on their surface
 export const ACCENTS = {

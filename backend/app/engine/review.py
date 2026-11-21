@@ -26,6 +26,14 @@ from app.annotations import store
 PAD_FRACTION = 0.25          # area = the object's box + 25% of its size on each side
 PAD_MIN_PX = 8
 DECISIONS = ("accept", "reject")
+FIX = "fix:"                 # "fix:<class>": right object, wrong class: kept as a label of <class>
+_CLASS_OK = __import__("re").compile(r"^[A-Za-z0-9 _+\-]{1,48}$")
+
+
+def valid_decision(v) -> bool:
+    if v in DECISIONS:
+        return True
+    return isinstance(v, str) and v.startswith(FIX) and bool(_CLASS_OK.match(v[len(FIX):].strip()))
 
 
 def review_path(result_geojson: Path) -> Path:
@@ -37,7 +45,7 @@ def load_review(result_geojson: Path) -> dict[str, str]:
         d = json.loads(review_path(result_geojson).read_text()).get("decisions", {})
     except (OSError, ValueError):
         return {}
-    return {k: v for k, v in d.items() if v in DECISIONS}
+    return {k: v for k, v in d.items() if valid_decision(v)}
 
 
 def save_review(result_geojson: Path, changes: dict[str, str | None]) -> dict[str, str]:
@@ -46,10 +54,10 @@ def save_review(result_geojson: Path, changes: dict[str, str | None]) -> dict[st
     for k, v in changes.items():
         if v is None:
             d.pop(str(k), None)
-        elif v in DECISIONS:
-            d[str(k)] = v
+        elif valid_decision(v):
+            d[str(k)] = v if v in DECISIONS else FIX + v[len(FIX):].strip()
         else:
-            raise ValueError(f"Unknown decision '{v}': use accept, reject or null")
+            raise ValueError(f"Unknown decision '{v}': use accept, reject, fix:<class> or null")
     p = review_path(result_geojson)
     tmp = p.with_suffix(".tmp")
     tmp.write_text(json.dumps({"decisions": d}, indent=1))
@@ -80,7 +88,7 @@ def apply_review(result_geojson: Path, job_id: str, model_id: str, entry: dict) 
     import uuid
 
     now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-    accepted = rejected = skipped = 0
+    accepted = rejected = fixed = skipped = 0
     for key, decision in sorted(decisions.items(), key=lambda kv: int(kv[0])):
         i = int(key)
         ring = _ring(feats[i]) if 0 <= i < len(feats) else None
@@ -97,12 +105,16 @@ def apply_review(result_geojson: Path, job_id: str, model_id: str, entry: dict) 
         tag = {**source, "index": i, "decision": decision}
         anns.append({"id": str(uuid.uuid4()), "class_name": store.TRAIN_AREA, "points_lonlat": area_ll,
                      "points_px": area_px, "created_at": now, "source": tag})
-        if decision == "accept":
-            cls = str((feats[i].get("properties") or {}).get("class") or "object")
+        if decision == "accept" or decision.startswith(FIX):
+            cls = decision[len(FIX):] if decision.startswith(FIX) else \
+                str((feats[i].get("properties") or {}).get("class") or "object")
             anns.append({"id": str(uuid.uuid4()), "class_name": cls, "points_lonlat": ring,
                          "points_px": [list(p) for p in px], "created_at": now, "source": tag})
-            accepted += 1
+            if decision == "accept":
+                accepted += 1
+            else:
+                fixed += 1
         else:
             rejected += 1
     store.save_annotations(entry["path"], anns)
-    return {"accepted": accepted, "rejected": rejected, "skipped": skipped, "annotations": len(anns)}
+    return {"accepted": accepted, "fixed": fixed, "rejected": rejected, "skipped": skipped, "annotations": len(anns)}

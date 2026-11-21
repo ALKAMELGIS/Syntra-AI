@@ -29,6 +29,7 @@ class ApprovedModel:
     task: str
     test: dict | None
     dataset_version: str | None
+    training_gsd_m: float | None = None     # model.json, else the dataset manifest
 
 
 def _weights(run: Path) -> Path | None:
@@ -67,10 +68,17 @@ def list_approved() -> list[ApprovedModel]:
         if not names:
             names = g.name.split("+")
         test = next(iter(sorted(run.rglob("test_metrics.json"))), None)
+        man = layout.read_json(ds / "manifest.json", {}) or {} if ds.is_dir() else {}
+        gsd = info.get("training_gsd_m") or man.get("gsd_m")
+        try:
+            gsd = float(gsd) if gsd else None
+        except (TypeError, ValueError):
+            gsd = None
         out.append(ApprovedModel(
             model_id=PREFIX + g.name, group=g.name, version=version, weights=str(w),
             class_names=dict(enumerate(names)), task=task,
             test=layout.read_json(test, None) if test else None, dataset_version=info.get("dataset_version"),
+            training_gsd_m=gsd,
         ))
     return out
 

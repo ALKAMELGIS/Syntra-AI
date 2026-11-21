@@ -27,7 +27,8 @@ def build_model(model_id: str, version: str | None = None) -> DetectionModel:
         from app.models.custom_detector import CustomYoloDetector
         # a run keeps the version it was started with, even if the owner approves another meanwhile
         weights = weights_of(approved.group, version) if version and version != approved.version else approved.weights
-        return CustomYoloDetector(get_metadata(model_id), weights_path=weights or approved.weights)
+        return CustomYoloDetector(get_metadata(model_id), weights_path=weights or approved.weights,
+                                  training_gsd_m=approved.training_gsd_m)
 
     metadata = get_metadata(model_id)
 

@@ -82,6 +82,17 @@ export const api = {
   pushStatus: (jobId) => request(`${BASE}/samples/push/${jobId}`).then(handle),
   // --- sample library: classes, dataset versions, models (data/classes, datasets, models) ---
   library: () => request(`${BASE}/library`).then(handle),
+  // --- remote sensing: Sentinel-2 indices over an AOI ---
+  rsStatus: () => request(`${BASE}/rs`).then(handle),
+  rsScenes: (body) => request(`${BASE}/rs/scenes`, json(body)).then(handle),
+  rsRender: (body) => request(`${BASE}/rs/render`, json(body)).then(handle),
+  rsAttributes: (body) => request(`${BASE}/rs/attributes`, json(body)).then(handle),
+  rsTimeline: (body) => request(`${BASE}/rs/timeline`, json(body)).then(handle),
+  rsExport: async (body) => {
+    const res = await request(`${BASE}/rs/export`, json(body));
+    if (!res.ok) return handle(res);
+    return res.blob();
+  },
   libraryBuild: (slug, body = {}) => request(`${BASE}/library/${encodeURIComponent(slug)}/build`, json(body)).then(handle),
   libraryApprove: (group, version) => request(`${BASE}/library/${encodeURIComponent(group)}/approve`, json({ version })).then(handle),
   estimate: (body) => request(`${BASE}/predict/estimate`, json(body)).then(handle),

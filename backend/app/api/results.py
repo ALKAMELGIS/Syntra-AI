@@ -123,7 +123,8 @@ class ReviewChanges(BaseModel):
 def _review_counts(decisions: dict[str, str], total: int) -> dict:
     acc = sum(1 for v in decisions.values() if v == "accept")
     rej = sum(1 for v in decisions.values() if v == "reject")
-    return {"total": total, "accepted": acc, "rejected": rej, "open": total - acc - rej}
+    fix = sum(1 for v in decisions.values() if v.startswith("fix:"))
+    return {"total": total, "accepted": acc, "fixed": fix, "rejected": rej, "open": total - acc - rej - fix}
 
 
 @router.get("/{job_id}/{model_id}/review")

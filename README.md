@@ -211,6 +211,54 @@ The Analysis panel has a *Min score* slider that filters results on the map and 
 without rerunning. The model list puts models suited to the image's resolution first; the others
 are muted with the reason in their tooltip.
 
+## Remote sensing: Sentinel-2 indices over the AOI
+
+The satellite button in the map toolbar opens a panel that draws a Sentinel-2 L2A index over the
+drawn AOI and redraws it on every change (index, cloud limit, dates, scene, cloud mask).
+
+| Index | For | Bands |
+|---|---|---|
+| NDVI, SAVI, MSAVI, EVI | vegetation health and cover | B02, B04, B08 |
+| NDRE | early crop stress | B05, B8A |
+| NDMI | vegetation moisture (ramp from Sentinel Hub custom scripts, CC BY-SA 4.0) | B8A, B11 |
+| NDWI | open water | B03, B08 |
+| NDSI | snow and ice | B03, B11 |
+| NDBI, BSI | built-up land, bare soil | B02, B04, B08, B11 |
+| NBR | burnt areas | B08, B12 |
+
+How it works (`app/engine/sentinel.py`, `app/api/remote_sensing.py`):
+- One Sentinel Hub configuration id in `backend/.env` (`SENTINELHUB_INSTANCE_ID`, see
+  `.env.example`). The engine asks WMS GetMap for FLOAT32 index values (evalscript sent with the
+  request, clouds masked with the L2A scene classification), in Web Mercator at about 10 m.
+- The coloured layer, the legend numbers (mean, P10-P90, clear share) and the attributes all come
+  from those same values, so they agree, and one request serves all three. Answers are cached on
+  disk (`data/cache/sentinel`), so returning to a scene costs nothing.
+- Add to layer: per feature of a result layer, `<index>_mean`, `_min`, `_max`, `_std`, `_px`,
+  `_date`. A feature under 4 Sentinel-2 pixels (about 400 m²) gets `<index>_note = too small`
+  instead of a number: one 10 m pixel can't describe a single tree. For per-tree values, use
+  imagery with its own NIR band.
+- Timeline: mean over the AOI on up to 12 clear scenes in the range (WFS scene list).
+- Export GeoTIFF: FLOAT32, EPSG:3857, NaN outside the AOI and under clouds.
+- Rate limits: a 429 from Sentinel Hub is waited out once (under 20 s), otherwise reported with
+  the wait time.
+
+Verified: `test_remote_sensing_offline.py` (10 tests, Sentinel Hub mocked); GetCapabilities,
+WFS scenes, PNG and FLOAT32 GetMap with an evalscript checked live against the configured
+instance from the user's browser (Nov 2026); panel screenshot with synthetic values. Not yet run
+end to end on the user's machine.
+
+## Review, scale and run settings
+
+- Review: A keep, X reject, E fix the class (`fix:<class>` decision, applied as a label of that
+  class). Test: `test_fix_relabels_to_another_class`.
+- Training scale: an approved Library model reads tiles at the GSD it was trained at, when known
+  (`model.json` `training_gsd_m`, or the dataset manifest's `gsd_m`, now recorded when the
+  Library builds a dataset). Edge tiles are padded so they are scaled like full ones. Settings >
+  Detection can turn it off. Tests: `test_gsd_match_offline.py`.
+- Settings > Detection: minimum score, tile size, overlap, default export format.
+- Accuracy after training is already automatic when the dataset has accuracy areas (test split,
+  `test_metrics.json`); RunPod GPU is chosen by default in Train when a RunPod key is saved.
+
 ## Settings
 
 One window from the map toolbar (gear), five sections. Every choice applies at once and is kept
@@ -219,6 +267,7 @@ in this browser (`frontend/src/prefs.js`); keys and tokens go to the engine and 
 | Section | Options |
 |---|---|
 | General | Reopen last project (on/off), area unit (km² · m² or ha), engine status, data folder, version |
+| Detection | Minimum score, match training scale, tile size, overlap, default export format |
 | Theme | Mode (dark, light, system), accent (5, each with a dark and a light shade), toolbar icons, motion |
 | Map | Basemap gallery, Google Map Tiles key |
 | Services | Hugging Face, RunPod |

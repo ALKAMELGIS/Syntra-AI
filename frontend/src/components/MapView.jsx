@@ -7,7 +7,8 @@ import AnnotationLayer from "./AnnotationTool.jsx";
 import ImageLibrary from "./ImageLibrary.jsx";
 import SettingsPanel from "./SettingsPanel.jsx";
 import { usePref, getPref } from "../prefs.js";
-import { IconExpand, IconBasemap, IconLayers, IconGallery, IconGear, IconAnalysis, IconTrain, IconPerformance, IconDatabase, IconZoomTo, IconTable } from "./Icons.jsx";
+import { IconExpand, IconBasemap, IconLayers, IconGallery, IconGear, IconAnalysis, IconTrain, IconPerformance, IconDatabase, IconZoomTo, IconTable, IconSatellite } from "./Icons.jsx";
+import RemoteSensingPanel from "./RemoteSensingPanel.jsx";
 import LayersPanel from "./LayersPanel.jsx";
 import AttributeTable from "./AttributeTable.jsx";
 import { featuresBounds, fieldsOf, fmtValue } from "./layerUtils.js";
@@ -27,6 +28,7 @@ function MapToolbar({
   layers, sourceImage, basemap, onBasemapChange, legendOpen, onLegendToggle,
   onOpenLibrary, onOpenSettings, analysisOpen, onToggleAnalysis, analysisCount, analysisRunning,
   detectionsVisible, onToggleDetections, trainOpen, onToggleTrain, perfOpen, onTogglePerf, libOpen, onToggleLib, editMenu,
+  rsOpen, onToggleRs,
 }) {
   const map = useMap();
   const toolbarRef = useRef(null);
@@ -88,6 +90,10 @@ function MapToolbar({
       <button className={`map-tool-btn ${libOpen ? "active" : ""}`} data-tool="samples" title="Sample library"
               aria-expanded={libOpen} onClick={onToggleLib}>
         <IconDatabase />
+      </button>
+      <button className={`map-tool-btn ${rsOpen ? "active" : ""}`} data-tool="rs" title="Remote sensing"
+              aria-expanded={rsOpen} onClick={onToggleRs}>
+        <IconSatellite />
       </button>
       <button className="map-tool-btn" data-tool="settings" title="Settings" onClick={onOpenSettings}>
         <IconGear />
@@ -368,6 +374,9 @@ export default function MapView({
   }
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [rsOpen, setRsOpen] = useState(false);
+  const [rsOverlay, setRsOverlay] = useState(null);      // {image, bounds, opacity, stats, index}
+  const [geoOverride, setGeoOverride] = useState({});    // key -> geojson re-read after values were added
 
   // --- Layers: per-layer state, order, removed layers, attribute table, pop-up ---
   const [map, setMap] = useState(null);
@@ -384,7 +393,8 @@ export default function MapView({
   const [added, setAdded] = useState([]);                // files the user added: {key, name, color, geojson, value, version}
   const [services, setServices] = useState([]);          // XYZ / WMS: {key, kind, url, layers, name, visible, opacity}
 
-  const allLayers = useMemo(() => [...layers, ...added], [layers, added]);
+  const allLayers = useMemo(() => [...layers, ...added].map((l) => (geoOverride[l.key] ? { ...l, geojson: geoOverride[l.key] } : l)),
+    [layers, added, geoOverride]);
   useEffect(() => {
     const keys = allLayers.map((l) => l.key);
     setOrder((o) => [...keys.filter((k) => !o.includes(k)), ...o.filter((k) => keys.includes(k))]);
@@ -533,8 +543,25 @@ export default function MapView({
   const imgFilter = `contrast(${1 + (imageLayer.contrast || 0) / 100}) brightness(${1 + (imageLayer.brightness || 0) / 100})`;
   // one panel beside the toolbar at a time
   useEffect(() => {
-    if (analysisOpen || trainOpen || perfOpen || legendOpen) setSettingsOpen(false);
-  }, [analysisOpen, trainOpen, perfOpen, legendOpen]);
+    if (analysisOpen || trainOpen || perfOpen || legendOpen || libOpen) { setSettingsOpen(false); setRsOpen(false); }
+  }, [analysisOpen, trainOpen, perfOpen, legendOpen, libOpen]);
+  function toggleRs() {
+    setRsOpen((o) => {
+      if (!o) {
+        setLegendOpen(false); setSettingsOpen(false);
+        if (analysisOpen) onToggleAnalysis?.();
+        if (trainOpen) onToggleTrain?.();
+        if (perfOpen) onTogglePerf?.();
+      }
+      return !o;
+    });
+  }
+  async function reloadLayer(l) {
+    try {
+      const gj = await api.getGeojson(l.jobId, l.resultId);
+      setGeoOverride((g) => ({ ...g, [l.key]: gj }));
+    } catch { /* the values are saved; the next refresh shows them */ }
+  }
   const [iconStyle] = usePref("icons");
   const bm = BASEMAPS[basemap] || null;
   // Basemap health: tiles that never load (offline, firewall) leave the map
@@ -572,6 +599,11 @@ export default function MapView({
         {services.filter((sv) => sv.visible).map((sv, i) => (sv.kind === "wms"
           ? <WMSTileLayer key={sv.key} url={sv.url} params={{ layers: sv.layers, format: "image/png", transparent: true }} opacity={sv.opacity} zIndex={20 + i} maxZoom={MAX_ZOOM} />
           : <TileLayer key={sv.key} url={sv.url} opacity={sv.opacity} zIndex={20 + i} maxZoom={MAX_ZOOM} />))}
+        {rsOverlay?.image && aoi && (
+          <ImageOverlay key={rsOverlay.image.length + rsOverlay.time + rsOverlay.index?.id} url={rsOverlay.image}
+                        bounds={[[rsOverlay.bounds[0], rsOverlay.bounds[1]], [rsOverlay.bounds[2], rsOverlay.bounds[3]]]}
+                        opacity={rsOverlay.opacity ?? 0.85} zIndex={15} className="rs-overlay" />
+        )}
         <SelectionLayer features={selectedFeatures} />
         <ViewTracker onView={setView} />
         {popFeature && (
@@ -608,7 +640,7 @@ export default function MapView({
           onOpenLibrary={() => setLibraryOpen(true)}
           onOpenSettings={() => setSettingsOpen((o) => {
             if (!o) {
-              setLegendOpen(false);
+              setLegendOpen(false); setRsOpen(false);
               if (analysisOpen) onToggleAnalysis?.();
               if (trainOpen) onToggleTrain?.();
               if (perfOpen) onTogglePerf?.();
@@ -627,6 +659,8 @@ export default function MapView({
           onTogglePerf={onTogglePerf}
           libOpen={libOpen}
           onToggleLib={onToggleLib}
+          rsOpen={rsOpen}
+          onToggleRs={toggleRs}
           editMenu={
             <MapDrawTools
               aoi={aoi}
@@ -636,9 +670,9 @@ export default function MapView({
               annotateOpen={false}
               onToggleAnnotate={onAnnotate}
               canAnnotate={Boolean(sourceImage?.image_id)}
-              otherPanelOpen={analysisOpen || trainOpen || perfOpen || libOpen || legendOpen || settingsOpen}
+              otherPanelOpen={analysisOpen || trainOpen || perfOpen || libOpen || legendOpen || settingsOpen || rsOpen}
               onMenuOpen={() => {
-                setLegendOpen(false); setSettingsOpen(false);
+                setLegendOpen(false); setSettingsOpen(false); setRsOpen(false);
                 if (analysisOpen) onToggleAnalysis?.();
                 if (trainOpen) onToggleTrain?.();
                 if (perfOpen) onTogglePerf?.();
@@ -667,6 +701,11 @@ export default function MapView({
         currentImageId={currentImageId}
         view={view}
         onImageDeleted={onRemoveImage}
+      />
+      <RemoteSensingPanel
+        open={rsOpen} onClose={() => setRsOpen(false)} aoi={aoi} layers={vlayers}
+        overlay={rsOverlay} onOverlay={setRsOverlay} onLayerValues={reloadLayer}
+        onZoom={() => { const b = rsOverlay?.bounds; if (map && b) map.flyToBounds([[b[0], b[1]], [b[2], b[3]]], { padding: [40, 40], duration: 0.4 }); }}
       />
       <SettingsPanel
         open={settingsOpen}

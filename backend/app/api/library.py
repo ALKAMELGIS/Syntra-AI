@@ -236,6 +236,17 @@ def _run_class_build(job_id: str, slug: str, name: str, parts: list[dict], req: 
         manifest["sources"] = [{"image": p["key"], "file": Path(p["image_path"]).name} for p in parts]
         manifest["labels"] = [lf for p in parts for lf in _label_hashes(p["key"])]
         manifest["samples"] = {name: sum(p["samples"] for p in parts)}
+        gsds = []
+        for p in parts:                                         # the scale the model will learn: detection matches it
+            try:
+                from app.engine.segmentation_run import ground_gsd_m
+                g = ground_gsd_m(p["image_path"])
+                if g:
+                    gsds.append(g)
+            except Exception:  # noqa: BLE001 - no CRS or no rasterio: the scale stays unknown
+                pass
+        if gsds:
+            manifest["gsd_m"] = round(sorted(gsds)[len(gsds) // 2], 4)
         layout.write_json(out / "manifest.json", manifest)
         jobs.update(job_id, status="completed", progress=100.0, data_yaml=str(out / "data.yaml"), info=info,
                     class_names=[name], task=req.task)

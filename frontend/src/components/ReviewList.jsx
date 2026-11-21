@@ -1,13 +1,14 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/client.js";
-import { IconCheck, IconChevronLeft, IconClose } from "./Icons.jsx";
+import { IconCheck, IconChevronLeft, IconClose, IconEdit } from "./Icons.jsx";
 import { fmtAreaM2 } from "../prefs.js";
 
 // Review one run's results: accept or reject each object, least sure first,
 // then add the review to training (accepted -> labels, rejected -> "not this").
 // Keys: A accept · R reject · ↑ ↓ move. A decision moves to the next object.
 
-const FILTERS = [["open", "Open"], ["accept", "Accepted"], ["reject", "Rejected"], ["all", "All"]];
+const FILTERS = [["open", "Open"], ["accept", "Accepted"], ["fix", "Fixed"], ["reject", "Rejected"], ["all", "All"]];
+const kind = (d) => (d && d.startsWith("fix:") ? "fix" : d);
 const LIMIT = 300;
 
 function size(p) {
@@ -25,6 +26,7 @@ export default function ReviewList({ entry, color, onBack, onFocus, onClose }) {
   const [current, setCurrent] = useState(null);       // feature index
   const [applied, setApplied] = useState(null);
   const [err, setErr] = useState(null);
+  const [fixing, setFixing] = useState(null);         // {i, value}: the class being typed
   const listRef = useRef(null);
 
   useEffect(() => {
@@ -43,16 +45,30 @@ export default function ReviewList({ entry, color, onBack, onFocus, onClose }) {
 
   const visible = useMemo(() => order.filter((i) => {
     const d = decisions[String(i)];
-    return filter === "all" || (filter === "open" ? !d : d === filter);
+    return filter === "all" || (filter === "open" ? !d : kind(d) === filter);
   }), [order, decisions, filter]);
 
   const counts = useMemo(() => {
     const v = Object.values(decisions);
     const acc = v.filter((x) => x === "accept").length, rej = v.filter((x) => x === "reject").length;
-    return { acc, rej, open: (features?.length || 0) - acc - rej };
+    const fix = v.filter((x) => kind(x) === "fix").length;
+    return { acc, rej, fix, open: (features?.length || 0) - acc - rej - fix };
   }, [decisions, features]);
 
+  const classes = useMemo(() => [...new Set((features || []).map((f) => f.properties?.class).filter(Boolean))], [features]);
   const rootRef = useRef(null);
+  function startFix(i) {
+    const d = decisions[String(i)];
+    setFixing({ i, value: kind(d) === "fix" ? d.slice(4) : "" });
+  }
+  function saveFix(e) {
+    e.preventDefault();
+    const v = fixing?.value.trim();
+    const i = fixing?.i;
+    setFixing(null);
+    rootRef.current?.focus({ preventScroll: true });
+    if (v && i != null) decide(i, `fix:${v}`);
+  }
   function select(i) {
     setCurrent(i);
     if (rootRef.current && !rootRef.current.contains(document.activeElement)) rootRef.current.focus({ preventScroll: true });
@@ -93,7 +109,8 @@ export default function ReviewList({ entry, color, onBack, onFocus, onClose }) {
     if (e.key === "ArrowDown" || e.key === "j") { e.preventDefault(); step(1); }
     else if (e.key === "ArrowUp" || e.key === "k") { e.preventDefault(); step(-1); }
     else if ((e.key === "a" || e.key === "A") && current != null) decide(current, "accept");
-    else if ((e.key === "r" || e.key === "R") && current != null) decide(current, "reject");
+    else if ((e.key === "r" || e.key === "R" || e.key === "x" || e.key === "X") && current != null) decide(current, "reject");
+    else if ((e.key === "e" || e.key === "E") && current != null) { e.preventDefault(); startFix(current); }
   }
 
   async function apply() {
@@ -111,8 +128,8 @@ export default function ReviewList({ entry, color, onBack, onFocus, onClose }) {
         <button type="button" className="review-back" onClick={onBack} aria-label="Back to runs" title="Back to runs"><IconChevronLeft /></button>
         <span className="analysis-swatch" style={{ background: color }} />
         <span className="review-title">{entry.modelMeta?.name || modelId}</span>
-        <span className="review-counts mono" title="Accepted · rejected · open">
-          {counts.acc} · {counts.rej} · {counts.open}
+        <span className="review-counts mono" title="Accepted · fixed · rejected · open">
+          {counts.acc} · {counts.fix} · {counts.rej} · {counts.open}
         </span>
         {onClose && <button type="button" className="panel-close-btn" title="Close" aria-label="Close" onClick={onClose}><IconClose /></button>}
       </div>
@@ -131,14 +148,25 @@ export default function ReviewList({ entry, color, onBack, onFocus, onClose }) {
             const p = features[i].properties || {};
             const d = decisions[String(i)];
             return (
-              <li key={i} data-i={i} className={`review-row ${current === i ? "current" : ""} ${d || ""}`} onClick={() => select(i)}>
+              <li key={i} data-i={i} className={`review-row ${current === i ? "current" : ""} ${kind(d) || ""}`} onClick={() => select(i)}>
                 <span className="review-score mono">{p.score != null ? p.score.toFixed(2) : "–"}</span>
-                <span className="review-class">{p.class || "object"}</span>
+                {fixing?.i === i ? (
+                  <form className="review-fix" onSubmit={saveFix} onClick={(e) => e.stopPropagation()}>
+                    <input className="train-input" list="review-classes" autoFocus value={fixing.value} placeholder="Class"
+                           aria-label="Correct class" onChange={(e) => setFixing({ i, value: e.target.value })}
+                           onKeyDown={(e) => { if (e.key === "Escape") { setFixing(null); rootRef.current?.focus(); } }}
+                           onBlur={() => setFixing(null)} />
+                  </form>
+                ) : (
+                  <span className="review-class">{kind(d) === "fix" ? <><s>{p.class || "object"}</s> {d.slice(4)}</> : p.class || "object"}</span>
+                )}
                 <span className="review-size mono">{size(p)}</span>
                 <button type="button" className={`review-btn accept ${d === "accept" ? "on" : ""}`} aria-pressed={d === "accept"}
                         title="Accept (A)" aria-label="Accept" onClick={(e) => { e.stopPropagation(); decide(i, "accept"); }}><IconCheck /></button>
                 <button type="button" className={`review-btn reject ${d === "reject" ? "on" : ""}`} aria-pressed={d === "reject"}
-                        title="Reject (R)" aria-label="Reject" onClick={(e) => { e.stopPropagation(); decide(i, "reject"); }}><IconClose /></button>
+                        title="Reject (X)" aria-label="Reject" onClick={(e) => { e.stopPropagation(); decide(i, "reject"); }}><IconClose /></button>
+                <button type="button" className={`review-btn fix ${kind(d) === "fix" ? "on" : ""}`} aria-pressed={kind(d) === "fix"}
+                        title="Fix class (E)" aria-label="Fix class" onClick={(e) => { e.stopPropagation(); select(i); startFix(i); }}><IconEdit /></button>
               </li>
             );
           })}
@@ -147,15 +175,16 @@ export default function ReviewList({ entry, color, onBack, onFocus, onClose }) {
         </ul>
       )}
       <div className="review-foot">
-        <span className="review-keys mono">A · R · ↑↓</span>
-        <button type="button" className="quiet-button" disabled={!counts.acc && !counts.rej} onClick={apply}
+        <span className="review-keys mono">A · X · E · ↑↓</span>
+        <datalist id="review-classes">{classes.map((c) => <option key={c} value={c} />)}</datalist>
+        <button type="button" className="quiet-button" disabled={!counts.acc && !counts.rej && !counts.fix} onClick={apply}
                 title="Accepted results become labels, rejected ones teach the model what is not an object">
           Add to training
         </button>
       </div>
       {applied && (
         <p className="review-applied">
-          {applied.accepted} label{applied.accepted === 1 ? "" : "s"} and {applied.rejected} negative{applied.rejected === 1 ? "" : "s"} on this image, ready in Train
+          {applied.accepted + (applied.fixed || 0)} label{applied.accepted + (applied.fixed || 0) === 1 ? "" : "s"} and {applied.rejected} negative{applied.rejected === 1 ? "" : "s"} on this image, ready in Train
         </p>
       )}
     </div>

@@ -83,6 +83,10 @@ export const IconPlay = (p) => (
 export const IconAnalysis = (p) => (
   <svg {...base} {...p}><path d="M4 20V10M11 20V4M18 20v-7" /></svg>
 );
+// Remote sensing: a satellite with two panels, and its signal
+export const IconSatellite = (p) => (
+  <svg {...base} {...p}><path d="M12 8.5 15.5 12 12 15.5 8.5 12Z M2.5 6.5l4-4 3 3-4 4Z M14.5 17.5l3-3 4 4-3 3Z M7.5 7.5l2 2M14.5 14.5l2 2M3 14a7 7 0 0 0 7 7M3 18a3 3 0 0 0 3 3" /></svg>
+);
 export const IconClose = (p) => (
   <svg {...base} {...p}><path d="M5 5l14 14M19 5 5 19" /></svg>
 );

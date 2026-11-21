@@ -58,7 +58,7 @@ export default function TrainPanel({
   const fileRef = useRef(null);
 
   useEffect(() => { if (open && step === 0) api.listImages().then(setImages).catch(() => setImages([])); }, [open, step]);
-  useEffect(() => { if (open && step === 3) api.runpodStatus().then(setRp).catch(() => setRp(null)); }, [open, step]);
+  useEffect(() => { if (open && step === 3) api.runpodStatus().then((s) => { setRp(s); if (s?.configured) setWhere((w) => (w === "local" ? "gpu" : w)); }).catch(() => setRp(null)); }, [open, step]);
   useEffect(() => { setPushJob(null); }, [ds?.job_id]);
 
   usePoll(async () => {
