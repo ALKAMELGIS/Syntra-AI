@@ -31,3 +31,4 @@ backend/data/
 *.pt
 *.onnx
 *.safetensors
+ui-audit/

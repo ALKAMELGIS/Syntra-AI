@@ -1,421 +1,23 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+// The map: Leaflet with the image, result layers, AOI and the remote sensing layer, plus the panels beside the toolbar.
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import L from "leaflet";
-import { createPortal } from "react-dom";
 import { api } from "../../api/client";
-import { MapContainer, TileLayer, WMSTileLayer, GeoJSON, ImageOverlay, Rectangle, Tooltip, Popup, useMap, useMapEvents } from "react-leaflet";
+import { MapContainer, TileLayer, WMSTileLayer, GeoJSON, ImageOverlay, Popup } from "react-leaflet";
 import MapDrawTools from "./MapDrawTools.jsx";
 import AnnotationLayer from "../labels/AnnotationTool.jsx";
 import ImageLibrary from "../images/ImageLibrary.jsx";
 import SettingsPanel from "../settings/SettingsPanel.jsx";
-import { usePref, getPref } from "../../lib/prefs.js";
-import { IconExpand, IconBasemap, IconLayers, IconGallery, IconGear, IconAnalysis, IconTrain, IconPerformance, IconDatabase, IconZoomTo, IconTable, IconSatellite, IconEye, IconEyeOff } from "../ui/Icons.jsx";
+import { usePref } from "../../lib/prefs.js";
+import { IconZoomTo, IconTable } from "../ui/Icons.jsx";
 import RemoteSensingPanel from "../remote-sensing/RemoteSensingPanel.jsx";
-import { classesOf, styleFor } from "./symbology.js";
-import LayersPanel, { BasemapGallery } from "./LayersPanel.jsx";
+import LayersPanel from "./LayersPanel.jsx";
 import AttributeTable from "./AttributeTable.jsx";
 import { featuresBounds, fieldsOf, fmtValue } from "./layerUtils.js";
 import { BASEMAPS } from "./basemaps.js";
+import MapToolbar from "./MapToolbar.jsx";
 
-// Hard ceiling for how far the user can zoom in, on either basemap or on an
-// uploaded image overlay. 24 matches what the user asked for and is well
-// past what raw satellite/orthophoto GSD can usefully show, but Leaflet
-// will happily keep upscaling (or, for the ImageOverlay, keep showing the
-// full-res source image) past native tile zoom to get there.
-const MAX_ZOOM = 24;
-
-// Lives inside <MapContainer> so it can reach the Leaflet map instance via
-// react-leaflet's useMap() hook -- these buttons actually drive the map,
-// they are not decorative.
-function MapToolbar({
-  layers, sourceImage, basemap, onBasemapChange, legendOpen, onLegendToggle,
-  onOpenLibrary, onOpenSettings, analysisOpen, onToggleAnalysis, analysisCount, analysisRunning,
-  detectionsVisible, onToggleDetections, trainOpen, onToggleTrain, perfOpen, onTogglePerf, libOpen, onToggleLib, editMenu,
-  rsOpen, onToggleRs, rsLayer, rsVisible, onToggleRsVisible,
-}) {
-  const map = useMap();
-  const toolbarRef = useRef(null);
-
-  // Clicks on the toolbar must not fall through to the map (they would pan,
-  // or drop a point for an active drawing tool).
-  useEffect(() => {
-    if (!toolbarRef.current) return;
-    L.DomEvent.disableClickPropagation(toolbarRef.current);
-    L.DomEvent.disableScrollPropagation(toolbarRef.current);
-  }, []);
-
-  function zoomToFit() {
-    const combined = { type: "FeatureCollection", features: layers.flatMap((l) => l.geojson?.features || []) };
-    if (combined.features.length) {
-      const bounds = L_boundsFromGeojson(combined);
-      if (bounds) {
-        map.fitBounds(bounds, { padding: [40, 40] });
-        return;
-      }
-    }
-    const b = sourceImage?.bounds_wgs84;
-    if (b) {
-      map.fitBounds([[b.south, b.west], [b.north, b.east]], { padding: [40, 40] });
-      return;
-    }
-    map.setView([24.7, 46.7], 5);
-  }
-
-  // the basemap gallery opens beside its own button
-  // (portalled: the toolbar scrolls, so anything inside it would be clipped)
-  const [bmOpen, setBmOpen] = useState(null);           // null | {top, right} beside the button
-  const bmRef = useRef(null), bmPop = useRef(null);
-  useEffect(() => {
-    if (!bmOpen) return undefined;
-    const down = (e) => { if (!bmRef.current?.contains(e.target) && !bmPop.current?.contains(e.target)) setBmOpen(null); };
-    const key = (e) => { if (e.key === "Escape") setBmOpen(null); };
-    document.addEventListener("mousedown", down);
-    window.addEventListener("keydown", key);
-    window.addEventListener("resize", () => setBmOpen(null), { once: true });
-    return () => { document.removeEventListener("mousedown", down); window.removeEventListener("keydown", key); };
-  }, [bmOpen]);
-  function toggleBm() {
-    if (bmOpen) { setBmOpen(null); return; }
-    const r = bmRef.current.getBoundingClientRect(), tb = toolbarRef.current.getBoundingClientRect();
-    setBmOpen({ top: r.top, right: window.innerWidth - tb.left + 12 });
-  }
-
-  return (
-    <div className="map-toolbar" ref={toolbarRef}>
-      <button className="map-tool-btn" data-tool="fit" title="Zoom to detections / reset view" onClick={zoomToFit}>
-        <IconExpand />
-      </button>
-      <button ref={bmRef} className={`map-tool-btn ${bmOpen ? "active" : ""}`} data-tool="basemap" title="Basemap"
-              aria-haspopup="dialog" aria-expanded={!!bmOpen} onClick={toggleBm}>
-        <IconBasemap />
-      </button>
-      {bmOpen && createPortal(
-        <div className="bm-pop" role="dialog" aria-label="Basemap" ref={bmPop} style={{ top: bmOpen.top, right: bmOpen.right }}>
-          <div className="bm-pop-head">Basemap</div>
-          <BasemapGallery basemap={basemap} onBasemap={(k) => { onBasemapChange(k); setBmOpen(null); }} />
-        </div>, document.body)}
-      <button
-        className={`map-tool-btn ${legendOpen ? "active" : ""}`}
-        data-tool="layers" title="Layers" aria-expanded={legendOpen}
-        onClick={onLegendToggle}
-      >
-        <IconLayers />
-      </button>
-      <div className="map-toolbar-sep" />
-      {editMenu}
-      <div className="map-toolbar-sep" />
-      <button className="map-tool-btn" data-tool="library" title="Image library" onClick={onOpenLibrary}>
-        <IconGallery />
-      </button>
-      <button className={`map-tool-btn ${trainOpen ? "active" : ""}`} data-tool="train" title="Train a model"
-              aria-expanded={trainOpen} onClick={onToggleTrain}>
-        <IconTrain />
-      </button>
-      <button className={`map-tool-btn ${libOpen ? "active" : ""}`} data-tool="samples" title="Sample library"
-              aria-expanded={libOpen} onClick={onToggleLib}>
-        <IconDatabase />
-      </button>
-      <button className={`map-tool-btn ${rsOpen ? "active" : ""}`} data-tool="rs" title="Remote sensing"
-              aria-expanded={rsOpen} onClick={onToggleRs}>
-        <IconSatellite />
-      </button>
-      {rsLayer && (
-        <button className={`map-tool-btn ${rsVisible ? "active" : ""}`} data-tool="rs-layer"
-                title={rsVisible ? "Index layer on map · hide" : "Index layer · show on map"}
-                aria-pressed={rsVisible} onClick={onToggleRsVisible}>
-          {rsVisible ? <IconEye /> : <IconEyeOff />}
-        </button>
-      )}
-      <button className="map-tool-btn" data-tool="settings" title="Settings" onClick={onOpenSettings}>
-        <IconGear />
-      </button>
-      <div className="map-toolbar-sep" />
-      <button
-        className={`map-tool-btn ${analysisOpen ? "active" : ""}`}
-        data-tool="analysis" title={analysisRunning ? "Analysis results · running" : "Analysis results"}
-        aria-expanded={analysisOpen} onClick={onToggleAnalysis}
-      >
-        <IconAnalysis />
-        {analysisRunning ? <span className="map-tool-badge running" aria-label="Running" />
-          : analysisCount > 0 && <span className="map-tool-badge">{analysisCount}</span>}
-      </button>
-      <button className={`map-tool-btn ${perfOpen ? "active" : ""}`} data-tool="performance" title="Model performance"
-              aria-expanded={perfOpen} onClick={onTogglePerf}>
-        <IconPerformance />
-      </button>
-    </div>
-  );
-}
-
-// The GeoTIFF on the map. Zoomed out: one preview picture (at most 2048 px,
-// in Web Mercator, exact corners). Zoomed in past the preview's own detail:
-// full-resolution tiles cut from the file (/tiles/{z}/{x}/{y}.png), so a
-// 20 000 px orthomosaic is as sharp on screen as it is on disk.
-const PREVIEW_MAX_PX = 2048;
-const EARTH = 2 * Math.PI * 6378137;
-
-function SourceImage({ image, bounds, opacity = 1, display = null }) {
-  const map = useMap();
-  const [zoom, setZoom] = useState(map.getZoom());
-  useMapEvents({ zoomend: () => setZoom(map.getZoom()) });
-  const lat = (bounds.north + bounds.south) / 2;
-  const cosLat = Math.cos((lat * Math.PI) / 180);
-  const gsd = image.health?.gsd_m || image.gsd_x_m;
-  const sidePx = Math.max(image.width || 0, image.height || 0);
-  // ground metres per preview pixel; tiles take over when the map shows finer than that
-  const previewRes = gsd && sidePx ? (gsd * sidePx) / Math.min(PREVIEW_MAX_PX, sidePx) : null;
-  const tileZoom = previewRes && sidePx > PREVIEW_MAX_PX
-    ? Math.ceil(Math.log2((EARTH * cosLat) / 256 / previewRes)) : null;
-  const nativeZoom = gsd ? Math.ceil(Math.log2((EARTH * cosLat) / 256 / gsd)) : null;
-  // While the background optimise job runs, the file has no overviews yet and a
-  // zoomed-in tile can take seconds: stay on the preview until it finishes.
-  // A band or stretch choice is drawn by the tile server, so it uses tiles at every zoom.
-  const custom = Boolean(display?.bands?.length || display?.stretch);
-  const useTiles = !image.optimize_job_id && (custom || (tileZoom != null && zoom >= tileZoom));
-  const ll = [[bounds.south, bounds.west], [bounds.north, bounds.east]];
-  // The preview stays underneath at every zoom; tiles draw over it when they
-  // are finer. A tile that is still loading shows the preview, never a hole,
-  // and switching between the two never blanks the image.
-  return (
-    <>
-      <ImageOverlay key={`preview-${image.image_id}`} url={api.imagePreviewUrl(image.image_id)} bounds={ll}
-                    opacity={opacity} className="syntra-raster" zIndex={9} />
-      {useTiles && (
-        <TileLayer
-          key={`tiles-${image.image_id}-${display?.bands?.join(",") || ""}-${display?.stretch || ""}`}
-          url={api.imageTileUrl(image.image_id, display)}
-          bounds={ll}
-          zIndex={10}
-          maxZoom={MAX_ZOOM}
-          maxNativeZoom={Math.min(MAX_ZOOM, nativeZoom ?? MAX_ZOOM)}
-          // no requests mid-zoom (they are thrown away and look like flicker);
-          // a wider ring of tiles kept around the view for smooth panning
-          updateWhenZooming={false}
-          keepBuffer={6}
-          noWrap
-          opacity={opacity}
-          className="syntra-raster"
-        />
-      )}
-    </>
-  );
-}
-
-// The result under review: the map flies to it, close enough to judge it,
-// centred in the part of the map the review panel does not cover, and draws
-// one light outline around it (the detection layers already carry colour).
-function FocusFeature({ feature }) {
-  const map = useMap();
-  useEffect(() => {
-    if (!feature?.geometry) return;
-    const halo = L.geoJSON(feature, { interactive: false, style: { className: "focus-halo", weight: 5, fill: false } });
-    const line = L.geoJSON(feature, { interactive: false, style: { className: "focus-outline", weight: 2, fill: false } });
-    const b = line.getBounds();
-    if (b.isValid()) {
-      const panel = document.querySelector(".analysis-flyout");
-      const right = panel ? panel.offsetWidth + 86 : 16;          // panel + toolbar + gutters
-      map.flyToBounds(b.pad(2.5), { paddingTopLeft: [16, 16], paddingBottomRight: [right, 16], maxZoom: 20, duration: 0.3 });
-    }
-    halo.addTo(map);
-    line.addTo(map);
-    return () => { map.removeLayer(halo); map.removeLayer(line); };
-  }, [feature, map]);
-  return null;
-}
-
-// Where the file sits on the ground, drawn whatever its pixels hold: a hairline
-// frame on the image's WGS84 extent. A file with no image data (a cloud mask
-// uploaded by mistake) gets the frame in the error colour and says so, so an
-// empty overlay never looks like a placement failure.
-function ImageFootprint({ image }) {
-  const b = image?.bounds_wgs84;
-  if (!b) return null;
-  const empty = image.health?.findings?.some((f) => f.code === "no_data");
-  const isMask = image.health?.findings?.some((f) => f.code === "no_data" && /mask/.test(f.title));
-  return (
-    <Rectangle
-      key={`fp-${image.image_id}-${empty}`}
-      bounds={[[b.south, b.west], [b.north, b.east]]}
-      interactive={false}
-      pathOptions={{ className: `image-footprint ${empty ? "empty" : ""}`, weight: 1, fill: false, dashArray: "6 4" }}
-    >
-      {empty && (
-        <Tooltip permanent direction="center" className="footprint-label">
-          {isMask ? "No image data · this file is a mask" : "No image data"}
-        </Tooltip>
-      )}
-    </Rectangle>
-  );
-}
-
-// Frames the newly loaded source image automatically, the same way the
-// reference app snaps to a freshly imported scene — real geographic bounds
-// from the backend (app.engine.raster_io.compute_wgs84_bounds), not a guess.
-const VIEW_KEY = "syntra_view";
-const LAYER_KEY = "syntra_image_layer";
-
-function AutoFitSourceImage({ sourceImage }) {
-  const map = useMap();
-  useEffect(() => {
-    const b = sourceImage?.bounds_wgs84;
-    if (!b) return;
-    // after a refresh, go back to where the user was on this image
-    let saved = null;
-    try { saved = JSON.parse(localStorage.getItem(VIEW_KEY) || "null"); } catch { saved = null; }
-    if (getPref("restore") === "on" && saved?.image_id === sourceImage.image_id && Array.isArray(saved.center)) {
-      map.setView(saved.center, saved.zoom, { animate: false });
-    } else {
-      map.fitBounds([[b.south, b.west], [b.north, b.east]], { padding: [40, 40] });
-    }
-  }, [sourceImage?.image_id, map]);
-  useMapEvents({
-    moveend: () => {
-      if (!sourceImage?.image_id) return;
-      const c = map.getCenter();
-      try {
-        localStorage.setItem(VIEW_KEY, JSON.stringify({ image_id: sourceImage.image_id, center: [+c.lat.toFixed(6), +c.lng.toFixed(6)], zoom: map.getZoom() }));
-      } catch { /* storage unavailable */ }
-    },
-  });
-  return null;
-}
-
-// Minimal bounds helper so we don't need to pull in the `leaflet` module
-// directly just for L.geoJSON(...).getBounds().
-function L_boundsFromGeojson(geojson) {
-  let minLat = Infinity, minLng = Infinity, maxLat = -Infinity, maxLng = -Infinity;
-  const visit = (coords, depth) => {
-    if (depth === 0) {
-      const [lng, lat] = coords;
-      if (lat < minLat) minLat = lat;
-      if (lat > maxLat) maxLat = lat;
-      if (lng < minLng) minLng = lng;
-      if (lng > maxLng) maxLng = lng;
-    } else {
-      coords.forEach((c) => visit(c, depth - 1));
-    }
-  };
-  for (const f of geojson.features || []) {
-    const geom = f.geometry;
-    if (!geom) continue;
-    const depth = geom.type === "Point" ? 0 : geom.type === "Polygon" ? 2 : 1;
-    visit(geom.coordinates, depth);
-  }
-  if (!isFinite(minLat)) return null;
-  return [[minLat, minLng], [maxLat, maxLng]];
-}
-
-const ADDED_COLOURS = ["#2dd4bf", "#f472b6", "#c084fc", "#f06a6a", "#e8ebf0"];
-
-// One results layer on the map: its own colour, transparency and score
-// filter; optional labels; a click opens the object's pop-up and selects it
-// in the attribute table (unless a drawing or label tool owns the clicks).
-const LABEL_LIMIT = 400;
-function VectorLayer({ layer, onPick }) {
-  const pick = useRef(onPick);
-  pick.current = onPick;
-  const a = layer.opacity;
-  const sym = layer.symbology || null;
-  const classes = useMemo(() => classesOf(sym, layer.shown, layer.color), [sym, layer.shown, layer.color]);
-  const st = (f) => styleFor(f, sym, classes, layer.color, a, layer.isArea);
-  return (
-    <GeoJSON
-      key={`${layer.key}-${layer.version}-${layer.color}-${a}-${layer.minScore}-${layer.labels}-${JSON.stringify(sym)}`}
-      data={{ type: "FeatureCollection", features: layer.shown }}
-      style={st}
-      pointToLayer={(f, ll) => { const s = st(f); return L.circleMarker(ll, { ...s, fillOpacity: Math.min(1, s.fillOpacity + 0.2) }); }}
-      onEachFeature={(f, lyr) => {
-        if (layer.labels && layer.shown.length <= LABEL_LIMIT) {
-          const p = f.properties || {};
-          lyr.bindTooltip(`${p.class ?? ""}${typeof p.score === "number" ? ` ${p.score.toFixed(2)}` : ""}`,
-                          { permanent: true, direction: "center", className: "map-label" });
-        }
-        lyr.on("click", (e) => {
-          const b = document.body.dataset;
-          if (b.drawing === "1" || b.labelling === "1") return;
-          L.DomEvent.stopPropagation(e);
-          const o = e.originalEvent || {};
-          pick.current(layer.key, f.id, e.latlng, o.ctrlKey || o.metaKey || o.shiftKey);
-        });
-      }}
-    />
-  );
-}
-
-// The selected features (from the map or the attribute table), in the accent
-// colour with a dark halo so they read on any imagery.
-const accent = () => getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#6b9bff";
-function SelectionLayer({ features }) {
-  if (!features.length) return null;
-  const c = accent();
-  const key = features.map((f) => `${f._layer}:${f.id}`).join(",") + c;
-  return (
-    <>
-      <GeoJSON key={`halo-${key}`} data={{ type: "FeatureCollection", features }} interactive={false}
-               style={() => ({ color: "#0d0f12", weight: 5, opacity: 0.55, fill: false })}
-               pointToLayer={(f, ll) => L.circleMarker(ll, { radius: 8, color: "#0d0f12", weight: 5, opacity: 0.55, fill: false, interactive: false })} />
-      <GeoJSON key={key} data={{ type: "FeatureCollection", features }} interactive={false}
-               style={() => ({ color: c, weight: 2.5, fill: true, fillColor: c, fillOpacity: 0.18 })}
-               pointToLayer={(f, ll) => L.circleMarker(ll, { radius: 8, color: c, weight: 2.5, fillColor: c, fillOpacity: 0.3, interactive: false })} />
-    </>
-  );
-}
-
-// Ctrl + drag draws a box: the features of visible layers inside it are selected
-// (Shift as well adds to the selection). A click on empty map clears it.
-function SelectTools({ onBox, onClear }) {
-  const map = useMap();
-  const box = useRef(null);
-  useEffect(() => {
-    const el = map.getContainer();
-    let start = null, add = false;
-    const down = (e) => {
-      if (!(e.ctrlKey || e.metaKey) || e.button !== 0 || document.body.dataset.drawing === "1" || document.body.dataset.labelling === "1") return;
-      if (e.target.closest(".leaflet-control, .map-toolbar, .leaflet-popup")) return;
-      e.preventDefault(); e.stopPropagation();
-      map.dragging.disable();
-      start = map.mouseEventToContainerPoint(e); add = e.shiftKey;
-      box.current = L.DomUtil.create("div", "select-box", el);
-      Object.assign(box.current.style, { left: `${start.x}px`, top: `${start.y}px`, width: "0px", height: "0px" });
-    };
-    const move = (e) => {
-      if (!start) return;
-      const p = map.mouseEventToContainerPoint(e);
-      Object.assign(box.current.style, { left: `${Math.min(p.x, start.x)}px`, top: `${Math.min(p.y, start.y)}px`,
-        width: `${Math.abs(p.x - start.x)}px`, height: `${Math.abs(p.y - start.y)}px` });
-    };
-    const up = (e) => {
-      if (!start) return;
-      const p = map.mouseEventToContainerPoint(e);
-      box.current?.remove(); box.current = null;
-      map.dragging.enable();
-      const b = L.latLngBounds(map.containerPointToLatLng(start), map.containerPointToLatLng(p));
-      const big = Math.abs(p.x - start.x) > 4 && Math.abs(p.y - start.y) > 4;
-      start = null;
-      if (big) onBox(b, add);
-    };
-    el.addEventListener("mousedown", down, true);
-    window.addEventListener("mousemove", move);
-    window.addEventListener("mouseup", up);
-    return () => { el.removeEventListener("mousedown", down, true); window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up); };
-  }, [map, onBox]);
-  useMapEvents({
-    click: (e) => {
-      const o = e.originalEvent || {};
-      if (o.ctrlKey || o.metaKey || o.shiftKey || document.body.dataset.drawing === "1" || document.body.dataset.labelling === "1") return;
-      onClear();
-    },
-  });
-  return null;
-}
-
-// Keeps the visible map extent, for "Map extent only" and "in view".
-function ViewTracker({ onView }) {
-  const map = useMap();
-  const push = () => { const b = map.getBounds(); onView({ south: b.getSouth(), west: b.getWest(), north: b.getNorth(), east: b.getEast(), zoom: map.getZoom() }); };
-  useMapEvents({ moveend: push });
-  useEffect(push, []);  
-  return null;
-}
+const STYLE_KEY = "syntra_layer_styles";
+import { MAX_ZOOM, LAYER_KEY, ADDED_COLOURS, SourceImage, FocusFeature, ImageFootprint, AutoFitSourceImage, VectorLayer, SelectionLayer, SelectTools, ViewTracker } from "./mapLayers.jsx";
 
 export default function MapView({
   panel = null, onPanel,
@@ -464,6 +66,14 @@ export default function MapView({
   }, [legendOpen]);
 
   const toggleLegend = () => setLegendOpen((o) => !o);
+  // a menu from the toolbar (edit, basemap) opens alone: close whatever panel is open
+  const closePanels = () => {
+    if (analysisOpen) onToggleAnalysis?.();
+    if (trainOpen) onToggleTrain?.();
+    if (perfOpen) onTogglePerf?.();
+    if (libOpen) onToggleLib?.();
+    onPanel?.(null);
+  };
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = usePanel("settings");
   const [rsOpen, setRsOpen] = usePanel("rs");
@@ -473,7 +83,20 @@ export default function MapView({
 
   // --- Layers: per-layer state, order, removed layers, attribute table, pop-up ---
   const [map, setMap] = useState(null);
-  const [layerState, setLayerState] = useState({});      // key -> {visible, opacity, color, name, minScore, labels, popups}
+  // key -> {visible, opacity, color, name, minScore, labels, popups, symbology}; the style of
+  // result layers is kept across reloads (added files are not, so neither are theirs)
+  const [layerState, setLayerState] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(STYLE_KEY) || "{}") || {}; } catch { return {}; }
+  });
+  useEffect(() => {
+    const keep = {};
+    for (const [k, v] of Object.entries(layerState).slice(-200)) {
+      if (k.startsWith("added:")) continue;
+      const { task, taskError, accuracy, ...style } = v;          // eslint-disable-line no-unused-vars
+      keep[k] = style;
+    }
+    try { localStorage.setItem(STYLE_KEY, JSON.stringify(keep)); } catch { /* storage full or off: styles last this session */ }
+  }, [layerState]);
   const [order, setOrder] = useState([]);                // keys, top of the list first (drawn last)
   const [removed, setRemoved] = useState({});            // key -> the geojson it was removed with
   const [aoiVisible, setAoiVisible] = useState(true);
@@ -761,6 +384,7 @@ export default function MapView({
           libOpen={libOpen}
           onToggleLib={onToggleLib}
           rsOpen={rsOpen}
+          onMenuOpen={closePanels}
           onToggleRs={toggleRs}
           rsLayer={Boolean(rsOverlay?.image && aoi)}
           rsVisible={rsVisible}
@@ -775,13 +399,7 @@ export default function MapView({
               onToggleAnnotate={onAnnotate}
               canAnnotate={Boolean(sourceImage?.image_id)}
               otherPanelOpen={panel != null}
-              onMenuOpen={() => {
-                if (analysisOpen) onToggleAnalysis?.();
-                if (trainOpen) onToggleTrain?.();
-                if (perfOpen) onTogglePerf?.();
-                if (libOpen) onToggleLib?.();
-                onPanel?.(null);
-              }}
+              onMenuOpen={closePanels}
             />
           }
         />

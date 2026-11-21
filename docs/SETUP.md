@@ -30,6 +30,13 @@
 For an NVIDIA GPU install torch from https://pytorch.org first, then `requirements-ml.txt`.
 Before the first start, `python scripts/check_environment.py` reports what is missing.
 
+## Checking the interface
+
+`node scripts/ui_audit.mjs` opens every toolbar panel at four screen sizes in both themes and
+fails if two panels are open at once, a panel covers the toolbar or leaves the screen, or the page
+throws. It needs Playwright (`npm i -D playwright && npx playwright install chromium`) and a
+running Syntra; set `SYNTRA_EMAIL` and `SYNTRA_PASSWORD` to sign in. Screenshots go to `ui-audit/`.
+
 ## Model weights
 
 Weights are never in git. The model list's Install button downloads a pack from its fixed URL

@@ -199,10 +199,12 @@ in [ARCHITECTURE.md](ARCHITECTURE.md).
 | `AttributeTable.jsx` | The attribute table of a results layer, docked under the map |
 | `LayersPanel.jsx` | Layers, beside the map toolbar (replaces Legend and the show/hide-all eye) |
 | `MapDrawTools.jsx` | The map's drawing tools, gathered behind one "Edit" button in the main map toolbar |
-| `MapView.jsx` | Hard ceiling for how far the user can zoom in, on either basemap or on an uploaded image overlay |
+| `MapToolbar.jsx` | The map's toolbar (right edge): fit, basemap gallery, layers, the edit menu and the panel buttons |
+| `MapView.jsx` | The map: Leaflet with the image, result layers, AOI and the remote sensing layer, plus the panels beside the t… |
 | `SymbologyPanel.jsx` | A layer's Symbology page (Layers > ⋯ > Symbology): pick a style, a field and colours |
 | `basemaps.js` | Base maps |
 | `layerUtils.js` | Shared by the Layers panel, the object pop-up and the attribute table |
+| `mapLayers.jsx` | What MapView draws inside the Leaflet map: the GeoTIFF, result layers, selection, focus and view tracking |
 | `symbology.js` | Layer symbology, like ArcGIS Online's Styles: one symbol (Location), a colour per value of a text field (Types… |
 
 **components/remote-sensing/**
