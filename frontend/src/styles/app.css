@@ -2246,6 +2246,15 @@ input[type=range].gauge:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 2px 
 .bm-thumb { display: block; height: 48px; border-radius: 4px; overflow: hidden; background: var(--hover-bg); }
 .bm-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .bm-none { display: block; width: 100%; height: 100%; background: var(--bg); }
+.bm-thumb.bm-failed { background: repeating-linear-gradient(135deg, var(--hover-bg) 0 8px, var(--bg) 8px 16px); }
+/* the gallery beside the toolbar's basemap button */
+.bm-pop {
+  position: fixed; z-index: var(--z-menu); width: 320px; padding: 12px; font-size: var(--fs-12); color: var(--text-dim);
+  background: var(--panel); border: 1px solid var(--panel-border); border-radius: var(--radius);
+  box-shadow: var(--shadow-panel); animation: menu-in 0.14s var(--ease); transform-origin: top right;
+}
+.bm-pop-head { font-size: var(--fs-13); font-weight: 500; color: var(--text); margin-bottom: 8px; }
+@media (max-width: 699px) { .bm-pop { width: min(320px, calc(100vw - 88px)); } }
 .bm-label { text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bm-key { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
 .bm-key .train-input { flex: 1; min-width: 0; }

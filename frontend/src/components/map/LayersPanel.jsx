@@ -334,7 +334,8 @@ export function BasemapGallery({ basemap, onBasemap }) {
             <button key={k} type="button" role="radio" aria-checked={basemap === k}
                     className={`bm-item ${basemap === k ? "on" : ""}`} onClick={() => pick(k)}
                     title={k === "google" && !google?.configured ? "Google satellite · add a key" : b?.label || "None"}>
-              <span className="bm-thumb">{src ? <img src={src} alt="" loading="lazy" /> : <span className="bm-none" />}</span>
+              <span className="bm-thumb">{src ? <img src={src} alt="" referrerPolicy="no-referrer"
+                onError={(e) => { e.currentTarget.style.display = "none"; e.currentTarget.parentElement.classList.add("bm-failed"); }} /> : <span className="bm-none" />}</span>
               <span className="bm-label">{b?.label || "None"}</span>
             </button>
           );

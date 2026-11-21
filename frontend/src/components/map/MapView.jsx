@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
+import { createPortal } from "react-dom";
 import { api } from "../../api/client";
 import { MapContainer, TileLayer, WMSTileLayer, GeoJSON, ImageOverlay, Rectangle, Tooltip, Popup, useMap, useMapEvents } from "react-leaflet";
 import MapDrawTools from "./MapDrawTools.jsx";
@@ -10,7 +11,7 @@ import { usePref, getPref } from "../../lib/prefs.js";
 import { IconExpand, IconBasemap, IconLayers, IconGallery, IconGear, IconAnalysis, IconTrain, IconPerformance, IconDatabase, IconZoomTo, IconTable, IconSatellite, IconEye, IconEyeOff } from "../ui/Icons.jsx";
 import RemoteSensingPanel from "../remote-sensing/RemoteSensingPanel.jsx";
 import { classesOf, styleFor } from "./symbology.js";
-import LayersPanel from "./LayersPanel.jsx";
+import LayersPanel, { BasemapGallery } from "./LayersPanel.jsx";
 import AttributeTable from "./AttributeTable.jsx";
 import { featuresBounds, fieldsOf, fmtValue } from "./layerUtils.js";
 import { BASEMAPS } from "./basemaps.js";
@@ -59,8 +60,23 @@ function MapToolbar({
     map.setView([24.7, 46.7], 5);
   }
 
-  function toggleBasemap() {
-    onBasemapChange(basemap === "none" ? "satellite" : "none");
+  // the basemap gallery opens beside its own button
+  // (portalled: the toolbar scrolls, so anything inside it would be clipped)
+  const [bmOpen, setBmOpen] = useState(null);           // null | {top, right} beside the button
+  const bmRef = useRef(null), bmPop = useRef(null);
+  useEffect(() => {
+    if (!bmOpen) return undefined;
+    const down = (e) => { if (!bmRef.current?.contains(e.target) && !bmPop.current?.contains(e.target)) setBmOpen(null); };
+    const key = (e) => { if (e.key === "Escape") setBmOpen(null); };
+    document.addEventListener("mousedown", down);
+    window.addEventListener("keydown", key);
+    window.addEventListener("resize", () => setBmOpen(null), { once: true });
+    return () => { document.removeEventListener("mousedown", down); window.removeEventListener("keydown", key); };
+  }, [bmOpen]);
+  function toggleBm() {
+    if (bmOpen) { setBmOpen(null); return; }
+    const r = bmRef.current.getBoundingClientRect(), tb = toolbarRef.current.getBoundingClientRect();
+    setBmOpen({ top: r.top, right: window.innerWidth - tb.left + 12 });
   }
 
   return (
@@ -68,9 +84,15 @@ function MapToolbar({
       <button className="map-tool-btn" data-tool="fit" title="Zoom to detections / reset view" onClick={zoomToFit}>
         <IconExpand />
       </button>
-      <button className="map-tool-btn" data-tool="basemap" title={basemap === "none" ? "Show basemap" : "Hide basemap"} onClick={toggleBasemap}>
+      <button ref={bmRef} className={`map-tool-btn ${bmOpen ? "active" : ""}`} data-tool="basemap" title="Basemap"
+              aria-haspopup="dialog" aria-expanded={!!bmOpen} onClick={toggleBm}>
         <IconBasemap />
       </button>
+      {bmOpen && createPortal(
+        <div className="bm-pop" role="dialog" aria-label="Basemap" ref={bmPop} style={{ top: bmOpen.top, right: bmOpen.right }}>
+          <div className="bm-pop-head">Basemap</div>
+          <BasemapGallery basemap={basemap} onBasemap={(k) => { onBasemapChange(k); setBmOpen(null); }} />
+        </div>, document.body)}
       <button
         className={`map-tool-btn ${legendOpen ? "active" : ""}`}
         data-tool="layers" title="Layers" aria-expanded={legendOpen}
