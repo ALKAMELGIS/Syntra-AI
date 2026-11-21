@@ -5,15 +5,13 @@ import {
   IconTable, IconTrash, IconZoomTo, IconEdit, IconChevronLeft, IconCopy, IconClickAI, IconCheck, IconPolygon, IconSliders,
 } from "../ui/Icons.jsx";
 import { LAYER_COLOURS, downloadGeojson, featuresBounds, fieldType, fieldsOf, unitOf } from "./layerUtils.js";
-import { BASEMAPS, BASEMAP_ORDER, thumbUrl } from "./basemaps.js";
-import { api } from "../../api/client.js";
 import SymbologyPanel, { Legend } from "./SymbologyPanel.jsx";
 import { classesOf } from "./symbology.js";
 
 // Layers, beside the map toolbar (replaces Legend and the show/hide-all eye).
 // Results: one row per detection run, each with its own eye, colour, count and
 // options. Drawn: the area of interest. Imagery: the GeoTIFF with opacity and
-// display contrast / brightness. Basemap at the foot. Everything shown here is
+// display contrast / brightness. The basemap has its own toolbar button. Everything shown here is
 // read from the layers themselves; nothing is a placeholder.
 
 function Toggle({ on, onChange, label }) {
@@ -305,58 +303,10 @@ function AddLayer({ onFile, onService, onDone }) {
   );
 }
 
-export function BasemapGallery({ basemap, onBasemap }) {
-  const [google, setGoogle] = useState(null);           // {configured}
-  const [keyOpen, setKeyOpen] = useState(false);
-  const [key, setKey] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState(null);
-  useEffect(() => { api.googleBasemap().then(setGoogle).catch(() => setGoogle({ configured: false })); }, []);
-  function pick(k) {
-    if (k === "google" && !google?.configured) { setKeyOpen(true); return; }
-    onBasemap(k);
-  }
-  async function save(e) {
-    e.preventDefault(); setBusy(true); setErr(null);
-    try {
-      const r = await api.googleBasemapSave(key);
-      setGoogle(r); setKey(""); setKeyOpen(false);
-      if (r.configured) onBasemap("google");
-    } catch (ex) { setErr(ex.detail || ex.message); } finally { setBusy(false); }
-  }
-  return (
-    <>
-      <div className="bm-grid" role="radiogroup" aria-label="Basemap">
-        {BASEMAP_ORDER.map((k) => {
-          const b = BASEMAPS[k];
-          const src = k === "google" ? (google?.configured ? thumbUrl(k) : null) : thumbUrl(k);
-          return (
-            <button key={k} type="button" role="radio" aria-checked={basemap === k}
-                    className={`bm-item ${basemap === k ? "on" : ""}`} onClick={() => pick(k)}
-                    title={k === "google" && !google?.configured ? "Google satellite · add a key" : b?.label || "None"}>
-              <span className="bm-thumb">{src ? <img src={src} alt="" referrerPolicy="no-referrer"
-                onError={(e) => { e.currentTarget.style.display = "none"; e.currentTarget.parentElement.classList.add("bm-failed"); }} /> : <span className="bm-none" />}</span>
-              <span className="bm-label">{b?.label || "None"}</span>
-            </button>
-          );
-        })}
-      </div>
-      {keyOpen && (
-        <form className="bm-key" onSubmit={save}>
-          <input className="train-input mono" type="password" placeholder="Google Maps key" value={key} autoFocus
-                 onChange={(e) => setKey(e.target.value)} aria-label="Google Maps key (Map Tiles API)" />
-          <button type="submit" className="quiet-button" disabled={!key.trim() || busy}>{busy ? "…" : "Save"}</button>
-          <button type="button" className="lp-icon" aria-label="Cancel" onClick={() => { setKeyOpen(false); setErr(null); }}><IconClose /></button>
-        </form>
-      )}
-      {err && <p className="lp-note bm-err">{err}</p>}
-    </>
-  );
-}
 
 export default function LayersPanel({
   open, onClose, layers, onPatch, onMove, onRemove, onZoom, onTable, onDuplicate, onRefine, onScore, onToLabels, allVisible, onToggleAll,
-  aoi, aoiVisible, onAoiVisible, aoiLabel, image, imageLayer, onImageLayer, onZoomImage, onRemoveImage, basemap, onBasemap,
+  aoi, aoiVisible, onAoiVisible, aoiLabel, image, imageLayer, onImageLayer, onZoomImage, onRemoveImage,
   zoom, onAddFile, onAddService, services = [], onServicePatch, onServiceRemove,
 }) {
   const [adding, setAdding] = useState(false);
@@ -552,10 +502,6 @@ export default function LayersPanel({
 
         {total === 0 && <p className="lp-empty">No layers yet: open an image and run a model</p>}
       </div>
-      <footer className="lp-foot">
-        <div className="lp-group-label">Basemap</div>
-        <BasemapGallery basemap={basemap} onBasemap={onBasemap} />
-      </footer>
       {items && <LayerMenu top={menu.top} items={items} onClose={closeMenu} />}
     </section>
   );

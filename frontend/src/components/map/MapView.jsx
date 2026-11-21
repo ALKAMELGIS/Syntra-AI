@@ -453,7 +453,6 @@ export default function MapView({
         aoi={aoi} aoiVisible={aoiVisible} onAoiVisible={setAoiVisible} aoiLabel={aoiLabel}
         image={sourceImage} imageLayer={imageLayer} onImageLayer={setImageLayer}
         onZoomImage={() => { const b = sourceImage?.bounds_wgs84; if (map && b) map.flyToBounds([[b.south, b.west], [b.north, b.east]], { padding: [40, 40], duration: 0.4 }); }}
-        basemap={basemap} onBasemap={setBasemap}
         zoom={zoomNow} onAddFile={addFile} onAddService={addService}
         services={services} onServicePatch={patchService} onServiceRemove={removeService}
       />

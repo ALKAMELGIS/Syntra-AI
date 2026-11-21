@@ -197,6 +197,7 @@ in [ARCHITECTURE.md](ARCHITECTURE.md).
 | File | What it does |
 | --- | --- |
 | `AttributeTable.jsx` | The attribute table of a results layer, docked under the map |
+| `BasemapGallery.jsx` | The basemap gallery: opened from the toolbar's basemap button (and Settings > Map) |
 | `LayersPanel.jsx` | Layers, beside the map toolbar (replaces Legend and the show/hide-all eye) |
 | `MapDrawTools.jsx` | The map's drawing tools, gathered behind one "Edit" button in the main map toolbar |
 | `MapToolbar.jsx` | The map's toolbar (right edge): fit, basemap gallery, layers, the edit menu and the panel buttons |

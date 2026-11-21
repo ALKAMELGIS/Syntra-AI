@@ -4,7 +4,7 @@ import L from "leaflet";
 import { createPortal } from "react-dom";
 import { useMap } from "react-leaflet";
 import { IconExpand, IconBasemap, IconLayers, IconGallery, IconGear, IconAnalysis, IconTrain, IconPerformance, IconDatabase, IconSatellite, IconEye, IconEyeOff } from "../ui/Icons.jsx";
-import { BasemapGallery } from "./LayersPanel.jsx";
+import BasemapGallery from "./BasemapGallery.jsx";
 import { L_boundsFromGeojson } from "./mapLayers.jsx";
 
 // Lives inside <MapContainer> so it can reach the Leaflet map instance via

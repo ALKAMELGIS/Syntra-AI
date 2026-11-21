@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import EnvironmentPanel from "./EnvironmentPanel.jsx";
 import { HfSettings, RunPodSettings } from "../training/SamplesStore.jsx";
-import { BasemapGallery } from "../map/LayersPanel.jsx";
+import BasemapGallery from "../map/BasemapGallery.jsx";
 import { IconClose, IconGear, IconSun, IconMap, IconDatabase, IconRaster, IconClickAI } from "../ui/Icons.jsx";
 import { EXPORTS } from "../shell/TopBar.jsx";
 import { api, auth } from "../../api/client.js";
