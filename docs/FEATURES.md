@@ -393,6 +393,16 @@ for when it is exposed to a network (all in `backend/.env.example`):
   `test_basemap_capture_offline.py` (4: bounds within 2e-5° of the box, tile
   limit, refused hosts, the API adding the image). Not run: a capture from the
   live USGS service (no network in the test machine).
+- **Class library and deleting a class.** Label > Class has a library button
+  (`components/labels/ClassLibrary.jsx`, `lib/classLibrary.js`): 58 classes in
+  six themes (agriculture, urban, environment, infrastructure, transportation,
+  natural features), each with its drawing tool and the outline the AI tools
+  fit to it; search, expand and collapse, tick a theme or single classes, add
+  your own types (kept in this browser). A class picked from it sends its
+  outline to Click, Box and Everything in view when Draws is Auto. Each class
+  row has a delete button: the class and its labels go, after a confirmation
+  when it has labels. Verified with Playwright: 3 classes added from the
+  library, one deleted.
 - **Label rail on the map.** While labelling (Train > Label) the tools sit in
   a 40 px rail on the map's left edge, below the zoom buttons
   (`components/labels/LabelRail.jsx`): Polygon (Polygon, Freehand),

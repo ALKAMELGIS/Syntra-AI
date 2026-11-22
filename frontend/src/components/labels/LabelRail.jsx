@@ -206,14 +206,13 @@ export default function LabelRail({
                     <span className="label-rail-name">{c}</span>
                     <span className="mono label-rail-key">{k < 9 ? k + 1 : ""}</span>
                   </button>
-                )) : <p className="label-rail-note">Add the first class: what you'll draw</p>)}
+                )) : null)}
                 {g.id === "class" && onAddClass && (
                   <form className="label-rail-add" onSubmit={addClass}>
                     <input className="train-input" value={newClass} onChange={(e) => setNewClass(e.target.value)}
                            placeholder="New class: palm, car…" aria-label="New class" />
                   </form>
                 )}
-                {g.id === "class" && editId && <p className="label-rail-note">Changes the selected label</p>}
                 {g.tools?.map((x) => (
                   <button key={x.id} type="button" role="menuitem" disabled={x.action === "delete" && !editId && !selectedIds.length}
                           className={`label-rail-row ${isOn(x) ? "on" : ""} ${x.danger ? "danger" : ""}`}
@@ -244,10 +243,8 @@ export default function LabelRail({
                                 className={outline?.shape === id ? "on" : ""} onClick={() => onOutline?.({ ...outline, shape: id })}>{l}</button>
                       ))}
                     </div>
-                    <p className="label-rail-note">Enter keeps the outline, Esc drops it</p>
                   </>
                 )}
-                {!g.draws && g.tools?.length === 1 && g.tools[0].note && <p className="label-rail-note">{g.tools[0].note}</p>}
               </div>
             )}
           </div>

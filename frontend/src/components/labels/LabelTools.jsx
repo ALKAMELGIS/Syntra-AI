@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from "react";
 import { api } from "../../api/client.js";
 import LabelImport from "./LabelImport.jsx";
+import ClassLibrary from "./ClassLibrary.jsx";
 import { classColor, isArea, TRAIN_AREA, CHECK_AREA, AREA_LABEL, fmtArea } from "./AnnotationTool.jsx";
-import { IconGridDots, IconBoxSelect, IconLasso, IconBoxAI, IconCheck, IconClickAI, IconCircle, IconPencil, IconPolygon, IconRectangle, IconSquare, IconTrash } from "../ui/Icons.jsx";
+import { IconDatabase, IconGridDots, IconBoxSelect, IconLasso, IconBoxAI, IconCheck, IconClickAI, IconCircle, IconPencil, IconPolygon, IconRectangle, IconSquare, IconTrash } from "../ui/Icons.jsx";
 
 // The Label step of the Train panel: classes (keys 1-9), the tools (one
 // letter each) and what the active tool needs. The map layer that does the
@@ -149,7 +150,6 @@ function ClickTool({ outline, onOutline, preview }) {
           </span>
         </div>
       )}
-      <p className="train-dim">{st.label} on this computer</p>
     </div>
   );
 }
@@ -157,7 +157,9 @@ function ClickTool({ outline, onOutline, preview }) {
 export default function LabelTools({
   open, classes, counts, activeClass, onActiveClass, mode, onMode, annotations, onClearAnnotations, labelError,
   outline, onOutline, exact, onExact, segPreview, editId, onEditDone, onEditClass, onEditDelete, image, onImported, onAddClass,
+  onAddClasses, onDeleteClass,
 }) {
+  const [libOpen, setLibOpen] = useState(false);
   const [newClass, setNewClass] = useState("");
   function addClass(e) {
     e.preventDefault();
@@ -203,13 +205,16 @@ export default function LabelTools({
       <p className="train-label">Class</p>
       <ul className="train-classes train-classes-pick">
         {classes.map((c, i) => (
-          <li key={c}>
+          <li key={c} className="class-row">
             <button type="button" className={c === (editing ? editing.class_name : activeClass) ? "selected" : ""}
                     onClick={() => { if (editing) { onEditClass?.(c); return; } onActiveClass(c); if (drawingArea) onMode(null); }}>
               {i < 9 && <kbd className="label-key">{i + 1}</kbd>}
-              <span className="train-swatch" style={{ background: classColor(c) }} />{c}
+              <span className="train-swatch" style={{ background: classColor(c) }} />{c.replace(/_/g, " ")}
               <span className="mono train-dim">{counts[c] || 0}</span>
             </button>
+            {onDeleteClass && (
+              <button type="button" className="class-del" onClick={() => onDeleteClass(c)} aria-label={`Delete class ${c}`} title="Delete class"><IconTrash /></button>
+            )}
           </li>
         ))}
       </ul>
@@ -218,16 +223,19 @@ export default function LabelTools({
         <form className="train-row" onSubmit={addClass}>
           <input className="train-input" value={newClass} onChange={(e) => setNewClass(e.target.value)} placeholder="Add a class: palm, car…" aria-label="New class" />
           <button type="submit" className="quiet-button" disabled={!newClass.trim()}>Add</button>
+          {onAddClasses && (
+            <button type="button" className="quiet-button icon-only" onClick={() => setLibOpen(true)} aria-label="Class library" title="Class library"><IconDatabase /></button>
+          )}
         </form>
       )}
+      <ClassLibrary open={libOpen} onClose={() => setLibOpen(false)} existing={classes} onAdd={(list) => onAddClasses?.(list)} />
 
       <p className="train-label">Tool</p>
       {(() => {
         const t = !drawingArea && LABEL_TOOLS.find((x) => x.id === mode);
         return t ? (
-          <p className="label-current"><t.Icon /><span>{t.label}</span><kbd className="label-key">{t.key}</kbd>
-            <span className="train-dim label-current-hint">{HINTS[t.id]}</span></p>
-        ) : <p className="train-dim">The tools are on the map's left edge. Point at one to see its group</p>;
+          <p className="label-current" title={HINTS[t.id]}><t.Icon /><span>{t.label}</span><kbd className="label-key">{t.key}</kbd></p>
+        ) : <p className="label-current"><span className="train-dim">Select</span><kbd className="label-key">V</kbd></p>;
       })()}
       {["click", "box", "everything"].includes(mode) && !drawingArea && <ClickTool outline={outline} onOutline={onOutline} preview={segPreview} />}
       {["rect", "square", "circle"].includes(mode) && !drawingArea && <ExactSize mode={mode} exact={exact} onExact={onExact} />}
@@ -245,9 +253,6 @@ export default function LabelTools({
           <span className="mono train-dim">{counts[CHECK_AREA] || 0}</span>
         </button>
       </div>
-      {drawingArea && mode && (
-        <p className="train-dim">{activeClass === TRAIN_AREA ? "Label everything inside it" : "Label everything inside it · kept for scoring"}</p>
-      )}
       <p className="train-label">Import</p>
       <LabelImport image={image} onImported={onImported} />
       {editing ? (
@@ -259,10 +264,10 @@ export default function LabelTools({
           <button type="button" className="label-btn danger" onClick={onEditDelete} aria-label="Delete label" title="Delete · Del"><IconTrash /></button>
           <button type="button" className="label-btn" onClick={onEditDone} aria-label="Done" title="Done · Esc"><IconCheck /></button>
         </div>
-      ) : (!mode && classes.length > 0 && <p className="train-dim">Pick a tool, or click a label to edit</p>)}
+      ) : null}
       {labelError && <p className="train-error">{labelError}</p>}
       <div className="train-row train-row-split">
-        <span className="train-dim"><span className="mono">{objects.length}</span> labelled · aim for 50+ per class</span>
+        <span className="train-dim"><span className="mono">{objects.length}</span> labelled</span>
         {annotations.length > 0 && (
           <button type="button" className="link-button" onClick={onClearAnnotations}><IconTrash /> Clear</button>
         )}

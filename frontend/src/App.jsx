@@ -302,16 +302,34 @@ export default function App({ user = null, onSignOut = null }) {
     setUndoIds((u) => u.filter((x) => x !== id));
     deleteLabel(id);
   }
+  // classes picked from the library carry their tool and outline (kept in this browser)
+  const [classInfo, setClassInfo] = useState(() => { try { return JSON.parse(localStorage.getItem("syntra_class_info") || "{}"); } catch { return {}; } });
+  useEffect(() => { try { localStorage.setItem("syntra_class_info", JSON.stringify(classInfo)); } catch { /* private mode */ } }, [classInfo]);
+  const classShape = () => (outline.shape === "auto" ? classInfo[activeClass]?.shape || null : outline.shape);
+  function addClasses(list) {
+    if (!list.length) return;
+    setExtraClasses((l) => [...new Set([...l, ...list.map((c) => c.name)])]);
+    setClassInfo((m) => ({ ...m, ...Object.fromEntries(list.map((c) => [c.name, { tool: c.tool, shape: c.shape }])) }));
+    setActiveClass(list[0].name);
+  }
+  async function deleteClass(c) {
+    const ids = annotations.filter((a) => a.class_name === c).map((a) => a.id);
+    if (ids.length && !confirm(`Delete "${c}" and its ${ids.length} labels?`)) return;
+    for (const id of ids) await deleteLabel(id);
+    setExtraClasses((l) => l.filter((x) => x !== c));
+    setClassInfo((m) => { const n = { ...m }; delete n[c]; return n; });
+    setActiveClass((a) => (a === c ? null : a));
+  }
   // click to segment: the outline comes from the engine, fitted to the class's shape
   const segmentClick = (clicks, view) => api.segmentClick(image.image_id, {
     clicks, view, class_name: activeClass || "",
-    shape: outline.shape === "auto" ? null : outline.shape,
+    shape: classShape(),
     simplify_m: outline.simplify_m, grow_m: outline.grow_m,
   });
   // every object in the view at once: suggestions the map layer shows dashed until kept
   const segmentAll = (view) => api.segmentAll(image.image_id, {
     view, class_name: activeClass || "", device: devices?.gpu_count > 0 ? "cuda:0" : "cpu",
-    shape: outline.shape === "auto" ? null : outline.shape,
+    shape: classShape(),
     simplify_m: outline.simplify_m, grow_m: outline.grow_m,
   });
   async function saveMany(list) {
@@ -500,7 +518,7 @@ export default function App({ user = null, onSignOut = null }) {
                 exact={exactSize} onExact={setExactSize} segPreview={segPreview}
                 onClearAnnotations={clearLabels} labelError={labelError}
                 onImported={(list) => { setAnnotations(list); setLabelError(null); }}
-                aoi={aoi}
+                aoi={aoi} onAddClasses={addClasses} onDeleteClass={deleteClass}
                 device={devices?.gpu_count > 0 ? "cuda:0" : "cpu"}
                 onModelsChanged={refreshModels}
                 onCheckModel={(id) => { refreshModels(); setPerfModel(id); setPerfOpen(true); }}

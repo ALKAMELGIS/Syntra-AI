@@ -39,7 +39,7 @@ export default function TrainPanel({
   annotations, classes, onAddClass, activeClass, onActiveClass, mode, onMode, onClearAnnotations, labelError,
   outline, onOutline, exact, onExact, segPreview,
   device = "cpu", onModelsChanged, onRunModel, onCheckModel,
-  editId, onEditDone, onEditClass, onEditDelete, onImported, aoi,
+  editId, onEditDone, onEditClass, onEditDelete, onImported, aoi, onAddClasses, onDeleteClass,
 }) {
   const [fromMap, setFromMap] = useState(false);
   const [images, setImages] = useState([]);
@@ -184,9 +184,7 @@ export default function TrainPanel({
                   {image.health?.gsd_m ? `${Math.round(image.health.gsd_m * 100)} cm` : ""}{image.health?.crs ? ` · ${image.health.crs}` : ""}
                 </span>
               </div>
-            ) : (
-              <p className="train-dim">Drone or satellite GeoTIFF, shown on the base map</p>
-            )}
+            ) : null}
             <div className="train-row">
               <button type="button" className="quiet-button" onClick={() => fileRef.current?.click()} disabled={upload?.pct != null}>
                 <IconUpload /> {upload?.pct != null ? (upload.pct >= 100 ? "Reading…" : `${upload.pct}%`) : "Upload GeoTIFF"}
@@ -211,7 +209,8 @@ export default function TrainPanel({
                       onClearAnnotations={onClearAnnotations} labelError={labelError}
                       outline={outline} onOutline={onOutline} exact={exact} onExact={onExact} segPreview={segPreview}
                       editId={editId} onEditDone={onEditDone} onEditClass={onEditClass} onEditDelete={onEditDelete}
-                      image={image} onImported={onImported} onAddClass={onAddClass} />}
+                      image={image} onImported={onImported} onAddClass={onAddClass}
+                      onAddClasses={onAddClasses} onDeleteClass={onDeleteClass} />}
           </>
         )}
 

@@ -69,14 +69,13 @@ export default function BasemapSource({ aoi, onImage }) {
         <input className="train-input mono" value={url} onChange={(e) => setUrl(e.target.value)} spellCheck={false}
                placeholder="https://tiles.example.com/{z}/{x}/{y}.jpg" aria-label="Tile URL" />
       )}
-      <p className="train-dim">{source === "custom" ? "Only a service whose licence lets you keep its tiles and train on them"
-        : src ? src.licence : ""}</p>
+      {src && source !== "custom" && <p className="train-dim">{src.licence}</p>}
       <label className="train-field">Zoom
         <select className="train-select" value={z} onChange={(e) => setZoom(Number(e.target.value))}>
           {Array.from({ length: maxZoom - 13 }, (_, i) => 14 + i).map((v) => <option key={v} value={v}>{v}</option>)}
         </select>
       </label>
-      {!box ? <p className="train-dim">Draw the area first: Edit (pen) &gt; Rectangle area</p> : (
+      {!box ? <p className="train-dim">No area · Edit &gt; Rectangle area</p> : (
         <p className="train-dim mono">{est.w} × {est.h} px · {est.gsd < 1 ? `${Math.round(est.gsd * 100)} cm` : `${est.gsd.toFixed(1)} m`} a pixel · {est.tiles} tiles</p>
       )}
       {tooMany && <p className="train-error">Too large: zoom out or draw a smaller area (up to {srcs.max_tiles} tiles)</p>}

@@ -66,21 +66,19 @@ export default function TrainSetup({ open, where, onWhere, hosting, rp, onRefres
       <div className="setup-opts" role="radiogroup" aria-label="Where training runs">
         <Option id="hf" where={where} onWhere={onWhere} title="Hugging Face GPU" ready={placeReady("hf", hosting, rp)}>
           {!hosting ? "Checking…"
-            : hosting.train_gpu ? <>The Space's own GPU, ready to train. <span className="mono">{hosting.gpu_name}</span></>
-            : hosting.zero_gpu ? <>This Space is on ZeroGPU: a GPU lent for under a minute at a time, too short to train.
-                Upgrade the Space's hardware to a T4 or L4 in its settings{space ? <> (<a href={`https://huggingface.co/spaces/${space}/settings`} target="_blank" rel="noreferrer">open</a>)</> : null}</>
-            : space ? "This Space has no GPU. Pick a GPU in the Space's hardware settings"
-            : "Trains in Syntra's Hugging Face Space, once its hardware is a GPU. Open Syntra there to use it"}
+            : hosting.train_gpu ? <span className="mono">{hosting.gpu_name}</span>
+            : hosting.zero_gpu ? <>ZeroGPU: too short to train{space ? <> · <a href={`https://huggingface.co/spaces/${space}/settings`} target="_blank" rel="noreferrer">Upgrade hardware</a></> : null}</>
+            : space ? <>No GPU · <a href={`https://huggingface.co/spaces/${space}/settings`} target="_blank" rel="noreferrer">Upgrade hardware</a></>
+            : "Open Syntra on Hugging Face"}
         </Option>
         <Option id="runpod" where={where} onWhere={onWhere} title="RunPod GPU" ready={placeReady("runpod", hosting, rp)}>
-          {rp?.configured ? "A GPU started for the run and stopped after it. Billed by RunPod per hour"
-            : "Add the RunPod API key in Settings > Services"}
+          {rp?.configured ? "Billed per hour" : "Key needed: Settings > Services"}
         </Option>
         <Option id="local" where={where} onWhere={onWhere} title="This computer" ready={placeReady("local", hosting, rp)}>
           {!hosting ? "Checking…"
-            : space ? "Not here: this Syntra runs on Hugging Face. Run Syntra on your computer to train on it"
-            : cuda?.cuda_available ? <>Your GPU: <span className="mono">{cuda.devices?.[0]?.name || "CUDA"}</span></>
-            : "Your computer's CPU, or its NVIDIA GPU once the GPU build is installed"}
+            : space ? "Not on Hugging Face"
+            : cuda?.cuda_available ? <span className="mono">{cuda.devices?.[0]?.name || "CUDA"}</span>
+            : "CPU"}
         </Option>
       </div>
 
@@ -97,7 +95,7 @@ export default function TrainSetup({ open, where, onWhere, hosting, rp, onRefres
                 <li><span className={`setup-dot ${cuda?.cuda_available ? "ok" : ""}`} aria-hidden="true" />GPU (CUDA)
                   <span className="mono train-dim">{cuda?.cuda_available ? cuda.devices?.[0]?.name || "yes" : "CPU only"}</span></li>
               </ul>
-              {!env.actions_allowed ? <p className="train-dim">Install from the computer running Syntra</p> : (
+              {!env.actions_allowed ? null : (
                 <div className="train-row">
                   {missing.length > 0 && (
                     <button type="button" className="quiet-button" disabled={running} onClick={() => run("install", "auto", missing)}>Install missing</button>
@@ -109,14 +107,13 @@ export default function TrainSetup({ open, where, onWhere, hosting, rp, onRefres
                   <button type="button" className="link-button" disabled={running} onClick={check}>Check again</button>
                 </div>
               )}
-              {running && <p className="train-dim mono">Installing… this can take several minutes</p>}
-              {job?.status === "completed" && <p className="train-ok">Installed. Close the engine window and run start-local.bat to use it</p>}
+              {running && <p className="train-dim mono">Installing…</p>}
+              {job?.status === "completed" && <p className="train-ok">Installed · restart the engine</p>}
               {job?.status === "error" && <p className="train-error">{job.error || "The install failed: see Settings > System"}</p>}
             </>
           )}
         </>
       )}
-      <p className="train-dim">Labelling works anywhere: this choice is used when you train</p>
     </>
   );
 }

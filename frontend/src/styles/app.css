@@ -2498,3 +2498,41 @@ input[type=range].gauge:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 2px 
 .basemap-src { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; padding: 12px;
   border: 1px solid var(--panel-border); border-radius: var(--radius-control); }
 .basemap-src .train-dim { margin: 0; }
+
+/* class list: delete on hover; class library (ClassLibrary.jsx) */
+.train-classes-pick li.class-row { position: relative; display: block; height: auto; padding: 0; }
+.train-classes-pick .class-del {
+  position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: 24px; height: 24px; padding: 0;
+  display: none; grid-template-columns: none; align-items: center; justify-content: center; border: none; border-radius: 6px;
+  background: var(--panel); color: var(--text-dim); cursor: pointer;
+}
+.class-row:hover .class-del, .train-classes-pick .class-del:focus-visible { display: flex; }
+.train-classes-pick .class-del:hover { color: var(--error); background: var(--hover-bg); }
+.quiet-button.icon-only { width: 32px; padding: 0; justify-content: center; }
+.clib {
+  width: min(680px, calc(100vw - 32px)); max-height: calc(100vh - 64px); display: flex; flex-direction: column;
+  background: var(--panel); border: 1px solid var(--panel-border); border-radius: var(--radius); box-shadow: var(--shadow-modal);
+}
+.clib-head { padding: 12px 16px; }
+.clib-new, .clib-tools { display: flex; gap: 8px; padding: 0 16px 12px; align-items: center; }
+.clib-new .train-input { flex: 2; min-width: 0; }
+.clib-new .train-select { flex: 1; min-width: 0; }
+.clib-tools .train-input { flex: 1; }
+.clib-table { flex: 1; overflow-y: auto; border-top: 1px solid var(--panel-border); border-bottom: 1px solid var(--panel-border); }
+.clib-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) 120px 120px; align-items: center; height: 32px; padding: 0 16px;
+  font-size: var(--fs-12); color: var(--text); border-bottom: 1px solid var(--panel-border); cursor: pointer;
+}
+.clib-row > span { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.clib-row > span:not(:first-child) { color: var(--text-dim); }
+.clib-row:hover { background: var(--hover-bg); }
+.clib-row.there { color: var(--text-muted); cursor: default; }
+.clib-row:not(.clib-th):not(.clib-group) > span:first-child { padding-left: 24px; }
+.clib-th { position: sticky; top: 0; background: var(--panel); color: var(--text-dim); font-size: var(--fs-11); cursor: default; z-index: 1; }
+.clib-group { font-weight: 500; background: var(--bg); cursor: default; }
+.clib-caret { width: 20px; height: 20px; padding: 0; border: none; background: none; color: var(--text-dim); cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.clib-caret.shut svg { transform: rotate(-90deg); }
+.clib-x { margin-left: auto; width: 20px; height: 20px; padding: 0; border: none; background: none; color: var(--text-muted); cursor: pointer; }
+.clib-x:hover { color: var(--error); }
+.clib-foot { display: flex; align-items: center; gap: 12px; padding: 12px 16px; }
+.clib-foot .train-dim { margin-right: auto; }
