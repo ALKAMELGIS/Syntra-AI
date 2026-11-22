@@ -448,7 +448,8 @@ export default function App({ user = null, onSignOut = null }) {
               editId, editingClass: annotations.find((a) => a.id === editId)?.class_name,
               onEditClass: (c) => editId && updateLabel(editId, { class_name: c }), onEditDelete: () => editId && deleteLabel(editId),
               onClear: clearLabels, onUndo: undoLabel, canUndo: undoable.length > 0,
-              outline, onOutline: setOutline,
+              outline, onOutline: setOutline, segPreview,
+              onAddClass: (c) => { setExtraClasses((l) => (l.includes(c) ? l : [...l, c])); setActiveClass(c); },
             } : null}
             perfOpen={perfOpen}
             onTogglePerf={() => setPerfOpen((v) => !v)}

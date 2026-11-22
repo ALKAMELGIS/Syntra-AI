@@ -4,6 +4,7 @@
 // last used in it and clicking it picks that tool again. The keys are the same
 // as in the Train panel (LabelTools.jsx handles them).
 import React, { useEffect, useRef, useState } from "react";
+import { api } from "../../api/client.js";
 import { classColor, TRAIN_AREA, CHECK_AREA } from "./AnnotationTool.jsx";
 import {
   IconAreaDashed, IconBoxAI, IconCircle, IconClickAI, IconPencil, IconPointer, IconPolygon,
@@ -46,12 +47,45 @@ function isTyping(el) {
 
 export default function LabelRail({
   classes = [], counts = {}, activeClass, onActiveClass, mode, onMode, editId, onEditClass, onEditDelete,
-  onClear, onUndo, canUndo, outline, onOutline, editingClass,
+  onClear, onUndo, canUndo, outline, onOutline, editingClass, onAddClass, segPreview,
 }) {
   const [open, setOpen] = useState(null);
   const [last, setLast] = useState({});            // group -> tool id last picked there
   const closeT = useRef(null);
   const drawingArea = activeClass === TRAIN_AREA || activeClass === CHECK_AREA;
+  const [newClass, setNewClass] = useState("");
+
+  // the AI tools need the engine's SAM model; say so in the group instead of failing on the map
+  const [seg, setSeg] = useState(null);           // {ready, reason} | {down}
+  const [install, setInstall] = useState(null);
+  const poll = useRef(null);
+  const checkSeg = () => Promise.all([
+    fetch("/api/health").then((r) => r.json()).catch(() => null),
+    api.segmentStatus().catch((e) => ({ ready: false, reason: e.message })),
+  ]).then(([h, st]) => setSeg(!h ? { down: "The engine isn't answering. Run start-local.bat" }
+    : (h.api || 0) < 4 ? { down: "The engine is out of date: close the Syntra engine window and run update.bat" } : st));
+  useEffect(() => { checkSeg(); return () => clearInterval(poll.current); }, []);
+  async function installSam() {
+    try {
+      const r = await api.segmentInstall();
+      setInstall({ progress: 0 });
+      clearInterval(poll.current);
+      poll.current = setInterval(async () => {
+        try {
+          const j = await api.segmentInstallStatus(r.job_id);
+          setInstall(j);
+          if (["completed", "error", "interrupted"].includes(j.status)) { clearInterval(poll.current); checkSeg(); }
+        } catch { /* transient */ }
+      }, 1000);
+    } catch (e) { setInstall({ status: "error", error: e.detail || e.message }); }
+  }
+  function addClass(e) {
+    e.preventDefault();
+    const c = newClass.trim().toLowerCase();
+    if (!c) return;
+    onAddClass?.(c);
+    setNewClass("");
+  }
 
   // Ctrl+Z: the last label added here
   const live = useRef();
@@ -123,7 +157,13 @@ export default function LabelRail({
                     <span className="label-rail-name">{c}</span>
                     <span className="mono label-rail-key">{k < 9 ? k + 1 : ""}</span>
                   </button>
-                )) : <p className="label-rail-note">Add a class first: Train panel, step Data</p>)}
+                )) : <p className="label-rail-note">Add the first class: what you'll draw</p>)}
+                {g.id === "class" && onAddClass && (
+                  <form className="label-rail-add" onSubmit={addClass}>
+                    <input className="train-input" value={newClass} onChange={(e) => setNewClass(e.target.value)}
+                           placeholder="New class: palm, car…" aria-label="New class" />
+                  </form>
+                )}
                 {g.id === "class" && editId && <p className="label-rail-note">Changes the selected label</p>}
                 {g.tools?.map((x) => (
                   <button key={x.id} type="button" role="menuitem" disabled={x.action === "delete" && !editId}
@@ -136,6 +176,16 @@ export default function LabelRail({
                       : x.key && <span className="mono label-rail-key">{x.key}</span>}
                   </button>
                 ))}
+                {g.draws && seg && !seg.ready && (
+                  <div className="label-rail-warn">
+                    <p>{seg.down || seg.reason}</p>
+                    {!seg.down && (install && !["completed", "error", "interrupted"].includes(install.status)
+                      ? <p className="mono">Downloading {Math.round(install.progress || 0)}%</p>
+                      : <button type="button" className="quiet-button" onClick={installSam}>Install</button>)}
+                    {install?.status === "error" && <p className="label-rail-err">{install.error}</p>}
+                  </div>
+                )}
+                {g.draws && segPreview?.error && <p className="label-rail-err">{segPreview.error}</p>}
                 {g.draws && (
                   <>
                     <p className="label-rail-title sub">Draws</p>

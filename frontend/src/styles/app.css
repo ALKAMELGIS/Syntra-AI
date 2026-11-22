@@ -2442,6 +2442,14 @@ input[type=range].gauge:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 2px 
   font-size: var(--fs-11); color: var(--text-dim); cursor: pointer;
 }
 .label-rail-seg button.on { background: var(--panel); color: var(--text); }
+.label-rail-add { margin: 4px 8px 8px; }
+.label-rail-add input { width: 100%; }
+.label-rail-warn {
+  margin: 4px 8px 8px; padding: 8px; border-radius: 6px; background: var(--hover-bg);
+  font-size: var(--fs-11); color: var(--text-dim); display: flex; flex-direction: column; gap: 8px; align-items: flex-start;
+}
+.label-rail-warn p { margin: 0; line-height: 1.4; }
+.label-rail-err { margin: 4px 8px 8px; font-size: var(--fs-11); color: var(--error); line-height: 1.4; }
 .label-current { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 8px; font-size: var(--fs-12); }
 .label-current svg { font-size: var(--fs-16); }
 .label-current-hint { flex-basis: 100%; }

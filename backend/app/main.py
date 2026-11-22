@@ -102,7 +102,7 @@ def health():
     return {"status": "ok", "service": "syntra-ai-detection-engine", "api": API_LEVEL}
 
 
-API_LEVEL = 3          # 2: /api/rs (remote sensing) · 3: accounts, credits, admin
+API_LEVEL = 4          # 2: /api/rs (remote sensing) · 3: accounts, credits, admin · 4: box prompts
 
 
 # One process for both: when SYNTRA_STATIC_DIR names the built interface (frontend/dist),
