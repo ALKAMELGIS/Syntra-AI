@@ -142,6 +142,31 @@ async def segment_click(image_id: str, req: SegmentRequest):
     return _answer(res, entry)
 
 
+class PrepareRequest(BaseModel):
+    view: list[float]
+    device: str = "cpu"
+
+
+@router.post("/api/images/{image_id}/segment/prepare")
+async def segment_prepare(image_id: str, req: PrepareRequest):
+    """Encode the visible view now, so the first click on it answers at once."""
+    from app.engine import click_segment
+
+    entry = _entry(image_id)
+    b, w, h = entry["bounds_wgs84"], entry["width"], entry["height"]
+    if len(req.view) != 4:
+        raise HTTPException(status_code=400, detail="Send the view as [west, south, east, north]")
+    x0, y0 = store.lonlat_to_pixel(req.view[0], req.view[3], b, w, h)
+    x1, y1 = store.lonlat_to_pixel(req.view[2], req.view[1], b, w, h)
+    try:
+        window = click_segment.view_window((x0, y0, x1, y1), w, h)
+        return await run_in_threadpool(click_segment.prepare, entry["path"], window, req.device)
+    except click_segment.SegmentUnavailable as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+
 class SegmentAllRequest(Refine):
     view: list[float]                      # visible map: [west, south, east, north]
     class_name: str = ""

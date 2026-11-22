@@ -31,6 +31,7 @@ from pathlib import Path
 import numpy as np
 
 SIZE = 1024
+LARGE_MARGIN = 0.12      # one click: a mask this close to the best score may win by being larger
 MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
 STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
 
@@ -194,7 +195,7 @@ class SamOnnx:
                 return v
         return list(feats.values())[{"high_res_feats_0": 0, "high_res_feats_1": 1}.get(want, -1)]
 
-    def decode(self, emb: dict, points: np.ndarray, labels: np.ndarray) -> tuple[np.ndarray, float]:
+    def decode(self, emb: dict, points: np.ndarray, labels: np.ndarray, prefer_large: bool = False) -> tuple[np.ndarray, float]:
         """points (N, 2) in window pixels, labels (N,) 1 add / 0 remove / 2-3 box corners -> (mask bool HxW, score)."""
         import cv2
 
@@ -222,6 +223,13 @@ class SamOnnx:
         masks = np.asarray(masks)[0]
         scores = np.asarray(scores).reshape(-1)
         best = int(np.argmax(scores)) if scores.size else 0
+        if prefer_large and masks.ndim == 3 and scores.size > 1:
+            # one click: SAM's three answers are a part, the object and a wider area; the
+            # best-scored is often only a part (one roof face). Take the largest of those
+            # scoring close to the best: the whole object, not the background.
+            areas = [(masks[i] > 0).sum() for i in range(masks.shape[0])]
+            near = [i for i in range(masks.shape[0]) if scores[i] >= scores[best] - LARGE_MARGIN]
+            best = max(near, key=lambda i: areas[i])
         logit = masks[best] if masks.ndim == 3 else masks
         logit = cv2.resize(logit.astype(np.float32), (w, h), interpolation=cv2.INTER_LINEAR)
         return logit > 0, float(scores[best]) if scores.size else 0.0
@@ -311,6 +319,13 @@ def _embedded(path: str, window: tuple[int, int, int, int], device: str, engine=
     return eng, emb, scale, encode_ms
 
 
+def prepare(path: str, window: tuple[int, int, int, int], device: str = "cpu", engine=None) -> dict:
+    """Encode the view ahead of the first click (the slow part, seconds on a CPU)."""
+    with _lock:
+        _eng, _emb, _scale, encode_ms = _embedded(path, window, device, engine)
+    return {"encode_ms": round(encode_ms, 1), "cached": encode_ms == 0.0}
+
+
 def segment_everything(path: str, window: tuple[int, int, int, int], opts, device: str = "cpu",
                        engine=None, grid: int = 16, min_score: float = 0.7) -> dict:
     """Every object in the view, SAM's automatic way: one add-point at each node of a
@@ -375,7 +390,11 @@ def segment(path: str, window: tuple[int, int, int, int], clicks: list[tuple[flo
         pts = np.array([[(x - col) / scale, (y - row) / scale] for x, y, _ in clicks], dtype=np.float32)
         lbl = np.array([l if l in (1, 2, 3) else 0 for _, _, l in clicks], dtype=np.float32)
         t1 = time.perf_counter()
-        mask, score = eng.decode(emb, pts, lbl)
+        single = int((lbl == 1).sum()) == 1 and not boxed and not (lbl == 0).any()
+        try:
+            mask, score = eng.decode(emb, pts, lbl, prefer_large=single)
+        except TypeError:                                         # a stand-in engine without the option
+            mask, score = eng.decode(emb, pts, lbl)
         decode_ms = (time.perf_counter() - t1) * 1000
     seed = next((p for p, l in zip(pts, lbl) if l == 1), None)
     if seed is None and boxed:                                   # a box alone: keep the part at its centre

@@ -53,7 +53,7 @@ function isTyping(el) {
 export default function LabelRail({
   classes = [], counts = {}, activeClass, onActiveClass, mode, onMode, editId, onEditClass, onEditDelete,
   onClear, onUndo, canUndo, outline, onOutline, editingClass, onAddClass, segPreview,
-  annotations = [], selectedIds = [], onSelect, onDeleteMany, onReclassMany,
+  annotations = [], selectedIds = [], onSelect, onDeleteMany, onReclassMany, recent, onDeleteRecent,
 }) {
   const [open, setOpen] = useState(null);
   const [last, setLast] = useState({});            // group -> tool id last picked there
@@ -160,6 +160,20 @@ export default function LabelRail({
           <button type="button" className="label-selbar-btn" onClick={() => ask("drop")} title="Esc">Drop</button>
         )}
         {!all.busy && <button type="button" className="label-selbar-btn" onClick={() => ask("again")}>Run here again</button>}
+      </div>
+    )}
+    {recent && !all && n === 0 && (
+      <div className="label-selbar" role="status">
+        <span className="label-saved-dot" aria-hidden="true" /><span>Saved</span>
+        <button type="button" className="label-selbar-btn" onClick={() => onUndo?.()} title="Ctrl+Z"><IconUndo /> Undo <kbd className="mono">Ctrl+Z</kbd></button>
+        <button type="button" className="label-selbar-btn danger" onClick={() => onDeleteRecent?.()} title="Delete"><IconTrash /> Delete</button>
+      </div>
+    )}
+    {editId && !all && n === 0 && !recent && (
+      <div className="label-selbar" role="status">
+        <span>{(editingClass || "").replace(/_/g, " ")}</span>
+        <button type="button" className="label-selbar-btn danger" onClick={() => onEditDelete?.()} title="Del"><IconTrash /> Delete <kbd className="mono">Del</kbd></button>
+        {canUndo && <button type="button" className="label-selbar-btn" onClick={() => onUndo?.()} title="Ctrl+Z"><IconUndo /> Undo</button>}
       </div>
     )}
     {n > 0 && (

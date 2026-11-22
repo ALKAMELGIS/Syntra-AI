@@ -76,13 +76,13 @@ const ROT = L.divIcon({ className: "edit-rot", iconSize: [14, 14] });
 export default function AnnotationLayer({
   visible, mode, className, annotations = [], onDrawn, onShapeClick, onSegment, exact, onPreview,
   editable = false, editId = null, onEdit, onUpdate, onDeleteSelected,
-  selectedIds = [], onSelect, onSegmentAll, onDrawnMany,
+  selectedIds = [], onSelect, onSegmentAll, onDrawnMany, onPrepare,
 }) {
   const map = useMap();
   const st = useRef({});
   const group = useRef(null);
   const live = useRef({ onDrawn, onSegment, onPreview, exact });
-  live.current = { onDrawn, onSegment, onPreview, exact, onEdit, onUpdate, onDeleteSelected, onSelect, annotations, onSegmentAll, onDrawnMany };
+  live.current = { onDrawn, onSegment, onPreview, exact, onEdit, onUpdate, onDeleteSelected, onSelect, annotations, onSegmentAll, onDrawnMany, onPrepare };
   const selKey = selectedIds.join(",");
 
   // saved labels
@@ -596,6 +596,16 @@ export default function AnnotationLayer({
     const onAsk = (e) => { if (mode !== "everything") return; if (e.detail === "keep") keepAll(); else if (e.detail === "drop") dropAll(); else everything(); };
     window.addEventListener("syntra:suggestions", onAsk);
     if (mode === "everything") everything();
+    // the AI tools: encode the view ahead of the first click (seconds on a CPU), again after each move
+    let prepT = null;
+    const prepare = () => {
+      clearTimeout(prepT);
+      prepT = setTimeout(() => {
+        const b = map.getBounds();
+        live.current.onPrepare?.([b.getWest(), b.getSouth(), b.getEast(), b.getNorth()]);
+      }, 350);
+    };
+    if (mode === "click" || mode === "box") { prepare(); map.on("moveend", prepare); }
 
     map.on("mousedown", down); map.on("mousemove", move); map.on("mouseup", up);
     map.on("click", click); map.on("dblclick", dbl); map.on("contextmenu", context);
@@ -605,6 +615,7 @@ export default function AnnotationLayer({
       map.off("click", click); map.off("dblclick", dbl); map.off("contextmenu", context);
       window.removeEventListener("keydown", key, true);
       window.removeEventListener("syntra:suggestions", onAsk);
+      map.off("moveend", prepare); clearTimeout(prepT);
       s.seq++;
       clear(); map.removeLayer(tip);
       live.current.onPreview?.(null);

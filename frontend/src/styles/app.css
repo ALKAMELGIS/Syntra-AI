@@ -2575,3 +2575,6 @@ input[type=range].gauge:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 2px 
 .lt-foot .limp { display: contents; }
 .lt-foot .limp-row { display: flex; gap: 4px; }
 .lt-foot .limp-card { flex-basis: 100%; }
+
+.label-saved-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ready); }
+.label-selbar kbd { font-size: var(--fs-11); color: var(--text-muted); margin-left: 4px; }

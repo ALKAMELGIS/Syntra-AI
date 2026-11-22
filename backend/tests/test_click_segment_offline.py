@@ -305,3 +305,41 @@ def test_status_says_when_the_model_is_being_installed(tmp_path, monkeypatch):
         assert st["installing"] is True and "Installing" in (st["reason"] or "") or st["reason"].startswith("onnxruntime")
     finally:
         click_segment._installing.discard("sam2.1_tiny")
+
+
+class ThreeMasksEngine:
+    """Like SAM: a part (best score), the object (a little lower) and the background (low)."""
+
+    def encode(self, rgb):
+        return {"size": rgb.shape[:2]}
+
+    def decode(self, emb, points, labels, prefer_large=False):
+        h, w = emb["size"]
+        yy, xx = np.mgrid[:h, :w]
+        x, y = points[0]
+        part = (abs(xx - x) <= 10) & (abs(yy - y) <= 10)
+        whole = (abs(xx - x) <= 40) & (abs(yy - y) <= 30)
+        wide = np.ones((h, w), bool)
+        masks, scores = [part, whole, wide], [0.95, 0.88, 0.40]
+        if prefer_large:
+            near = [i for i in range(3) if scores[i] >= 0.95 - 0.12]
+            i = max(near, key=lambda k: masks[k].sum())
+        else:
+            i = 0
+        return masks[i], scores[i]
+
+
+def test_one_click_takes_the_whole_object_and_prepare_warms_the_view(app_img):
+    from app.engine import click_segment
+
+    c, img = app_img
+    click_segment.set_engine(ThreeMasksEngine())
+    b = img["bounds_wgs84"]
+    view = [b["west"], b["south"], b["east"], b["north"]]
+    p = c.post(f"/api/images/{img['image_id']}/segment/prepare", json={"view": view})
+    assert p.status_code == 200 and p.json()["cached"] is False
+    r = c.post(f"/api/images/{img['image_id']}/segment", json={"clicks": [lonlat(img, 500, 500) + [1]], "view": view, "shape": "polygon"})
+    assert r.status_code == 200, r.text
+    xs = [q[0] for q in r.json()["points_px"]]
+    assert max(xs) - min(xs) > 60                                   # the object (80 px wide at this scale), not the 20 px part
+    assert r.json()["timings"]["cached"] is True                    # prepared: the click only decoded

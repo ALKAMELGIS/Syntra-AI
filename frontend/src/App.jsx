@@ -277,6 +277,7 @@ export default function App({ user = null, onSignOut = null }) {
       });
       setAnnotations((list) => [...list, saved]);
       setUndoIds((u) => [...u.slice(-49), saved.id]);
+      setRecent({ id: saved.id, n: (meta.count || 1), at: Date.now() });
     } catch (err) {
       setLabelError(err.detail?.message || err.message);
     }
@@ -292,6 +293,10 @@ export default function App({ user = null, onSignOut = null }) {
   async function reclassLabels(ids, c) {
     for (const id of ids) await updateLabel(id, { class_name: c });
   }
+  // the label just added: a chip offers Undo and Delete for a few seconds
+  const [recent, setRecent] = useState(null);
+  useEffect(() => { if (!recent) return undefined; const t = setTimeout(() => setRecent(null), 6000); return () => clearTimeout(t); }, [recent]);
+  const prepareView = (view) => image?.image_id && api.segmentPrepare(image.image_id, { view, device: devices?.gpu_count > 0 ? "cuda:0" : "cpu" }).catch(() => {});
   // Undo (Ctrl+Z or the rail): removes the labels added on this image, newest first
   const [undoIds, setUndoIds] = useState([]);
   useEffect(() => setUndoIds([]), [image?.image_id]);
@@ -481,7 +486,7 @@ export default function App({ user = null, onSignOut = null }) {
               onDeleteSelected: (x) => (Array.isArray(x) ? deleteLabels(x) : deleteLabel(x)),
               selectedIds: labelling ? selectedIds : [], onSelect: setSelectedIds,
               onSegment: segmentClick, onPreview: setSegPreview, exact: exactSize,
-              onSegmentAll: segmentAll, onDrawnMany: saveMany,
+              onSegmentAll: segmentAll, onDrawnMany: saveMany, onPrepare: prepareView,
             }}
             labelRail={labelling ? {
               classes: trainClasses, activeClass, onActiveClass: setActiveClass,
@@ -493,6 +498,8 @@ export default function App({ user = null, onSignOut = null }) {
               outline, onOutline: setOutline, segPreview,
               annotations, selectedIds, onSelect: setSelectedIds,
               onDeleteMany: deleteLabels, onReclassMany: reclassLabels,
+              recent: recent && annotations.some((a) => a.id === recent.id) ? recent : null,
+              onDeleteRecent: () => { if (recent) { deleteLabel(recent.id); setRecent(null); } },
               onAddClass: (c) => { setExtraClasses((l) => (l.includes(c) ? l : [...l, c])); setActiveClass(c); },
             } : null}
             perfOpen={perfOpen}

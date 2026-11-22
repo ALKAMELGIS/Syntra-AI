@@ -283,6 +283,7 @@ export const api = {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model }),
     }).then(handle),
   segmentInstallStatus: (jobId) => request(`${BASE}/segment/install/${jobId}`).then(handle),
+  segmentPrepare: (imageId, payload) => request(`${BASE}/images/${imageId}/segment/prepare`, json(payload)).then(handle),
   segmentAll: (imageId, payload) => request(`${BASE}/images/${imageId}/segment-all`, json(payload)).then(handle),
   segmentClick: (imageId, payload) =>
     request(`${BASE}/images/${imageId}/segment`, {
