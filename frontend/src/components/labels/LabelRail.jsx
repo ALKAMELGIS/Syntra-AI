@@ -12,6 +12,7 @@ import {
 } from "../ui/Icons.jsx";
 
 const SELECT = "select";
+export const DEFAULT_CLASS = "object";      // made when a tool is picked before any class exists
 // what the AI tools draw: the Refine `shape` sent to the engine
 const DRAWS = [["auto", "Auto"], ["box", "Box"], ["rectangle", "Rotated"], ["polygon", "Outline"]];
 
@@ -124,19 +125,20 @@ export default function LabelRail({
     }
     if (t.action === "clear") { onClear?.(); return; }
     if (t.area) { onActiveClass(t.id); onMode("rect"); return; }
-    if (drawingArea && classes.length) onActiveClass(classes[0]);
+    const draws = !["select"].includes(g.id);
+    if (draws && !classes.length) onAddClass?.(DEFAULT_CLASS);   // every tool starts at once: rename or reclass later
+    else if (draws && drawingArea) onActiveClass(classes[0]);
     onMode(t.id === SELECT ? null : t.id);
   }
   function main(g) {
     if (g.action === "undo") { onUndo?.(); return; }
-    if (needsClass(g)) { setOpen("class"); return; }
     if (!g.tools) { setOpen(open === g.id ? null : g.id); return; }
     const t = g.tools.find((x) => x.id === last[g.id]) || g.tools[0];
     if (t.action) { setOpen(g.id); return; }       // Delete, All of class: choose in the list
     pick(g, t);
   }
   const shown = (g) => (g.tools ? g.tools.find((x) => x.id === last[g.id]) || g.tools[0] : null);
-  const needsClass = (g) => !classes.length && !["class", "undo", "delete", "areas"].includes(g.id);
+
 
   const n = selectedIds.length;
   return (
@@ -196,7 +198,7 @@ export default function LabelRail({
                 {g.tools?.map((x) => (
                   <button key={x.id} type="button" role="menuitem" disabled={x.action === "delete" && !editId && !selectedIds.length}
                           className={`label-rail-row ${isOn(x) ? "on" : ""} ${x.danger ? "danger" : ""}`}
-                          onClick={() => (needsClass(g) ? setOpen("class") : pick(g, x))}
+                          onClick={() => pick(g, x)}
                           title={x.note || undefined}>
                     {x.area ? <span className="label-rail-swatch dash" style={{ borderColor: classColor(x.id) }} /> : <x.Icon />}
                     <span className="label-rail-name">{x.label}</span>

@@ -169,7 +169,8 @@ export default function LabelTools({
   const objects = annotations.filter((a) => !isArea(a.class_name));
 
   function pickTool(id) {
-    if (drawingArea) onActiveClass(classes[0]);
+    if (!classes.length && !["boxsel", "lasso"].includes(id)) onAddClass?.("object");   // the tool starts at once; rename or reclass later
+    else if (drawingArea) onActiveClass(classes[0]);
     onMode(mode === id && !drawingArea ? null : id);
   }
 
@@ -188,7 +189,7 @@ export default function LabelTools({
       }
       if (e.key.toUpperCase() === "V") { e.preventDefault(); live.current.onMode(null); return; }
       const t = LABEL_TOOLS.find((x) => x.key === e.key.toUpperCase());
-      if (t && cls.length) { e.preventDefault(); pick(t.id); }
+      if (t) { e.preventDefault(); pick(t.id); }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
