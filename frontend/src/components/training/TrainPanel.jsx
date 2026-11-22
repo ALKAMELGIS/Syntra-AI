@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { SaveSamples } from "./SamplesStore.jsx";
 import TrainSetup, { placeReady } from "./TrainSetup.jsx";
 import BasemapSource from "./BasemapSource.jsx";
-import { api } from "../../api/client.js";
+import { api, ENGINE_API } from "../../api/client.js";
 import { classColor, isArea, CHECK_AREA } from "../labels/AnnotationTool.jsx";
 import LabelTools from "../labels/LabelTools.jsx";
 import { IconChevronDown, IconClose, IconFolder, IconMap, IconUpload } from "../ui/Icons.jsx";
@@ -70,6 +70,11 @@ export default function TrainPanel({
     api.hosting().then(setHosting).catch(() => setHosting({ error: true }));
   };
   useEffect(() => { if (open && (step === 0 || step === 3)) refreshPlaces(); }, [open, step]);
+  // an engine started before the last update runs old code: say so before a run fails
+  const [engineOld, setEngineOld] = useState(false);
+  useEffect(() => {
+    if (open && step === 3) fetch("/api/health").then((r) => r.json()).then((h) => setEngineOld((h.api || 0) < ENGINE_API)).catch(() => {});
+  }, [open, step]);
   useEffect(() => { setPushJob(null); }, [ds?.job_id]);
 
   usePoll(async () => {
@@ -278,6 +283,7 @@ export default function TrainPanel({
                 </div>
               )
             )}
+            {engineOld && where !== "runpod" && <p className="train-error">Engine out of date · close the “Syntra engine” window and run start-local.bat</p>}
             <p className="train-label">Model size</p>
             <div className="train-seg">
               {[["nano", "Fast"], ["small", "Balanced"], ["medium", "Accurate"]].map(([id, label]) => (
@@ -288,7 +294,7 @@ export default function TrainPanel({
               <input className="train-input mono" type="number" min="1" value={epochs} onChange={(e) => setEpochs(e.target.value)} placeholder="auto" />
             </label>
             <button type="button" className="run-button" onClick={startTraining}
-                    disabled={trRunning || !placeOk || (where === "runpod" && !pushJob)}>
+                    disabled={trRunning || !placeOk || (where === "runpod" && !pushJob) || (engineOld && where !== "runpod")}>
               {trRunning ? "Training…" : trDone ? "Train again" : where === "local" ? "Start training" : "Train on GPU"}
             </button>
             {trRunning && (

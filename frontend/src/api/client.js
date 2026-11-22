@@ -1,5 +1,7 @@
 // Every call the interface makes to the engine (/api/...), in one place.
 const BASE = "/api";
+// the engine level this interface needs (backend/app/main.py API_LEVEL); lower = an engine started before an update
+export const ENGINE_API = 5;
 
 // Optional shared API key (matches SYNTRA_API_KEY on the backend). Set
 // VITE_API_KEY in frontend/.env for builds that talk to a protected server.
