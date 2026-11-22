@@ -154,8 +154,17 @@ function ClickTool({ outline, onOutline, preview }) {
 
 export default function LabelTools({
   open, classes, counts, activeClass, onActiveClass, mode, onMode, annotations, onClearAnnotations, labelError,
-  outline, onOutline, exact, onExact, segPreview, editId, onEditDone, onEditClass, onEditDelete, image, onImported,
+  outline, onOutline, exact, onExact, segPreview, editId, onEditDone, onEditClass, onEditDelete, image, onImported, onAddClass,
 }) {
+  const [newClass, setNewClass] = useState("");
+  function addClass(e) {
+    e.preventDefault();
+    const name = newClass.trim().toLowerCase().replace(/\s+/g, "_");
+    if (!name) return;
+    onAddClass?.(name);
+    setNewClass("");
+    e.currentTarget.querySelector("input")?.blur();
+  }
   const drawingArea = isArea(activeClass || "");
   const objects = annotations.filter((a) => !isArea(a.class_name));
 
@@ -201,6 +210,13 @@ export default function LabelTools({
           </li>
         ))}
       </ul>
+
+      {onAddClass && (
+        <form className="train-row" onSubmit={addClass}>
+          <input className="train-input" value={newClass} onChange={(e) => setNewClass(e.target.value)} placeholder="Add a class: palm, car…" aria-label="New class" />
+          <button type="submit" className="quiet-button" disabled={!newClass.trim()}>Add</button>
+        </form>
+      )}
 
       <p className="train-label">Tool</p>
       {(() => {

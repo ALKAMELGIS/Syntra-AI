@@ -370,6 +370,19 @@ for when it is exposed to a network (all in `backend/.env.example`):
   `test_approved_model_offline.py` (4), and live: an approved stand-in
   version shows as "Boat" in the list. Not run: detection with real trained
   class weights (none trained yet).
+- **Train > Setup: where training runs.** The Train panel's first step picks
+  the place (`components/training/TrainSetup.jsx`), each with a ready or not
+  ready state: Hugging Face GPU (the engine itself, when its Space has a real
+  GPU; a ZeroGPU Space says it lends a GPU for under a minute at a time and
+  links to the Space's hardware settings), RunPod GPU (needs the key in
+  Settings > Services) and This computer (the training libraries, CUDA, and
+  Install missing / Install GPU build, which only run from the computer
+  running Syntra). The Train step shows the choice and trains there. The image
+  to learn from and new classes moved into Label. `/api/compute/hosting` says
+  where the engine runs (`SPACE_ID`, `SPACES_ZERO_GPU`). Verified:
+  `test_hosting_offline.py` (2), a Playwright look at both steps. Not run:
+  training on an upgraded Space GPU. Not built yet: a basemap area as the
+  image to learn from.
 - **Label rail on the map.** While labelling (Train > Label) the tools sit in
   a 40 px rail on the map's left edge, below the zoom buttons
   (`components/labels/LabelRail.jsx`): Polygon (Polygon, Freehand),

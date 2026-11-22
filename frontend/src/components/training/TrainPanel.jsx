@@ -1,20 +1,22 @@
 import React, { useEffect, useRef, useState } from "react";
 import { SaveSamples } from "./SamplesStore.jsx";
+import TrainSetup, { placeReady } from "./TrainSetup.jsx";
 import { api } from "../../api/client.js";
 import { classColor, isArea, CHECK_AREA } from "../labels/AnnotationTool.jsx";
 import LabelTools from "../labels/LabelTools.jsx";
 import { IconClose, IconUpload } from "../ui/Icons.jsx";
 
 // Train your own model, beside the map, in five steps:
-//   Data     the GeoTIFF to learn from (upload, or pick from the library) and its classes
-//   Label    draw on the map (polygon, rectangle, square, circle, freehand) or click
+//   Setup    where training runs: Hugging Face GPU, RunPod GPU or this computer (TrainSetup.jsx)
+//   Label    the GeoTIFF to learn from and its classes, then draw on the map (polygon, rectangle, square, circle, freehand) or click
 //            an object and let SAM 2.1 outline it (LabelTools.jsx)
 //   Dataset  tile the image and labels into a YOLO dataset
 //   Train    fine-tune YOLO11 on it (a background job; the panel can close)
 //   Use      name it, add it to the model list and run it on the current image
 // The panel stays mounted while closed, so a running job keeps reporting.
 
-export const TRAIN_STEPS = ["Data", "Label", "Dataset", "Train", "Use"];
+export const TRAIN_STEPS = ["Setup", "Label", "Dataset", "Train", "Use"];
+const PLACES = { hf: "Hugging Face GPU", runpod: "RunPod GPU", local: "This computer" };
 const TASKS = [
   { id: "detect", label: "Boxes" },
   { id: "obb", label: "Rotated boxes" },
@@ -40,7 +42,6 @@ export default function TrainPanel({
 }) {
   const [images, setImages] = useState([]);
   const [upload, setUpload] = useState(null);       // null | {pct} | {error}
-  const [newClass, setNewClass] = useState("");
   const [task, setTask] = useState("detect");
   const [ds, setDs] = useState(null);               // dataset job
   const [tr, setTr] = useState(null);               // training job
@@ -48,7 +49,11 @@ export default function TrainPanel({
   const [epochs, setEpochs] = useState("");
   const [modelName, setModelName] = useState("");
   const [registered, setRegistered] = useState(null);
-  const [where, setWhere] = useState("local");       // "local" | "gpu"
+  const [where, setWhere] = useState(() => {         // "hf" | "runpod" | "local": Train > Setup
+    try { return localStorage.getItem("syntra_train_where") || "local"; } catch { return "local"; }
+  });
+  const [hosting, setHosting] = useState(null);
+  function pickWhere(w) { setWhere(w); try { localStorage.setItem("syntra_train_where", w); } catch { /* private mode */ } }
   const [gpu, setGpu] = useState("rtx4090");
   const [cloud, setCloud] = useState("COMMUNITY");
   const [maxHours, setMaxHours] = useState("2");
@@ -57,8 +62,12 @@ export default function TrainPanel({
   const [err, setErr] = useState(null);
   const fileRef = useRef(null);
 
-  useEffect(() => { if (open && step === 0) api.listImages().then(setImages).catch(() => setImages([])); }, [open, step]);
-  useEffect(() => { if (open && step === 3) api.runpodStatus().then((s) => { setRp(s); if (s?.configured) setWhere((w) => (w === "local" ? "gpu" : w)); }).catch(() => setRp(null)); }, [open, step]);
+  useEffect(() => { if (open && step === 1) api.listImages().then(setImages).catch(() => setImages([])); }, [open, step]);
+  const refreshPlaces = () => {
+    api.runpodStatus().then(setRp).catch(() => setRp(null));
+    api.hosting().then(setHosting).catch(() => setHosting({ error: true }));
+  };
+  useEffect(() => { if (open && (step === 0 || step === 3)) refreshPlaces(); }, [open, step]);
   useEffect(() => { setPushJob(null); }, [ds?.job_id]);
 
   usePoll(async () => {
@@ -81,7 +90,8 @@ export default function TrainPanel({
   const labelled = objects.length;
   const dsDone = ds?.status === "completed";
   const trDone = tr && ["completed", "done"].includes(tr.status) && tr.result?.best;
-  const canNext = [Boolean(image), labelled > 0, dsDone, trDone, false][step];
+  const canNext = [true, Boolean(image) && labelled > 0, dsDone, trDone, false][step];
+  const placeOk = placeReady(where, hosting, rp);
 
   async function uploadFile(e) {
     const file = e.target.files?.[0];
@@ -97,14 +107,6 @@ export default function TrainPanel({
     }
   }
 
-  function addClass(e) {
-    e.preventDefault();
-    const name = newClass.trim().toLowerCase().replace(/\s+/g, "_");
-    if (!name) return;
-    onAddClass(name);
-    setNewClass("");
-  }
-
   async function buildDataset() {
     setErr(null);
     try {
@@ -117,7 +119,7 @@ export default function TrainPanel({
     setErr(null);
     setRegistered(null);
     try {
-      if (where === "gpu") {
+      if (where === "runpod") {
         const job = await api.cloudTrain({
           push_job_id: pushJob.job_id, dataset_job_id: ds.job_id, model_size: size, gpu, cloud,
           epochs: epochs ? parseInt(epochs, 10) : null, max_hours: parseFloat(maxHours) || 2,
@@ -167,8 +169,12 @@ export default function TrainPanel({
 
       <div className="train-body">
         {step === 0 && (
+          <TrainSetup open={open && step === 0} where={where} onWhere={pickWhere} hosting={hosting} rp={rp} onRefresh={refreshPlaces} />
+        )}
+
+        {step === 1 && (
           <>
-            <p className="train-label">Image to learn from</p>
+            <p className="train-label">Learn from</p>
             {image ? (
               <div className="train-image">
                 <span className="train-image-name" title={image.filename}>{image.filename}</span>
@@ -194,27 +200,13 @@ export default function TrainPanel({
             </div>
             {upload?.error && <p className="train-error">{upload.error}</p>}
 
-            <p className="train-label">Classes</p>
-            <ul className="train-classes">
-              {classes.map((c) => (
-                <li key={c}><span className="train-swatch" style={{ background: classColor(c) }} />{c}
-                  <span className="mono train-dim">{counts[c] || 0}</span></li>
-              ))}
-            </ul>
-            <form className="train-row" onSubmit={addClass}>
-              <input className="train-input" value={newClass} onChange={(e) => setNewClass(e.target.value)} placeholder="palm, car, building" />
-              <button type="submit" className="quiet-button" disabled={!newClass.trim()}>Add</button>
-            </form>
-          </>
-        )}
-
-        {step === 1 && (
-          <LabelTools open={open && step === 1} classes={classes} counts={counts} activeClass={activeClass}
+          {image && <LabelTools open={open && step === 1} classes={classes} counts={counts} activeClass={activeClass}
                       onActiveClass={onActiveClass} mode={mode} onMode={onMode} annotations={annotations}
                       onClearAnnotations={onClearAnnotations} labelError={labelError}
                       outline={outline} onOutline={onOutline} exact={exact} onExact={onExact} segPreview={segPreview}
                       editId={editId} onEditDone={onEditDone} onEditClass={onEditClass} onEditDelete={onEditDelete}
-                      image={image} onImported={onImported} />
+                      image={image} onImported={onImported} onAddClass={onAddClass} />}
+          </>
         )}
 
         {step === 2 && (
@@ -243,11 +235,12 @@ export default function TrainPanel({
         {step === 3 && (
           <>
             <p className="train-label">Where</p>
-            <div className="train-seg">
-              <button type="button" className={where === "local" ? "selected" : ""} onClick={() => setWhere("local")} disabled={trRunning}>This computer</button>
-              <button type="button" className={where === "gpu" ? "selected" : ""} onClick={() => setWhere("gpu")} disabled={trRunning}>RunPod GPU</button>
-            </div>
-            {where === "gpu" && (
+            <p className="setup-where">
+              <span className={`setup-dot ${placeOk ? "ok" : ""}`} aria-hidden="true" />{PLACES[where]}
+              <span className="train-dim">{placeOk ? "ready" : "not ready"}</span>
+              <button type="button" className="link-button" onClick={() => onStep(0)} disabled={trRunning}>Change</button>
+            </p>
+            {where === "runpod" && (
               !rp?.configured ? <p className="train-dim">Add your RunPod API key in Settings</p>
               : !pushJob ? <p className="train-dim">Save the samples to Hugging Face in the Dataset step first: the GPU reads them from there</p>
               : (
@@ -281,8 +274,8 @@ export default function TrainPanel({
               <input className="train-input mono" type="number" min="1" value={epochs} onChange={(e) => setEpochs(e.target.value)} placeholder="auto" />
             </label>
             <button type="button" className="run-button" onClick={startTraining}
-                    disabled={trRunning || (where === "gpu" && (!rp?.configured || !pushJob))}>
-              {trRunning ? "Training…" : trDone ? "Train again" : where === "gpu" ? "Train on GPU" : "Start training"}
+                    disabled={trRunning || !placeOk || (where === "runpod" && !pushJob)}>
+              {trRunning ? "Training…" : trDone ? "Train again" : where === "local" ? "Start training" : "Train on GPU"}
             </button>
             {trRunning && (
               <>
