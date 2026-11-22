@@ -179,7 +179,7 @@ class SamOnnx:
         return list(feats.values())[{"high_res_feats_0": 0, "high_res_feats_1": 1}.get(want, -1)]
 
     def decode(self, emb: dict, points: np.ndarray, labels: np.ndarray) -> tuple[np.ndarray, float]:
-        """points (N, 2) in window pixels, labels (N,) 1 add / 0 remove -> (mask bool HxW, score)."""
+        """points (N, 2) in window pixels, labels (N,) 1 add / 0 remove / 2-3 box corners -> (mask bool HxW, score)."""
         import cv2
 
         h, w = emb["size"]
@@ -272,8 +272,10 @@ def segment(path: str, window: tuple[int, int, int, int], clicks: list[tuple[flo
     """Clicks in raster pixels -> refined outline in raster pixels + stats."""
     from app.engine.shapes import mask_to_polygon, refine
 
-    if not any(lbl == 1 for _, _, lbl in clicks):
-        raise ValueError("Click inside the object first")
+    labels = [lbl for _, _, lbl in clicks]
+    boxed = labels.count(2) == 1 and labels.count(3) == 1       # a box prompt: top-left 2, bottom-right 3 (SAM)
+    if not (any(l == 1 for l in labels) or boxed):
+        raise ValueError("Click inside the object, or draw a box around it")
     col, row, w, h = window
     scale = max(1.0, max(w, h) / SIZE)
     out_h, out_w = max(1, round(h / scale)), max(1, round(w / scale))
@@ -299,11 +301,14 @@ def segment(path: str, window: tuple[int, int, int, int], clicks: list[tuple[flo
         else:
             _cache.move_to_end(key)
         pts = np.array([[(x - col) / scale, (y - row) / scale] for x, y, _ in clicks], dtype=np.float32)
-        lbl = np.array([1 if l == 1 else 0 for _, _, l in clicks], dtype=np.float32)
+        lbl = np.array([l if l in (1, 2, 3) else 0 for _, _, l in clicks], dtype=np.float32)
         t1 = time.perf_counter()
         mask, score = eng.decode(emb, pts, lbl)
         decode_ms = (time.perf_counter() - t1) * 1000
     seed = next((p for p, l in zip(pts, lbl) if l == 1), None)
+    if seed is None and boxed:                                   # a box alone: keep the part at its centre
+        corners = [p for p, l in zip(pts, lbl) if l in (2, 3)]
+        seed = (corners[0] + corners[1]) / 2
     poly = mask_to_polygon(mask, seed_xy=tuple(seed) if seed is not None else None,
                            fill_holes_px2=opts.px2(opts.fill_holes_m2), offset=(col, row), scale=scale)
     if poly is None:

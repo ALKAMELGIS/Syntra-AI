@@ -206,3 +206,54 @@ def _reset_engine():
     from app.engine import click_segment
     click_segment.set_engine(None, None)
     json.dumps({})
+
+
+class BoxEngine:
+    """Decodes the box it is given (labels 2 and 3) as the mask; records the labels."""
+
+    def __init__(self):
+        self.labels = None
+
+    def encode(self, rgb):
+        return {"size": rgb.shape[:2]}
+
+    def decode(self, emb, points, labels):
+        self.labels = labels.tolist()
+        h, w = emb["size"]
+        (x0, y0), (x1, y1) = points[labels == 2][0], points[labels == 3][0]
+        yy, xx = np.mgrid[:h, :w]
+        return (xx >= x0) & (xx <= x1) & (yy >= y0) & (yy <= y1), 0.8
+
+
+def test_a_box_alone_segments_the_object_inside_it(app_img):
+    from app.engine import click_segment
+
+    c, img = app_img
+    eng = BoxEngine()
+    click_segment.set_engine(eng)
+    b = img["bounds_wgs84"]
+    view = [b["west"], b["south"], b["east"], b["north"]]
+    r = c.post(f"/api/images/{img['image_id']}/segment", json={
+        "clicks": [lonlat(img, 400, 300) + [2], lonlat(img, 600, 500) + [3]], "view": view, "shape": "box"})
+    assert r.status_code == 200, r.text
+    assert eng.labels == [2.0, 3.0]                                   # SAM's box corner labels reach the decoder
+    xs = [p[0] for p in r.json()["points_px"]]
+    ys = [p[1] for p in r.json()["points_px"]]
+    assert r.json()["shape"] == "box" and len(xs) == 4
+    assert abs(min(xs) - 400) < 12 and abs(max(xs) - 600) < 12 and abs(min(ys) - 300) < 12 and abs(max(ys) - 500) < 12
+    # one corner alone is not a box, and labels outside 0-3 are refused
+    assert c.post(f"/api/images/{img['image_id']}/segment",
+                  json={"clicks": [lonlat(img, 400, 300) + [2]], "view": view}).status_code == 422
+    assert c.post(f"/api/images/{img['image_id']}/segment",
+                  json={"clicks": [lonlat(img, 400, 300) + [7]], "view": view}).status_code == 400
+
+
+def test_box_shape_is_axis_aligned():
+    from shapely.geometry import Polygon
+
+    from app.engine.shapes import RefineOptions, refine
+
+    diamond = Polygon([(50, 0), (100, 50), (50, 100), (0, 50)])
+    res = refine(diamond, RefineOptions(shape="box", px_m=1.0, simplify_m=0.5))
+    assert res["shape"] == "box" and res["polygon"].bounds == (0.0, 0.0, 100.0, 100.0)
+    assert res["warning"] is None                                     # a box is asked for: no fall-back to the trace

@@ -27,10 +27,10 @@ from dataclasses import dataclass
 
 import numpy as np
 
-SHAPES = ("polygon", "right_angles", "rectangle", "circle", "smooth")
+SHAPES = ("polygon", "right_angles", "rectangle", "box", "circle", "smooth")
 
 # minimum IoU between the fitted shape and the trace before the fit is kept
-IOU_FLOOR = {"right_angles": 0.88, "rectangle": 0.85, "circle": 0.90, "smooth": 0.90, "polygon": 0.0}
+IOU_FLOOR = {"box": 0.0, "right_angles": 0.88, "rectangle": 0.85, "circle": 0.90, "smooth": 0.90, "polygon": 0.0}
 AREA_RATIO = (0.7, 1 / 0.7)
 
 _CLASS_SHAPES = (
@@ -250,6 +250,8 @@ def refine(poly, opts: RefineOptions) -> dict:
         fitted = right_angles(trace, simplify_px)
     elif shape == "rectangle":
         fitted = trace.minimum_rotated_rectangle
+    elif shape == "box":                                   # axis-aligned: what a detection box is
+        fitted = trace.envelope
     elif shape == "circle":
         fitted = fit_circle(trace)
     elif shape == "smooth":
@@ -261,13 +263,13 @@ def refine(poly, opts: RefineOptions) -> dict:
     warning = None
     score = iou(fitted, trace)
     ratio = fitted.area / trace.area if trace.area else 0
-    if shape != "polygon" and (score < IOU_FLOOR[shape] or not (AREA_RATIO[0] <= ratio <= AREA_RATIO[1])):
+    if shape not in ("polygon", "box") and (score < IOU_FLOOR[shape] or not (AREA_RATIO[0] <= ratio <= AREA_RATIO[1])):
         warning = (f"Kept the traced outline: {shape.replace('_', ' ')} changed it too much "
                    f"(overlap {score:.2f}, needs {IOU_FLOOR[shape]:.2f})")
         fitted, shape, score = simplified, "polygon", iou(simplified, trace)
 
     if opts.grow_m:
-        join = JOIN_STYLE.mitre if shape in ("right_angles", "rectangle", "polygon") else JOIN_STYLE.round
+        join = JOIN_STYLE.mitre if shape in ("right_angles", "rectangle", "box", "polygon") else JOIN_STYLE.round
         grown = _poly(fitted.buffer(opts.px(opts.grow_m), join_style=join, mitre_limit=2.0))
         if grown is None:
             raise ValueError("Shrinking by that much leaves nothing")

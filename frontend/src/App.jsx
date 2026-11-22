@@ -276,9 +276,20 @@ export default function App({ user = null, onSignOut = null }) {
         shape: meta.shape || null, tool: meta.tool || null,
       });
       setAnnotations((list) => [...list, saved]);
+      setUndoIds((u) => [...u.slice(-49), saved.id]);
     } catch (err) {
       setLabelError(err.detail?.message || err.message);
     }
+  }
+  // Undo (Ctrl+Z or the rail): removes the labels added on this image, newest first
+  const [undoIds, setUndoIds] = useState([]);
+  useEffect(() => setUndoIds([]), [image?.image_id]);
+  const undoable = undoIds.filter((id) => annotations.some((a) => a.id === id));
+  function undoLabel() {
+    const id = undoable[undoable.length - 1];
+    if (!id) return;
+    setUndoIds((u) => u.filter((x) => x !== id));
+    deleteLabel(id);
   }
   // click to segment: the outline comes from the engine, fitted to the class's shape
   const segmentClick = (clicks, view) => api.segmentClick(image.image_id, {
@@ -430,6 +441,15 @@ export default function App({ user = null, onSignOut = null }) {
               onEdit: setEditId, onUpdate: (id, latlngs) => updateLabel(id, { latlngs }), onDeleteSelected: deleteLabel,
               onSegment: segmentClick, onPreview: setSegPreview, exact: exactSize,
             }}
+            labelRail={labelling ? {
+              classes: trainClasses, activeClass, onActiveClass: setActiveClass,
+              counts: annotations.reduce((m, a) => ({ ...m, [a.class_name]: (m[a.class_name] || 0) + 1 }), {}),
+              mode: drawMode, onMode: (m) => { setDrawMode(m); setExactSize(null); if (m) setEditId(null); },
+              editId, editingClass: annotations.find((a) => a.id === editId)?.class_name,
+              onEditClass: (c) => editId && updateLabel(editId, { class_name: c }), onEditDelete: () => editId && deleteLabel(editId),
+              onClear: clearLabels, onUndo: undoLabel, canUndo: undoable.length > 0,
+              outline, onOutline: setOutline,
+            } : null}
             perfOpen={perfOpen}
             onTogglePerf={() => setPerfOpen((v) => !v)}
             libOpen={libOpen}

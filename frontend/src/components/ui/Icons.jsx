@@ -170,3 +170,18 @@ export const IconPlus = (p) => (
 export const IconCopy = (p) => (
   <svg {...base} {...p}><rect x="8" y="8" width="12" height="12" rx="2" /><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3" /></svg>
 );
+export const IconPointer = (p) => (
+  <svg {...base} {...p}><path d="M6 3.5 6 18l3.8-3.6 2.6 5.6 2.3-1-2.6-5.6H17.5Z" /></svg>
+);
+export const IconBoxAI = (p) => (
+  <svg {...base} {...p}><path d="M4 8V4h4M16 4h4v4M20 16v4h-4M8 20H4v-4" /><path d="M12 8.5 13 11l2.5 1-2.5 1-1 2.5-1-2.5-2.5-1 2.5-1Z" /></svg>
+);
+export const IconSparkle = (p) => (
+  <svg {...base} {...p}><path d="M12 3.5 13.8 9 19.5 11 13.8 13 12 18.5 10.2 13 4.5 11 10.2 9Z" /><path d="M18.5 3.5v3M17 5h3" /></svg>
+);
+export const IconAreaDashed = (p) => (
+  <svg {...base} {...p}><path d="M4 7V4h3M10 4h4M17 4h3v3M20 10v4M20 17v3h-3M14 20h-4M7 20H4v-3M4 14v-4" /></svg>
+);
+export const IconUndo = (p) => (
+  <svg {...base} {...p}><path d="M9 14 4 9l5-5" /><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" /></svg>
+);

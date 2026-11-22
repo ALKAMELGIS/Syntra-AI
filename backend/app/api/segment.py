@@ -33,7 +33,7 @@ class Refine(BaseModel):
 
 
 class SegmentRequest(Refine):
-    clicks: list[list[float]]              # [lon, lat, 1 add | 0 remove]
+    clicks: list[list[float]]              # [lon, lat, 1 add | 0 remove | 2 box top-left | 3 box bottom-right]
     view: list[float]                      # visible map: [west, south, east, north]
     class_name: str = ""
     device: str = "cpu"
@@ -126,8 +126,8 @@ async def segment_click(image_id: str, req: SegmentRequest):
 
     entry = _entry(image_id)
     b, w, h = entry["bounds_wgs84"], entry["width"], entry["height"]
-    if not req.clicks or any(len(c) != 3 for c in req.clicks) or len(req.view) != 4:
-        raise HTTPException(status_code=400, detail="Send clicks as [lon, lat, 1|0] and the view as [west, south, east, north]")
+    if not req.clicks or any(len(c) != 3 or int(c[2]) not in (0, 1, 2, 3) for c in req.clicks) or len(req.view) != 4:
+        raise HTTPException(status_code=400, detail="Send clicks as [lon, lat, 1|0|2|3] and the view as [west, south, east, north]")
     clicks = [(*store.lonlat_to_pixel(c[0], c[1], b, w, h), int(c[2])) for c in req.clicks]
     x0, y0 = store.lonlat_to_pixel(req.view[0], req.view[3], b, w, h)
     x1, y1 = store.lonlat_to_pixel(req.view[2], req.view[1], b, w, h)

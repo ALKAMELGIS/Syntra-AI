@@ -370,6 +370,24 @@ for when it is exposed to a network (all in `backend/.env.example`):
   `test_approved_model_offline.py` (4), and live: an approved stand-in
   version shows as "Boat" in the list. Not run: detection with real trained
   class weights (none trained yet).
+- **Label rail on the map.** While labelling (Train > Label) the tools sit in
+  a 40 px rail on the map's left edge, below the zoom buttons
+  (`components/labels/LabelRail.jsx`): Polygon (Polygon, Freehand),
+  Rectangle (Rectangle, Square), Circle, Class, Select and edit (V), Auto
+  segment (Click object A, Box around object B, and what they draw: Auto,
+  Box, Rotated box, Outline), Areas (training, accuracy), Undo (Ctrl+Z: the
+  labels added on this image, newest first) and Delete (selected, or all of
+  the image's labels). The icons stay visible; pointing at a group opens its
+  tools beside the rail, and the group's button picks the tool last used in
+  it. Box around object sends the drawn box to SAM 2.1 as a box prompt
+  (corner labels 2 and 3); the "Box" output is the axis-aligned envelope, kept
+  even when it covers more than the object (what a detection box is).
+  Verified: `test_click_segment_offline.py::test_a_box_alone_segments_the_object_inside_it`
+  and `::test_box_shape_is_axis_aligned`, a Playwright look at the rail and
+  the Auto segment group in both themes. Not run: a box prompt against the
+  real SAM 2.1 weights (not installed in the test machine). Not built yet:
+  box and lasso selection of several labels, merge, split, cut a hole,
+  similar objects and everything in view.
 - **Label tools and click-to-segment (plan stage 4).** Train > Label has
   six tools, one key each: Click (A, AI), Polygon (P), Rectangle (R: drag,
   Shift for a square, or three clicks for a rotated rectangle), Square (S,

@@ -2,14 +2,15 @@ import React, { useEffect, useRef, useState } from "react";
 import { api } from "../../api/client.js";
 import LabelImport from "./LabelImport.jsx";
 import { classColor, isArea, TRAIN_AREA, CHECK_AREA, AREA_LABEL, fmtArea } from "./AnnotationTool.jsx";
-import { IconCheck, IconClickAI, IconCircle, IconPencil, IconPolygon, IconRectangle, IconSquare, IconTrash } from "../ui/Icons.jsx";
+import { IconBoxAI, IconCheck, IconClickAI, IconCircle, IconPencil, IconPolygon, IconRectangle, IconSquare, IconTrash } from "../ui/Icons.jsx";
 
 // The Label step of the Train panel: classes (keys 1-9), the tools (one
 // letter each) and what the active tool needs. The map layer that does the
 // drawing is AnnotationTool.jsx.
 
 export const LABEL_TOOLS = [
-  { id: "click", group: "AI", label: "Click", key: "A", Icon: IconClickAI },
+  { id: "click", group: "AI", label: "Click object", key: "A", Icon: IconClickAI },
+  { id: "box", group: "AI", label: "Box around object", key: "B", Icon: IconBoxAI },
   { id: "polygon", group: "Draw", label: "Polygon", key: "P", Icon: IconPolygon },
   { id: "rect", group: "Draw", label: "Rectangle", key: "R", Icon: IconRectangle },
   { id: "square", group: "Draw", label: "Square", key: "S", Icon: IconSquare },
@@ -19,7 +20,7 @@ export const LABEL_TOOLS = [
 
 const SHAPES = [
   ["auto", "By class"], ["polygon", "Traced"], ["right_angles", "Right angles"],
-  ["rectangle", "Rectangle"], ["circle", "Circle"], ["smooth", "Smooth"],
+  ["box", "Box"], ["rectangle", "Rotated box"], ["circle", "Circle"], ["smooth", "Smooth"],
 ];
 
 const HINTS = {
@@ -29,6 +30,7 @@ const HINTS = {
   circle: "Drag from the centre outwards",
   freehand: "Press and draw around the object",
   click: "Click inside the object. Alt+click or right-click removes a part. Enter saves, Esc discards",
+  box: "Drag a box around the object. Alt+click or right-click removes a part. Enter saves, Esc discards",
 };
 
 function isTyping(el) {
@@ -160,7 +162,7 @@ export default function LabelTools({
 
   // keys: 1-9 pick a class, a tool's letter toggles it
   const live = useRef();
-  live.current = { classes, pickTool, onActiveClass, editId, onEditClass };
+  live.current = { classes, pickTool, onActiveClass, editId, onEditClass, onMode };
   useEffect(() => {
     if (!open) return;
     function onKey(e) {
@@ -171,6 +173,7 @@ export default function LabelTools({
         if (editing) reclass?.(cls[+e.key - 1]); else setCls(cls[+e.key - 1]);   // while editing, the number changes the label's class
         return;
       }
+      if (e.key.toUpperCase() === "V") { e.preventDefault(); live.current.onMode(null); return; }
       const t = LABEL_TOOLS.find((x) => x.key === e.key.toUpperCase());
       if (t && cls.length) { e.preventDefault(); pick(t.id); }
     }
@@ -195,20 +198,15 @@ export default function LabelTools({
         ))}
       </ul>
 
-      <p className="train-label">Tools</p>
-      <div className="label-bar" role="toolbar" aria-label="Label tools">
-        {LABEL_TOOLS.map((t, i) => (
-          <React.Fragment key={t.id}>
-            {i > 0 && LABEL_TOOLS[i - 1].group !== t.group && <span className="label-bar-sep" aria-hidden="true" />}
-            <button type="button" title={`${t.label} · ${t.key}\n${HINTS[t.id]}`} aria-label={`${t.label} (${t.key})`}
-                    aria-pressed={mode === t.id && !drawingArea} disabled={!classes.length}
-                    className={`label-btn ${mode === t.id && !drawingArea ? "active" : ""}`} onClick={() => pickTool(t.id)}>
-              <t.Icon />
-            </button>
-          </React.Fragment>
-        ))}
-      </div>
-      {mode === "click" && !drawingArea && <ClickTool outline={outline} onOutline={onOutline} preview={segPreview} />}
+      <p className="train-label">Tool</p>
+      {(() => {
+        const t = !drawingArea && LABEL_TOOLS.find((x) => x.id === mode);
+        return t ? (
+          <p className="label-current"><t.Icon /><span>{t.label}</span><kbd className="label-key">{t.key}</kbd>
+            <span className="train-dim label-current-hint">{HINTS[t.id]}</span></p>
+        ) : <p className="train-dim">The tools are on the map's left edge. Point at one to see its group</p>;
+      })()}
+      {(mode === "click" || mode === "box") && !drawingArea && <ClickTool outline={outline} onOutline={onOutline} preview={segPreview} />}
       {["rect", "square", "circle"].includes(mode) && !drawingArea && <ExactSize mode={mode} exact={exact} onExact={onExact} />}
 
       <p className="train-label">Areas</p>

@@ -16,6 +16,8 @@ import L from "leaflet";
 //   freehand  press and draw
 //   click     AI: click inside an object (Alt or right-click: remove), Enter
 //             saves the outline, Esc discards, Backspace removes the last click
+//   box       AI: drag a box around the object; the outline inside it is
+//             previewed the same way (Alt or right-click removes a part)
 // With an exact size set in the panel, one click places the shape there.
 // Lengths shown while drawing are geodesic metres (map.distance).
 
@@ -291,14 +293,21 @@ export default function AnnotationLayer({
       return false;
     }
 
-    // ----- click to segment -----
+    // ----- click to segment, or a box around the object (SAM box prompt: corners labelled 2 and 3) -----
+    function marks() {
+      const tl = s.clicks.find((c) => c.label === 2), br = s.clicks.find((c) => c.label === 3);
+      if (tl && br) add(L.rectangle(L.latLngBounds(tl.ll, br.ll), { color: "#ffffff", weight: 1.5, dashArray: "5 4", fill: false, interactive: false }));
+      for (const c of s.clicks) {
+        if (c.label > 1) continue;
+        add(L.circleMarker(c.ll, { radius: 6, color: "#0d0f12", weight: 2, fillColor: c.label ? "#4cc38a" : "#f06a6a", fillOpacity: 1, interactive: false }));
+      }
+    }
     async function segment() {
       const seq = ++s.seq;
       clear();
-      for (const c of s.clicks) {
-        add(L.circleMarker(c.ll, { radius: 6, color: "#0d0f12", weight: 2, fillColor: c.label ? "#4cc38a" : "#f06a6a", fillOpacity: 1, interactive: false }));
-      }
-      if (!s.clicks.some((c) => c.label)) { s.preview = null; live.current.onPreview?.(null); return; }
+      marks();
+      const boxed = s.clicks.some((c) => c.label === 2) && s.clicks.some((c) => c.label === 3);
+      if (!boxed && !s.clicks.some((c) => c.label === 1)) { s.preview = null; live.current.onPreview?.(null); return; }
       s.busy = true;
       live.current.onPreview?.({ busy: true });
       container.style.cursor = "progress";
@@ -311,9 +320,7 @@ export default function AnnotationLayer({
         const latlngs = res.points_lonlat.map(([lon, lat]) => L.latLng(lat, lon));
         s.layers.push(L.polygon(latlngs, HALO).addTo(map));
         s.layers.push(L.polygon(latlngs, { ...EDIT, interactive: false }).addTo(map));
-        for (const c of s.clicks) {
-          add(L.circleMarker(c.ll, { radius: 6, color: "#0d0f12", weight: 2, fillColor: c.label ? "#4cc38a" : "#f06a6a", fillOpacity: 1, interactive: false }));
-        }
+        marks();
         s.preview = { latlngs, res };
         live.current.onPreview?.({ res });
       } catch (err) {
@@ -329,7 +336,7 @@ export default function AnnotationLayer({
       const { latlngs, res } = s.preview;
       s.clicks = []; s.preview = null; clear();
       live.current.onPreview?.(null);
-      live.current.onDrawn?.(latlngs, { tool: "click", shape: res.shape });
+      live.current.onDrawn?.(latlngs, { tool: mode, shape: res.shape });
     }
 
     // ----- mouse -----
@@ -341,6 +348,8 @@ export default function AnnotationLayer({
         s.start = p; s.drag = false;
       } else if (mode === "freehand") {
         s.points = [e.latlng]; s.drag = true;
+      } else if (mode === "box" && !e.originalEvent.altKey) {
+        s.start = p; s.drag = false;
       }
     }
     function move(e) {
@@ -376,6 +385,11 @@ export default function AnnotationLayer({
         add(L.polyline(pts, { color: "#fff", weight: 2, interactive: false }));
         for (const q of s.points) add(L.circleMarker(q, { radius: 4, color: "#fff", weight: 1.5, fillColor: "#0d0f12", fillOpacity: 1, interactive: false }));
         say(e.latlng, fmtM(map.distance(s.points[s.points.length - 1], e.latlng)));
+      } else if (mode === "box" && s.start) {
+        if (!s.drag && s.start.distanceTo(p) < 4) return;
+        s.drag = true;
+        clear();
+        add(L.rectangle(L.latLngBounds(ll(s.start), e.latlng), { color: "#ffffff", weight: 1.5, dashArray: "5 4", fill: false, interactive: false }));
       } else if (mode === "freehand" && s.drag) {
         const last = s.points[s.points.length - 1];
         if (px(last).distanceTo(p) < 3) return;
@@ -404,6 +418,15 @@ export default function AnnotationLayer({
         // a click, not a drag
         if (placeExact(e.latlng)) return;
         if (mode === "rect") { s.points = [e.latlng]; return; }
+      } else if (mode === "box" && s.start) {
+        const start = s.start;
+        s.start = null;
+        if (!s.drag) return;
+        s.drag = false;
+        const a = ll(start), b = e.latlng;
+        const tl = L.latLng(Math.max(a.lat, b.lat), Math.min(a.lng, b.lng)), br = L.latLng(Math.min(a.lat, b.lat), Math.max(a.lng, b.lng));
+        s.clicks = [...s.clicks.filter((c) => c.label < 2), { ll: tl, label: 2 }, { ll: br, label: 3 }];
+        segment();
       } else if (mode === "freehand" && s.drag) {
         s.drag = false;
         const pts = s.points;
@@ -423,10 +446,13 @@ export default function AnnotationLayer({
       } else if (mode === "click") {
         s.clicks.push({ ll: e.latlng, label: ev.altKey ? 0 : 1 });
         segment();
+      } else if (mode === "box" && ev.altKey && s.clicks.length) {
+        s.clicks.push({ ll: e.latlng, label: 0 });
+        segment();
       }
     }
     function context(e) {
-      if (mode !== "click") return;
+      if (mode !== "click" && !(mode === "box" && s.clicks.length)) return;
       L.DomEvent.preventDefault(e.originalEvent);
       s.clicks.push({ ll: e.latlng, label: 0 });
       segment();
@@ -443,7 +469,7 @@ export default function AnnotationLayer({
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT")) return;
       if (e.key === "Enter") {
         if (mode === "polygon" && s.points.length >= 3) { e.preventDefault(); finish(s.points, { tool: "polygon", shape: "polygon" }); }
-        if (mode === "click") { e.preventDefault(); saveClick(); }
+        if (mode === "click" || mode === "box") { e.preventDefault(); saveClick(); }
       } else if (e.key === "Escape") {
         if (s.points.length || s.clicks.length || s.start) {
           e.preventDefault(); e.stopPropagation();
@@ -452,7 +478,11 @@ export default function AnnotationLayer({
         }
       } else if (e.key === "Backspace") {
         if (mode === "polygon" && s.points.length) { e.preventDefault(); s.points.pop(); clear(); say(null); }
-        if (mode === "click" && s.clicks.length) { e.preventDefault(); s.clicks.pop(); segment(); }
+        if ((mode === "click" || mode === "box") && s.clicks.length) {
+          e.preventDefault(); s.clicks.pop();
+          if (s.clicks.at(-1)?.label === 2) s.clicks.pop();          // a box goes as one
+          segment();
+        }
         if (mode === "rect" && s.points.length) { e.preventDefault(); s.points.pop(); clear(); say(null); }
       }
     }

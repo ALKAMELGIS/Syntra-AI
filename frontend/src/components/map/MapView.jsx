@@ -5,6 +5,7 @@ import { api } from "../../api/client";
 import { MapContainer, TileLayer, WMSTileLayer, GeoJSON, ImageOverlay, Popup } from "react-leaflet";
 import MapDrawTools from "./MapDrawTools.jsx";
 import AnnotationLayer from "../labels/AnnotationTool.jsx";
+import LabelRail from "../labels/LabelRail.jsx";
 import ImageLibrary from "../images/ImageLibrary.jsx";
 import SettingsPanel from "../settings/SettingsPanel.jsx";
 import { usePref } from "../../lib/prefs.js";
@@ -24,7 +25,7 @@ export default function MapView({
   onRemoveImage, onRemoveResult, onLabelsImported,
   layers, detectionsVisible = true, onToggleDetections,
   aoi, onAoiChange, measurement, onMeasurementChange,
-  trainOpen, onToggleTrain, onAnnotate, labels, trainPanel, perfOpen, onTogglePerf, perfPanel, libOpen, onToggleLib, libPanel,
+  trainOpen, onToggleTrain, onAnnotate, labels, labelRail, trainPanel, perfOpen, onTogglePerf, perfPanel, libOpen, onToggleLib, libPanel,
   onSelectLibraryImage, currentImageId, sourceImage,
   analysisOpen, onToggleAnalysis, analysisCount, analysisRunning, analysisPanel, focusFeature = null,
 }) {
@@ -411,6 +412,7 @@ export default function MapView({
         </p>
       )}
       {analysisOpen && analysisPanel}
+      {labelRail && <LabelRail {...labelRail} />}
       {trainPanel}
       {perfPanel}
       {libPanel}
