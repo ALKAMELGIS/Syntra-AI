@@ -28,7 +28,7 @@ function template(image) {
     ] };
 }
 
-export default function LabelImport({ image, onImported }) {
+export default function LabelImport({ image, onImported, compact = false }) {
   const input = useRef(null);
   const [file, setFile] = useState(null);
   const [pre, setPre] = useState(null);
@@ -72,9 +72,14 @@ export default function LabelImport({ image, onImported }) {
   return (
     <div className="limp">
       <div className="limp-row">
-        <button type="button" className="quiet-button limp-pick" disabled={!image?.image_id || busy} onClick={() => input.current?.click()}>
-          <IconUpload /> {busy && !pre ? "Reading…" : "From a file"}
-        </button>
+        {compact ? (
+          <button type="button" className="lp-icon" disabled={!image?.image_id || busy} onClick={() => input.current?.click()}
+                  aria-label="Import labels" title="Import labels · Shapefile, GeoPackage, GeoJSON, KML"><IconUpload /></button>
+        ) : (
+          <button type="button" className="quiet-button limp-pick" disabled={!image?.image_id || busy} onClick={() => input.current?.click()}>
+            <IconUpload /> {busy && !pre ? "Reading…" : "From a file"}
+          </button>
+        )}
         {image?.bounds_wgs84 && (
           <button type="button" className="lp-icon limp-tpl" onClick={downloadTemplate} aria-label="Download template"
                   title={"Template · GeoJSON\nclass: ship, building…\nrole: object · complete · accuracy\nPolygons, any CRS"}>

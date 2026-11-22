@@ -5,7 +5,7 @@ import BasemapSource from "./BasemapSource.jsx";
 import { api } from "../../api/client.js";
 import { classColor, isArea, CHECK_AREA } from "../labels/AnnotationTool.jsx";
 import LabelTools from "../labels/LabelTools.jsx";
-import { IconClose, IconUpload } from "../ui/Icons.jsx";
+import { IconChevronDown, IconClose, IconFolder, IconMap, IconUpload } from "../ui/Icons.jsx";
 
 // Train your own model, beside the map, in five steps:
 //   Setup    where training runs: Hugging Face GPU, RunPod GPU or this computer (TrainSetup.jsx)
@@ -41,7 +41,7 @@ export default function TrainPanel({
   device = "cpu", onModelsChanged, onRunModel, onCheckModel,
   editId, onEditDone, onEditClass, onEditDelete, onImported, aoi, onAddClasses, onDeleteClass,
 }) {
-  const [fromMap, setFromMap] = useState(false);
+  const [srcMenu, setSrcMenu] = useState(null);       // null | "menu" | "basemap": Label > Image > Change
   const [images, setImages] = useState([]);
   const [upload, setUpload] = useState(null);       // null | {pct} | {error}
   const [task, setTask] = useState("detect");
@@ -176,32 +176,41 @@ export default function TrainPanel({
 
         {step === 1 && (
           <>
-            <p className="train-label">Learn from</p>
-            {image ? (
-              <div className="train-image">
-                <span className="train-image-name" title={image.filename}>{image.filename}</span>
-                <span className="mono train-dim">
-                  {image.health?.gsd_m ? `${Math.round(image.health.gsd_m * 100)} cm` : ""}{image.health?.crs ? ` · ${image.health.crs}` : ""}
+            <p className="train-label">Image</p>
+            {image && (
+              <div className="lt-image">
+                <span className="lt-image-name">
+                  <b title={image.filename}>{image.filename}</b>
+                  <span className="mono">{image.health?.gsd_m ? `${Math.round(image.health.gsd_m * 100)} cm` : ""}{image.health?.crs ? ` · ${image.health.crs}` : ""}</span>
                 </span>
+                <button type="button" className="lt-change" onClick={() => setSrcMenu((v) => (v ? null : "menu"))} aria-expanded={!!srcMenu}>
+                  Change <IconChevronDown />
+                </button>
               </div>
-            ) : null}
-            <div className="train-row">
-              <button type="button" className="quiet-button" onClick={() => fileRef.current?.click()} disabled={upload?.pct != null}>
-                <IconUpload /> {upload?.pct != null ? (upload.pct >= 100 ? "Reading…" : `${upload.pct}%`) : "Upload GeoTIFF"}
-              </button>
-              <select className="train-select" value="" onChange={(e) => {
-                const img = images.find((i) => i.image_id === e.target.value);
-                if (img) onImageChange(img);
-              }}>
-                <option value="">From library</option>
-                {images.map((i) => <option key={i.image_id} value={i.image_id}>{i.filename}</option>)}
-              </select>
-              <input ref={fileRef} type="file" accept=".tif,.tiff" hidden onChange={uploadFile} />
-            </div>
-            <button type="button" className={`link-button ${fromMap ? "on" : ""}`} onClick={() => setFromMap((v) => !v)} aria-expanded={fromMap}>
-              {fromMap ? "Hide basemap area" : "Or a basemap area"}
-            </button>
-            {fromMap && <BasemapSource aoi={aoi} onImage={(img) => { onImageChange(img); setFromMap(false); }} />}
+            )}
+            {(!image || srcMenu) && (
+              <div className="lt-src" role="menu">
+                <button type="button" role="menuitem" className="lt-src-item" onClick={() => fileRef.current?.click()} disabled={upload?.pct != null}>
+                  <IconUpload /> {upload?.pct != null ? (upload.pct >= 100 ? "Reading…" : `${upload.pct}%`) : "Upload GeoTIFF"}
+                </button>
+                <label className="lt-src-item">
+                  <IconFolder />
+                  <select value="" aria-label="From library" onChange={(e) => {
+                    const img = images.find((i) => i.image_id === e.target.value);
+                    if (img) { onImageChange(img); setSrcMenu(null); }
+                  }}>
+                    <option value="">From library</option>
+                    {images.map((i) => <option key={i.image_id} value={i.image_id}>{i.filename}</option>)}
+                  </select>
+                </label>
+                <button type="button" role="menuitem" className={`lt-src-item ${srcMenu === "basemap" ? "on" : ""}`}
+                        onClick={() => setSrcMenu((v) => (v === "basemap" ? "menu" : "basemap"))}>
+                  <IconMap /> Basemap area
+                </button>
+                <input ref={fileRef} type="file" accept=".tif,.tiff" hidden onChange={(e) => { setSrcMenu(null); uploadFile(e); }} />
+              </div>
+            )}
+            {srcMenu === "basemap" && <BasemapSource aoi={aoi} onImage={(img) => { onImageChange(img); setSrcMenu(null); }} />}
             {upload?.error && <p className="train-error">{upload.error}</p>}
 
           {image && <LabelTools open={open && step === 1} classes={classes} counts={counts} activeClass={activeClass}
