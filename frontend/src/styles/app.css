@@ -2493,3 +2493,8 @@ input[type=range].gauge:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 2px 
 .setup-libs li .mono { margin-left: auto; }
 .setup-where { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; font-size: var(--fs-12); }
 .setup-where .link-button { margin-left: auto; }
+
+/* Label > Learn from > a basemap area (BasemapSource.jsx) */
+.basemap-src { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; padding: 12px;
+  border: 1px solid var(--panel-border); border-radius: var(--radius-control); }
+.basemap-src .train-dim { margin: 0; }

@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { SaveSamples } from "./SamplesStore.jsx";
 import TrainSetup, { placeReady } from "./TrainSetup.jsx";
+import BasemapSource from "./BasemapSource.jsx";
 import { api } from "../../api/client.js";
 import { classColor, isArea, CHECK_AREA } from "../labels/AnnotationTool.jsx";
 import LabelTools from "../labels/LabelTools.jsx";
@@ -38,8 +39,9 @@ export default function TrainPanel({
   annotations, classes, onAddClass, activeClass, onActiveClass, mode, onMode, onClearAnnotations, labelError,
   outline, onOutline, exact, onExact, segPreview,
   device = "cpu", onModelsChanged, onRunModel, onCheckModel,
-  editId, onEditDone, onEditClass, onEditDelete, onImported,
+  editId, onEditDone, onEditClass, onEditDelete, onImported, aoi,
 }) {
+  const [fromMap, setFromMap] = useState(false);
   const [images, setImages] = useState([]);
   const [upload, setUpload] = useState(null);       // null | {pct} | {error}
   const [task, setTask] = useState("detect");
@@ -198,6 +200,10 @@ export default function TrainPanel({
               </select>
               <input ref={fileRef} type="file" accept=".tif,.tiff" hidden onChange={uploadFile} />
             </div>
+            <button type="button" className={`link-button ${fromMap ? "on" : ""}`} onClick={() => setFromMap((v) => !v)} aria-expanded={fromMap}>
+              {fromMap ? "Hide basemap area" : "Or a basemap area"}
+            </button>
+            {fromMap && <BasemapSource aoi={aoi} onImage={(img) => { onImageChange(img); setFromMap(false); }} />}
             {upload?.error && <p className="train-error">{upload.error}</p>}
 
           {image && <LabelTools open={open && step === 1} classes={classes} counts={counts} activeClass={activeClass}

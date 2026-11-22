@@ -134,6 +134,58 @@ async def import_local(body: LocalImport, request: Request, background_tasks: Ba
     return entry
 
 
+class FromBasemap(BaseModel):
+    source: str = "usgs"                  # a key of basemap_capture.SOURCES, or "custom"
+    url: str | None = None                # custom: an XYZ template with {z} {x} {y}
+    bbox: list[float]                     # [west, south, east, north]
+    zoom: int
+    name: str | None = None
+
+
+@router.get("/basemap-sources")
+def basemap_sources():
+    from app.engine.basemap_capture import MAX_TILES, SOURCES
+    return {"sources": [{"id": k, **{x: v[x] for x in ("label", "max_zoom", "licence")}} for k, v in SOURCES.items()],
+            "max_tiles": MAX_TILES}
+
+
+@router.post("/from-basemap")
+async def from_basemap(body: FromBasemap, request: Request, background_tasks: BackgroundTasks):
+    """A basemap area saved as a GeoTIFF in the library, to label and train on."""
+    import datetime
+
+    from app.engine import basemap_capture as bc
+
+    if len(body.bbox) != 4:
+        raise HTTPException(422, detail="Give the area as [west, south, east, north]")
+    try:
+        if body.source == "custom":
+            template = await run_in_threadpool(bc.check_url, body.url or "")
+        elif body.source in bc.SOURCES:
+            template = bc.SOURCES[body.source]["url"]
+            if body.zoom > bc.SOURCES[body.source]["max_zoom"]:
+                raise bc.CaptureError(f"This source goes to zoom {bc.SOURCES[body.source]['max_zoom']}")
+        else:
+            raise bc.CaptureError("Unknown source")
+        bc.plan(tuple(body.bbox), body.zoom)
+    except bc.CaptureError as exc:
+        raise HTTPException(422, detail=str(exc))
+    settings.ensure_dirs()
+    stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M")
+    filename = safe_filename(f"{(body.name or ('basemap-' + body.source)).strip()}-z{body.zoom}-{stamp}.tif")
+    image_id = str(uuid.uuid4())
+    dest = _library_path(image_id, filename)
+    try:
+        info = await run_in_threadpool(bc.capture, template, body.bbox, body.zoom, dest)
+    except bc.CaptureError as exc:
+        dest.unlink(missing_ok=True)
+        raise HTTPException(422, detail=str(exc))
+    entry = await _register(dest, filename, image_id, background_tasks)
+    entry.update(source=f"basemap:{body.source}", capture=info)
+    _save_dict(dest, entry)
+    return _fresh(_claim(entry, request))
+
+
 def _claim(entry: dict, request: Request) -> dict:
     """Record who added the image: a user sees only their own images (the owner sees all)."""
     from app.core.auth import acting_user_id

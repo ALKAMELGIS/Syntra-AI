@@ -490,6 +490,7 @@ export default function App({ user = null, onSignOut = null }) {
                 exact={exactSize} onExact={setExactSize} segPreview={segPreview}
                 onClearAnnotations={clearLabels} labelError={labelError}
                 onImported={(list) => { setAnnotations(list); setLabelError(null); }}
+                aoi={aoi}
                 device={devices?.gpu_count > 0 ? "cuda:0" : "cpu"}
                 onModelsChanged={refreshModels}
                 onCheckModel={(id) => { refreshModels(); setPerfModel(id); setPerfOpen(true); }}

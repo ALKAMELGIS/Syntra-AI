@@ -381,8 +381,18 @@ for when it is exposed to a network (all in `backend/.env.example`):
   to learn from and new classes moved into Label. `/api/compute/hosting` says
   where the engine runs (`SPACE_ID`, `SPACES_ZERO_GPU`). Verified:
   `test_hosting_offline.py` (2), a Playwright look at both steps. Not run:
-  training on an upgraded Space GPU. Not built yet: a basemap area as the
-  image to learn from.
+  training on an upgraded Space GPU.
+- **A basemap area as the image to learn from.** Label > Learn from > Or a
+  basemap area saves the area drawn with Edit > Rectangle area as an RGB
+  GeoTIFF in Web Mercator (`app/engine/basemap_capture.py`,
+  `POST /api/images/from-basemap`), stitched from an XYZ service at the chosen
+  zoom (up to 400 tiles), and adds it to the library like an upload. Sources:
+  USGS imagery (United States, public domain) or the user's own XYZ URL.
+  Google, Esri and Bing hosts are refused (their terms forbid keeping tiles or
+  training on them), and so is any host on a private network. Verified:
+  `test_basemap_capture_offline.py` (4: bounds within 2e-5° of the box, tile
+  limit, refused hosts, the API adding the image). Not run: a capture from the
+  live USGS service (no network in the test machine).
 - **Label rail on the map.** While labelling (Train > Label) the tools sit in
   a 40 px rail on the map's left edge, below the zoom buttons
   (`components/labels/LabelRail.jsx`): Polygon (Polygon, Freehand),
