@@ -300,3 +300,19 @@ floors; model weights never go in git.
 4. Commit with a message that says what changed and how it was verified.
 5. Open a pull request whose description lists what is verified and what
    still needs checking on the user's machine (GPU, real GeoTIFFs, Windows).
+
+## 6. Map drawing and edit tools
+
+- New label tools go into the rail (`LabelRail.jsx`) as a row in an existing
+  group (Polygon, Rectangle, Circle, Select, Edit) or as one new group: an
+  icon from `Icons.jsx`, a short name and one key letter. No hint paragraphs in
+  the flyout; a one-line `note` shows as the row's tooltip.
+- Give the tool's key to `LABEL_TOOLS` (LabelTools.jsx) and a one-line entry
+  in `HINTS`; check the letter is free first.
+- Geometry (split, merge, trace, snap, curves) lives in `src/lib/geomEdit.js`
+  as pure functions with a test in `geomEdit.test.mjs` (`npm test`). Work in
+  container pixels while drawing.
+- A tool that replaces labels saves the new ones first, then deletes the old,
+  and registers one Undo step (`replaceLabels` in App.jsx).
+- Drawing tools honour Snapping (`snap` prop, Ctrl skips it).
+

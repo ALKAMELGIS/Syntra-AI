@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useMap } from "react-leaflet";
 import L from "leaflet";
+import { snapPoint, tracePath, smoothClosed } from "../../lib/geomEdit.js";
 
 // Training labels on the map. Lives inside <MapContainer>; it has no UI of
 // its own: the Train panel picks the class and the tool and owns the saved
@@ -69,6 +70,22 @@ function ringArea(map, latlngs) {
 export { fmtAreaM2 as fmtArea } from "../../lib/prefs.js";
 
 // Vertex, midpoint and rotate handles for editing a saved label
+// The saved labels in (or near) the view as rings of container pixels, for snapping and tracing.
+function viewRings(map, annotations = [], skipId = null) {
+  const b = map.getBounds().pad(0.25);
+  const out = [];
+  for (const a of annotations) {
+    if (a.id === skipId) continue;
+    let q = a.points_lonlat;
+    if (q.length > 3 && q[0][0] === q[q.length - 1][0] && q[0][1] === q[q.length - 1][1]) q = q.slice(0, -1);
+    let w = 180, e = -180, so = 90, n = -90;
+    for (const [lon, lat] of q) { if (lon < w) w = lon; if (lon > e) e = lon; if (lat < so) so = lat; if (lat > n) n = lat; }
+    if (e < b.getWest() || w > b.getEast() || n < b.getSouth() || so > b.getNorth()) continue;
+    out.push({ id: a.id, ring: q.map(([lon, lat]) => map.latLngToContainerPoint(L.latLng(lat, lon))) });
+  }
+  return out;
+}
+
 const VX = L.divIcon({ className: "edit-vx", iconSize: [10, 10] });
 const MID = L.divIcon({ className: "edit-mid", iconSize: [8, 8] });
 const ROT = L.divIcon({ className: "edit-rot", iconSize: [14, 14] });
@@ -76,13 +93,13 @@ const ROT = L.divIcon({ className: "edit-rot", iconSize: [14, 14] });
 export default function AnnotationLayer({
   visible, mode, className, annotations = [], onDrawn, onShapeClick, onSegment, exact, onPreview,
   editable = false, editId = null, onEdit, onUpdate, onDeleteSelected,
-  selectedIds = [], onSelect, onSegmentAll, onDrawnMany, onPrepare,
+  selectedIds = [], onSelect, onSegmentAll, onDrawnMany, onPrepare, snap = false, onSplit,
 }) {
   const map = useMap();
   const st = useRef({});
   const group = useRef(null);
   const live = useRef({ onDrawn, onSegment, onPreview, exact });
-  live.current = { onDrawn, onSegment, onPreview, exact, onEdit, onUpdate, onDeleteSelected, onSelect, annotations, onSegmentAll, onDrawnMany, onPrepare };
+  live.current = { onDrawn, onSegment, onPreview, exact, onEdit, onUpdate, onDeleteSelected, onSelect, annotations, onSegmentAll, onDrawnMany, onPrepare, snap, onSplit };
   const selKey = selectedIds.join(",");
 
   // saved labels
@@ -155,6 +172,10 @@ export default function AnnotationLayer({
     const px = (q) => map.latLngToContainerPoint(q);
     const ll = (q) => map.containerPointToLatLng(q);
     let vx = [], mids = [], rot = null;
+    let others = null;                                    // the other labels in view, for snapping
+    const otherRings = () => others || (others = viewRings(map, live.current.annotations, editId));
+    const dropOthers = () => { others = null; };
+    map.on("moveend", dropOthers);
     const commit = () => live.current.onUpdate?.(editId, pts);
     const centre = () => { const p = pts.map(px); return L.point(p.reduce((s2, q) => s2 + q.x, 0) / p.length, p.reduce((s2, q) => s2 + q.y, 0) / p.length); };
     const rotAt = () => { const c = centre(); const r = Math.max(...pts.map((q) => px(q).distanceTo(c))); return ll(L.point(c.x, c.y - r - 24)); };
@@ -175,7 +196,12 @@ export default function AnnotationLayer({
       const many = pts.length > 40;                       // a traced outline: corners only every few points
       vx = pts.map((q, i) => {
         const m = L.marker(q, { icon: VX, draggable: true, keyboard: false, opacity: many && i % 4 ? 0 : 1 }).addTo(g);
-        m.on("drag", (e) => { pts[i] = e.target.getLatLng(); redraw(); });
+        m.on("drag", (e) => {
+          const hit = live.current.snap && !e.originalEvent?.ctrlKey ? snapPoint(px(e.target.getLatLng()), otherRings(), 10) : null;
+          pts[i] = hit ? ll(L.point(hit.q.x, hit.q.y)) : e.target.getLatLng();
+          if (hit) e.target.setLatLng(pts[i]);
+          redraw();
+        });
         m.on("dragend", commit);
         m.on("click", (e) => { if (e.originalEvent.altKey) removeAt(i); });
         m.on("contextmenu", (e) => { L.DomEvent.preventDefault(e.originalEvent); removeAt(i); });
@@ -244,6 +270,7 @@ export default function AnnotationLayer({
     window.addEventListener("keydown", key);
     return () => {
       body.off("mousedown", bodyDown);
+      map.off("moveend", dropOthers);
       map.off("mousemove", bodyMove);
       map.off("click", deselect);
       window.removeEventListener("keydown", key);
@@ -283,6 +310,32 @@ export default function AnnotationLayer({
     const px = (ll) => map.latLngToContainerPoint(ll);
     const ll = (p) => map.containerPointToLatLng(p);
 
+    // snapping: to a corner of another label first, else to its edge; Ctrl held turns it off.
+    // Trace always snaps: it follows the edge it is on.
+    let rings = null;
+    const dropRings = () => { rings = null; };
+    map.on("moveend", dropRings);
+    const snapRings = () => rings || (rings = viewRings(map, live.current.annotations));
+    const snapDot = L.circleMarker([0, 0], { radius: 5, color: "#0d0f12", weight: 2, fillColor: "#ffffff", fillOpacity: 1, interactive: false });
+    const SNAPS = ["polygon", "curve", "trace", "split", "rect", "square", "circle"];
+    function snapped(e) {
+      if (!SNAPS.includes(mode) || !e.latlng) return e;
+      const on = (mode === "trace" || live.current.snap) && !e.originalEvent?.ctrlKey;
+      const hit = on ? snapPoint(px(e.latlng), snapRings(), 10) : null;
+      if (!hit) { map.removeLayer(snapDot); return { ...e, snap: null }; }
+      const at = ll(L.point(hit.q.x, hit.q.y));
+      snapDot.setLatLng(at).setStyle({ fillOpacity: hit.kind === "vertex" ? 1 : 0, color: hit.kind === "vertex" ? "#0d0f12" : "#ffffff" });
+      if (!map.hasLayer(snapDot)) snapDot.addTo(map);
+      return { ...e, latlng: at, snap: hit };
+    }
+    // trace: between two points on the same label's edge, the path follows that edge
+    function traced(from, hit) {
+      if (!from || !hit || from.id !== hit.id) return [];
+      const r = snapRings().find((x) => x.id === hit.id);
+      return r ? tracePath(r.ring, from, hit).map(ll) : [];
+    }
+    const curve = (latlngs) => smoothClosed(latlngs.map(px), 12).map(ll);
+
     function rectFrom(a, b, square, fromCentre) {
       let dx = b.x - a.x, dy = b.y - a.y;
       if (square) { const m = Math.max(Math.abs(dx), Math.abs(dy)); dx = Math.sign(dx || 1) * m; dy = Math.sign(dy || 1) * m; }
@@ -320,7 +373,7 @@ export default function AnnotationLayer({
         finish(pts, { tool: "circle", shape: "circle" });
         return true;
       }
-      const w = mode === "square" ? ex.s : ex.w, h = mode === "square" ? ex.s : ex.h;
+      const w = mode === "square" ? ex.s || ex.w : ex.w, h = mode === "square" ? ex.s || ex.w : ex.h;
       if ((mode === "rect" || mode === "square") && w > 0 && h > 0) {
         finish([offset(at, -w / 2, h / 2), offset(at, w / 2, h / 2), offset(at, w / 2, -h / 2), offset(at, -w / 2, -h / 2)],
           { tool: mode, shape: mode === "square" ? "square" : "rectangle" });
@@ -390,8 +443,9 @@ export default function AnnotationLayer({
     }
 
     // ----- mouse -----
-    function down(e) {
-      if (e.originalEvent.button === 2) return;
+    function down(e0) {
+      if (e0.originalEvent.button === 2) return;
+      const e = snapped(e0);
       const p = px(e.latlng);
       if (mode === "rect" || mode === "square" || mode === "circle") {
         if (s.points.length) return;                        // 3-click rectangle in progress: clicks only
@@ -423,7 +477,8 @@ export default function AnnotationLayer({
       }).map((a) => a.id);
       live.current.onSelect?.((cur) => (additive ? [...new Set([...cur, ...ids])] : ids));
     }
-    function move(e) {
+    function move(e0) {
+      const e = e0.snap === undefined ? snapped(e0) : e0;
       const p = px(e.latlng);
       const ev = e.originalEvent;
       if ((mode === "rect" || mode === "square" || mode === "circle") && s.start) {
@@ -449,6 +504,20 @@ export default function AnnotationLayer({
           shape(pts);
           say(e.latlng, sizeText(pts));
         }
+      } else if (mode === "split" && s.points.length) {
+        clear();
+        const pts = [...s.points, e.latlng];
+        add(L.polyline(pts, { ...HALO, weight: 4 }));
+        add(L.polyline(pts, { color: "#ffffff", weight: 2, dashArray: "6 4", interactive: false }));
+        for (const q of s.points) add(L.circleMarker(q, { radius: 4, color: "#fff", weight: 1.5, fillColor: "#0d0f12", fillOpacity: 1, interactive: false }));
+      } else if ((mode === "curve" || mode === "trace") && s.points.length) {
+        clear();
+        const pts = mode === "curve" ? [...s.points, e.latlng] : [...s.points, ...traced(s.hit, e.snap), e.latlng];
+        const outline = mode === "curve" && pts.length > 2 ? curve(pts) : pts;
+        if (pts.length > 2) add(L.polygon(outline, { ...EDIT, weight: 1, fillOpacity: 0.08, interactive: false }));
+        add((mode === "curve" && pts.length > 2 ? L.polygon : L.polyline)(outline, { color: "#fff", weight: 2, fill: false, interactive: false }));
+        if (mode === "curve") for (const q of s.points) add(L.circleMarker(q, { radius: 4, color: "#fff", weight: 1.5, fillColor: "#0d0f12", fillOpacity: 1, interactive: false }));
+        say(e.latlng, fmtM(map.distance(s.points[s.points.length - 1], e.latlng)));
       } else if (mode === "polygon" && s.points.length) {
         clear();
         const pts = [...s.points, e.latlng];
@@ -479,7 +548,8 @@ export default function AnnotationLayer({
         add(L.polyline(s.points, { color: "#fff", weight: 2, interactive: false }));
       }
     }
-    function up(e) {
+    function up(e0) {
+      const e = snapped(e0);
       const p = px(e.latlng);
       const ev = e.originalEvent;
       if ((mode === "rect" || mode === "square" || mode === "circle") && s.start) {
@@ -525,10 +595,15 @@ export default function AnnotationLayer({
         finish(pts.length >= 3 ? pts : null, { tool: "freehand", shape: "polygon" });
       }
     }
-    function click(e) {
+    function click(e0) {
+      const e = snapped(e0);
       const ev = e.originalEvent;
-      if (mode === "polygon") {
+      if (mode === "polygon" || mode === "curve" || mode === "split") {
         s.points.push(e.latlng);
+        move(e);
+      } else if (mode === "trace") {
+        s.points.push(...traced(s.hit, e.snap), e.latlng);
+        s.hit = e.snap;
         move(e);
       } else if (mode === "rect" && s.points.length === 1 && px(s.points[0]).distanceTo(px(e.latlng)) > 3) {
         s.points.push(e.latlng);
@@ -552,31 +627,45 @@ export default function AnnotationLayer({
       s.clicks.push({ ll: e.latlng, label: 0 });
       segment();
     }
-    function dbl() {
-      if (mode === "polygon" && s.points.length >= 3) {
-        // the double-click's two clicks added one extra point at the same spot
-        const pts = s.points.slice(0, -1);
-        finish(pts.length >= 3 ? pts : s.points, { tool: "polygon", shape: "polygon" });
+    // close the shape being clicked out (polygon, curve, trace) or end the split line
+    function close(pts) {
+      if (mode === "split") {
+        if (pts.length < 2) return false;
+        clear(); say(null); s.points = []; map.removeLayer(snapDot);
+        live.current.onSplit?.(pts);
+        return true;
       }
+      if (pts.length < 3) return false;
+      if (mode === "curve") finish(curve(pts), { tool: "curve", shape: "smooth" });
+      else finish(pts, { tool: mode, shape: "polygon" });
+      s.hit = null; map.removeLayer(snapDot);
+      return true;
+    }
+    const CLOSES = ["polygon", "curve", "trace", "split"];
+    function dbl() {
+      if (!CLOSES.includes(mode)) return;
+      // the double-click's two clicks added one extra point at the same spot
+      const pts = s.points.slice(0, -1);
+      close(pts.length >= (mode === "split" ? 2 : 3) ? pts : s.points);
     }
     function key(e) {
       const t = e.target;
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT")) return;
       if (e.key === "Enter") {
-        if (mode === "polygon" && s.points.length >= 3) { e.preventDefault(); finish(s.points, { tool: "polygon", shape: "polygon" }); }
+        if (CLOSES.includes(mode) && close(s.points)) e.preventDefault();
         if (mode === "click" || mode === "box") { e.preventDefault(); saveClick(); }
         if (mode === "everything") { e.preventDefault(); keepAll(); }
       } else if (e.key === "Escape") {
         if (mode === "everything" && s.all) { e.preventDefault(); e.stopPropagation(); dropAll(); return; }
         if (s.points.length || s.clicks.length || s.start) {
           e.preventDefault(); e.stopPropagation();
-          s.clicks = []; s.preview = null; s.points = []; s.start = null; s.drag = false;
+          s.clicks = []; s.preview = null; s.points = []; s.start = null; s.drag = false; s.hit = null;
           clear(); say(null); live.current.onPreview?.(null);
         }
       } else if (e.key === "Delete" && (mode === "click" || mode === "box") && (s.preview || s.clicks.length)) {
         e.preventDefault(); discardClick();
       } else if (e.key === "Backspace") {
-        if (mode === "polygon" && s.points.length) { e.preventDefault(); s.points.pop(); clear(); say(null); }
+        if (CLOSES.includes(mode) && s.points.length) { e.preventDefault(); s.points.pop(); s.hit = null; clear(); say(null); }
         if ((mode === "click" || mode === "box") && s.clicks.length) {
           e.preventDefault(); s.clicks.pop();
           if (s.clicks.at(-1)?.label === 2) s.clicks.pop();          // a box goes as one
@@ -641,6 +730,7 @@ export default function AnnotationLayer({
       window.removeEventListener("syntra:suggestions", onAsk);
       window.removeEventListener("syntra:preview", onPrev);
       map.off("moveend", prepare); clearTimeout(prepT);
+      map.off("moveend", dropRings); map.removeLayer(snapDot);
       s.seq++;
       clear(); map.removeLayer(tip);
       live.current.onPreview?.(null);

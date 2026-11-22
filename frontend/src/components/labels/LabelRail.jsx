@@ -9,6 +9,7 @@ import { classColor, TRAIN_AREA, CHECK_AREA } from "./AnnotationTool.jsx";
 import {
   IconAreaDashed, IconCheck, IconGridDots, IconBoxAI, IconBoxSelect, IconClose, IconLasso, IconCircle, IconClickAI, IconPencil, IconPointer, IconPolygon,
   IconRectangle, IconSparkle, IconSquare, IconTag, IconTrash, IconUndo,
+  IconCurve, IconTrace, IconSplit, IconMerge, IconMagnet, IconRadius, IconEditShape,
 } from "../ui/Icons.jsx";
 
 const SELECT = "select";
@@ -20,11 +21,13 @@ const DRAWS = [["auto", "Auto"], ["polygon", "Outline"], ["rectangle", "OBB"], [
 const GROUPS = [
   { id: "polygon", tools: [
     { id: "polygon", label: "Polygon", key: "P", Icon: IconPolygon },
-    { id: "freehand", label: "Freehand", key: "F", Icon: IconPencil }] },
-  { id: "rect", tools: [
+    { id: "freehand", label: "Freehand", key: "F", Icon: IconPencil },
+    { id: "curve", label: "Curve", key: "U", Icon: IconCurve, note: "Click points: the outline bends smoothly through them" },
+    { id: "trace", label: "Trace", key: "T", Icon: IconTrace, note: "Click on another label's edge, then further along it: the outline follows that edge" }] },
+  { id: "rect", size: "rect", tools: [
     { id: "rect", label: "Rectangle", key: "R", Icon: IconRectangle, note: "Drag, or click 3 times for a rotated one" },
     { id: "square", label: "Square", key: "S", Icon: IconSquare }] },
-  { id: "circle", tools: [{ id: "circle", label: "Circle", key: "C", Icon: IconCircle }] },
+  { id: "circle", size: "circle", tools: [{ id: "circle", label: "Circle", key: "C", Icon: IconCircle, note: "Drag from the centre, or type a radius and click" }] },
   { id: "class", title: "Class", Icon: IconTag },
   { sep: true },
   { id: "select", title: "Select", tools: [
@@ -32,6 +35,11 @@ const GROUPS = [
     { id: "boxsel", label: "Box select", key: "X", Icon: IconBoxSelect, note: "Drag over labels. Shift adds" },
     { id: "lasso", label: "Lasso select", key: "L", Icon: IconLasso, note: "Draw around labels. Shift adds" },
     { id: "allclass", label: "All of this class", key: "Ctrl+A", Icon: IconTag, action: "all" }] },
+  { id: "edit", title: "Edit", Icon: IconEditShape, tools: [
+    { id: SELECT, label: "Reshape", key: "V", Icon: IconEditShape, note: "Click a label: drag corners, midpoints add one, Alt+click removes one" },
+    { id: "split", label: "Split", key: "K", Icon: IconSplit, note: "Draw a line across a label, double-click to cut. With a selection, only those are cut" },
+    { id: "merge", label: "Merge selected", key: "M", Icon: IconMerge, action: "merge" }] },
+  { id: "snap", title: "Snapping", key: "N", Icon: IconMagnet, action: "snap" },
   { sep: true },
   { id: "ai", title: "Auto segment", Icon: IconSparkle, tools: [
     { id: "click", label: "Click object", key: "A", Icon: IconClickAI, note: "Alt+click removes a part" },
@@ -47,6 +55,35 @@ const GROUPS = [
     { id: "clear", label: "Clear this image's labels", Icon: IconTrash, action: "clear", danger: true }] },
 ];
 
+// Exact size in metres, then one click places it: a circle's radius, a rectangle's width × height
+function SizeRow({ kind, mode, exact, onExact, onPick }) {
+  const fields = kind === "circle" ? [["r", "Radius", IconRadius]] : [["w", "Width"], ["h", "Height"]];
+  const [v, setV] = useState({});
+  const mine = kind === "circle" ? mode === "circle" : mode === "rect" || mode === "square";
+  useEffect(() => { if (!exact || !mine) setV({}); }, [exact, mine]);
+  function set(k, val) {
+    const next = { ...v, [k]: val };
+    setV(next);
+    const n = Object.fromEntries(fields.map(([f]) => [f, parseFloat(String(next[f] ?? "").replace(",", "."))]));
+    const ok = fields.every(([f]) => n[f] > 0);
+    if (!mine) onPick(kind === "circle" ? "circle" : "rect");
+    setTimeout(() => onExact?.(ok ? n : null));          // after the tool change, which clears it
+  }
+  return (
+    <div className="label-rail-size">
+      {kind === "circle" && <IconRadius aria-hidden="true" />}
+      {fields.map(([k, l], i) => (
+        <React.Fragment key={k}>
+          {i > 0 && <span className="train-dim">×</span>}
+          <input className="train-input mono" inputMode="decimal" placeholder={l} aria-label={`${l} in metres`}
+                 value={v[k] || ""} onChange={(e) => set(k, e.target.value)} />
+        </React.Fragment>
+      ))}
+      <span className="train-dim mono">m</span>
+    </div>
+  );
+}
+
 function isTyping(el) {
   return el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable);
 }
@@ -55,6 +92,7 @@ export default function LabelRail({
   classes = [], counts = {}, activeClass, onActiveClass, mode, onMode, editId, onEditClass, onEditDelete,
   onClear, onUndo, canUndo, outline, onOutline, editingClass, onAddClass, segPreview,
   annotations = [], selectedIds = [], onSelect, onDeleteMany, onReclassMany, recent, onDeleteRecent,
+  onMerge, snap = false, onSnap, exact, onExact,
 }) {
   const [open, setOpen] = useState(null);
   const [last, setLast] = useState({});            // group -> tool id last picked there
@@ -98,10 +136,17 @@ export default function LabelRail({
   // Ctrl+Z: the last label added here; Ctrl+A: every label of the current class
   const selectAll = () => onSelect?.(annotations.filter((a) => a.class_name === activeClass).map((a) => a.id));
   const live = useRef();
-  live.current = { onUndo, canUndo, selectAll };
+  live.current = { onUndo, canUndo, selectAll, snap, onSnap, onMerge, selectedIds };
   useEffect(() => {
     function key(e) {
-      if (!(e.ctrlKey || e.metaKey) || e.shiftKey || isTyping(e.target)) return;
+      if (isTyping(e.target)) return;
+      if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+        const k = e.key.toLowerCase(), c = live.current;
+        if (k === "n") { e.preventDefault(); c.onSnap?.(!c.snap); }
+        if (k === "m" && c.selectedIds.length > 1) { e.preventDefault(); c.onMerge?.(c.selectedIds); }
+        return;
+      }
+      if (e.shiftKey) return;
       const k = e.key.toLowerCase();
       if (k === "z" && live.current.canUndo) { e.preventDefault(); live.current.onUndo?.(); }
       if (k === "a") { e.preventDefault(); live.current.selectAll(); }
@@ -127,8 +172,9 @@ export default function LabelRail({
       return;
     }
     if (t.action === "clear") { onClear?.(); return; }
+    if (t.action === "merge") { onMerge?.(selectedIds); return; }
     if (t.area) { onActiveClass(t.id); onMode("rect"); return; }
-    const draws = !["select"].includes(g.id);
+    const draws = !["select", "edit"].includes(g.id);
     if (draws && !classes.length) onAddClass?.(DEFAULT_CLASS);   // every tool starts at once: rename or reclass later
     else if (draws && drawingArea) onActiveClass(classes[0]);
     if (t.id === "everything" && mode === "everything") { window.dispatchEvent(new CustomEvent("syntra:suggestions", { detail: "again" })); return; }
@@ -136,6 +182,7 @@ export default function LabelRail({
   }
   function main(g) {
     if (g.action === "undo") { onUndo?.(); return; }
+    if (g.action === "snap") { onSnap?.(!snap); return; }
     if (!g.tools) { setOpen(open === g.id ? null : g.id); return; }
     const t = g.tools.find((x) => x.id === last[g.id]) || g.tools[0];
     if (t.action) { setOpen(g.id); return; }       // Delete, All of class: choose in the list
@@ -206,9 +253,9 @@ export default function LabelRail({
         if (g.sep) return <span key={`s${i}`} className="label-rail-sep" aria-hidden="true" />;
         const t = shown(g);
         const Icon = g.id === "select" ? t.Icon : g.Icon || t.Icon;
-        const on = g.tools ? g.tools.some(isOn) : false;
+        const on = g.action === "snap" ? snap : g.tools ? g.tools.some((x) => x.id !== SELECT || g.id === "select" ? isOn(x) : false) : false;
         const title = g.title || t.label;
-        const many = (g.tools?.length || 0) > 1 || g.id === "class" || g.draws;
+        const many = (g.tools?.length || 0) > 1 || g.id === "class" || g.draws || g.size;
         const off = g.action === "undo" && !canUndo;
         return (
           <div key={g.id} className="label-rail-item" onMouseEnter={() => enter(g.id)} onMouseLeave={leave}>
@@ -238,7 +285,8 @@ export default function LabelRail({
                   </form>
                 )}
                 {g.tools?.map((x) => (
-                  <button key={x.id} type="button" role="menuitem" disabled={x.action === "delete" && !editId && !selectedIds.length && !segPreview?.res}
+                  <button key={x.id} type="button" role="menuitem"
+                          disabled={(x.action === "delete" && !editId && !selectedIds.length && !segPreview?.res) || (x.action === "merge" && selectedIds.length < 2)}
                           className={`label-rail-row ${isOn(x) ? "on" : ""} ${x.danger ? "danger" : ""}`}
                           onClick={() => pick(g, x)}
                           title={x.note || undefined}>
@@ -248,6 +296,12 @@ export default function LabelRail({
                       : x.key && <span className="mono label-rail-key">{x.key}</span>}
                   </button>
                 ))}
+                {g.size && <SizeRow kind={g.size} mode={mode} exact={exact} onExact={onExact} onPick={(id) => pick(g, g.tools.find((x) => x.id === id))} />}
+                {g.action === "snap" && (
+                  <button type="button" role="menuitemcheckbox" aria-checked={snap} className={`label-rail-row ${snap ? "on" : ""}`} onClick={() => onSnap?.(!snap)}>
+                    <IconMagnet /><span className="label-rail-name">{snap ? "On" : "Off"}</span><span className="mono label-rail-key">Ctrl skips</span>
+                  </button>
+                )}
                 {g.draws && seg && !seg.ready && (
                   <div className="label-rail-warn">
                     <p>{seg.down || seg.reason}</p>

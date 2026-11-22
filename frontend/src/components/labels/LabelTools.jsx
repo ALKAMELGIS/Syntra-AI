@@ -20,6 +20,9 @@ export const LABEL_TOOLS = [
   { id: "square", group: "Draw", label: "Square", key: "S", Icon: IconSquare },
   { id: "circle", group: "Draw", label: "Circle", key: "C", Icon: IconCircle },
   { id: "freehand", group: "Draw", label: "Freehand", key: "F", Icon: IconPencil },
+  { id: "curve", group: "Draw", label: "Curve", key: "U", Icon: IconPolygon },
+  { id: "trace", group: "Draw", label: "Trace", key: "T", Icon: IconPolygon },
+  { id: "split", group: "Edit", label: "Split", key: "K", Icon: IconPolygon },
 ];
 
 // What is being outlined: how SAM's answer is chosen and cleaned, and the output it suits
@@ -45,6 +48,9 @@ export const HINTS = {
   everything: "Finds every object in the view. Enter keeps them all, Esc drops them. Pick it again after moving the map",
   boxsel: "Drag a box over labels to select them. Shift adds to the selection",
   lasso: "Draw around labels to select them. Shift adds to the selection",
+  curve: "Click points: the outline bends smoothly through them. Double-click or Enter closes it",
+  trace: "Click on another label's edge, then further along it: the outline follows that edge. Ctrl+click places a free point",
+  split: "Draw a line across a label and double-click: it becomes two labels",
   box: "Drag a box around the object. Alt+click or right-click removes a part. Enter saves, Esc discards",
 };
 
@@ -204,7 +210,7 @@ export default function LabelTools({
   const objects = annotations.filter((a) => !isArea(a.class_name));
 
   function pickTool(id) {
-    if (!classes.length && !["boxsel", "lasso"].includes(id)) onAddClass?.("object");   // the tool starts at once; rename or reclass later
+    if (!classes.length && !["boxsel", "lasso", "split"].includes(id)) onAddClass?.("object");   // the tool starts at once; rename or reclass later
     else if (drawingArea) onActiveClass(classes[0]);
     onMode(mode === id && !drawingArea ? null : id);
   }

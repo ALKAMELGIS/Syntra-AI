@@ -11,6 +11,9 @@ import LibraryPanel from "./components/training/LibraryPanel.jsx";
 import { IconMap, IconSliders } from "./components/ui/Icons.jsx";
 import { api } from "./api/client.js";
 import { getPref, detectionOptions } from "./lib/prefs.js";
+import L from "leaflet";
+import { isArea } from "./components/labels/AnnotationTool.jsx";
+import { splitRing, mergeRings } from "./lib/geomEdit.js";
 
 const PALETTE = ["#5b8cff", "#b48ead", "#f5a623", "#ff5d6c", "#c678dd", "#56c7d6", "#e8a87c", "#a8e6cf"];
 
@@ -272,22 +275,66 @@ export default function App({ user = null, onSignOut = null }) {
   }, [trainClasses.join("|")]);  
 
   async function saveLabel(latlngs, meta = {}) {
-    if (!image?.image_id || !activeClass) return;
+    const cls = meta.class_name || activeClass;
+    if (!image?.image_id || !cls) return null;
     setLabelError(null);
     try {
       const saved = await api.addAnnotation(image.image_id, {
-        class_name: activeClass, points_lonlat: latlngs.map((p) => [p.lng, p.lat]),
+        class_name: cls, points_lonlat: latlngs.map((p) => [p.lng, p.lat]),
         shape: meta.shape || null, tool: meta.tool || null,
       });
       setAnnotations((list) => [...list, saved]);
+      if (meta.quiet) return saved;                     // part of a split or merge: undone as one step
       setUndoIds((u) => [...u.slice(-49), saved.id]);
       setRecent({ id: saved.id, n: (meta.count || 1), at: Date.now() });
+      return saved;
     } catch (err) {
       setLabelError(err.detail?.message || err.message);
+      return null;
     }
+  }
+  // Split and Merge replace labels: the new ones are saved first, then the old ones
+  // go. Undo removes the new ones and brings the old ones back.
+  const undoOps = useRef({});
+  async function replaceLabels(old, parts, tool) {
+    const made = [];
+    for (const [latlngs, cls] of parts) {
+      const saved = await saveLabel(latlngs, { class_name: cls, tool, shape: "polygon", quiet: true });
+      if (!saved) { for (const m of made) await deleteLabel(m.id); return false; }
+      made.push(saved);
+    }
+    for (const a of old) await deleteLabel(a.id);
+    const key = `op:${Date.now()}`;
+    undoOps.current[key] = { ids: made.map((m) => m.id), restore: old };
+    setUndoIds((u) => [...u.slice(-49), key]);
+    setSelectedIds([]);
+    return true;
+  }
+  const toXY = (a) => a.points_lonlat.map(([x, y]) => ({ x, y }));
+  const toLL = (ring) => ring.map((p) => L.latLng(p.y, p.x));
+  async function splitLabels(line) {
+    const cut = line.map((p) => ({ x: p.lng, y: p.lat }));
+    const pool = selectedIds.length ? annotations.filter((a) => selectedIds.includes(a.id)) : annotations.filter((a) => !isArea(a.class_name));
+    const old = [], parts = [];
+    for (const a of pool) {
+      const got = splitRing(toXY(a), cut);
+      if (got.length) { old.push(a); got.forEach((r) => parts.push([toLL(r), a.class_name])); }
+    }
+    if (!old.length) { setLabelError("The line doesn't cross a label: draw it from outside to outside"); return; }
+    await replaceLabels(old, parts, "split");
+  }
+  async function mergeLabels(ids) {
+    const old = annotations.filter((a) => ids.includes(a.id));
+    if (old.length < 2) return;
+    const got = mergeRings(old.map(toXY));
+    if (got.length !== 1) { setLabelError("These labels don't touch: merge needs them to overlap or share an edge"); return; }
+    await replaceLabels(old, [[toLL(got[0]), old[0].class_name]], "merge");
   }
   // several labels selected at once (box, lasso, Shift+click): delete or change class together
   const [selectedIds, setSelectedIds] = useState([]);
+  // snapping to other labels' corners and edges while drawing and editing (kept in this browser)
+  const [snap, setSnap] = useState(() => { try { return localStorage.getItem("syntra_snap") !== "0"; } catch { return true; } });
+  useEffect(() => { try { localStorage.setItem("syntra_snap", snap ? "1" : "0"); } catch { /* private mode */ } }, [snap]);
   useEffect(() => setSelectedIds([]), [image?.image_id]);
   async function deleteLabels(ids) {
     if (!ids.length || (ids.length > 1 && !confirm(`Delete ${ids.length} labels?`))) return;
@@ -304,12 +351,16 @@ export default function App({ user = null, onSignOut = null }) {
   // Undo (Ctrl+Z or the rail): removes the labels added on this image, newest first
   const [undoIds, setUndoIds] = useState([]);
   useEffect(() => setUndoIds([]), [image?.image_id]);
-  const undoable = undoIds.filter((id) => annotations.some((a) => a.id === id));
-  function undoLabel() {
+  const undoable = undoIds.filter((id) => (undoOps.current[id] ? undoOps.current[id].ids.some((x) => annotations.some((a) => a.id === x)) : annotations.some((a) => a.id === id)));
+  async function undoLabel() {
     const id = undoable[undoable.length - 1];
     if (!id) return;
     setUndoIds((u) => u.filter((x) => x !== id));
-    deleteLabel(id);
+    const op = undoOps.current[id];
+    if (!op) { deleteLabel(id); return; }
+    delete undoOps.current[id];
+    for (const a of op.restore) await saveLabel(a.points_lonlat.map(([lon, lat]) => L.latLng(lat, lon)), { class_name: a.class_name, shape: a.shape, tool: a.tool, quiet: true });
+    for (const x of op.ids) await deleteLabel(x);
   }
   // classes picked from the library carry their tool and outline (kept in this browser)
   const [classInfo, setClassInfo] = useState(() => { try { return JSON.parse(localStorage.getItem("syntra_class_info") || "{}"); } catch { return {}; } });
@@ -491,6 +542,7 @@ export default function App({ user = null, onSignOut = null }) {
               selectedIds: labelling ? selectedIds : [], onSelect: setSelectedIds,
               onSegment: segmentClick, onPreview: setSegPreview, exact: exactSize,
               onSegmentAll: segmentAll, onDrawnMany: saveMany, onPrepare: prepareView,
+              snap, onSplit: splitLabels,
             }}
             labelRail={labelling ? {
               classes: trainClasses, activeClass, onActiveClass: setActiveClass,
@@ -502,6 +554,7 @@ export default function App({ user = null, onSignOut = null }) {
               outline, onOutline: setOutline, segPreview,
               annotations, selectedIds, onSelect: setSelectedIds,
               onDeleteMany: deleteLabels, onReclassMany: reclassLabels,
+              onMerge: mergeLabels, snap, onSnap: setSnap, exact: exactSize, onExact: setExactSize,
               recent: recent && annotations.some((a) => a.id === recent.id) ? recent : null,
               onDeleteRecent: () => { if (recent) { deleteLabel(recent.id); setRecent(null); } },
               onAddClass: (c) => { setExtraClasses((l) => (l.includes(c) ? l : [...l, c])); setActiveClass(c); },

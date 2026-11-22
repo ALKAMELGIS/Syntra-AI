@@ -16,4 +16,10 @@ if %errorlevel%==0 (
   pause
   exit /b 1
 )
+rem A new library in the interface (package-lock.json newer than the installed set): install it first.
+powershell -NoProfile -Command "$l='frontend\package-lock.json'; $m='frontend\node_modules\.package-lock.json'; if (!(Test-Path $m) -or (Get-Item $l).LastWriteTime -gt (Get-Item $m).LastWriteTime) { exit 1 }"
+if errorlevel 1 (
+  echo Installing the interface's libraries...
+  pushd frontend && call npm install --no-audit --no-fund && popd
+)
 start "Syntra interface" cmd /k "cd /d "%~dp0frontend" && set VITE_API_PORT=%SYNTRA_PORT%&& npm run dev"

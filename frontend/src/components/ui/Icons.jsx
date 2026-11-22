@@ -194,3 +194,25 @@ export const IconLasso = (p) => (
 export const IconGridDots = (p) => (
   <svg {...base} {...p}><circle cx="5" cy="5" r="1.2" /><circle cx="12" cy="5" r="1.2" /><circle cx="19" cy="5" r="1.2" /><circle cx="5" cy="12" r="1.2" /><circle cx="12" cy="12" r="1.2" /><circle cx="19" cy="12" r="1.2" /><circle cx="5" cy="19" r="1.2" /><circle cx="12" cy="19" r="1.2" /><circle cx="19" cy="19" r="1.2" /></svg>
 );
+// Label editing: curve, trace along an edge, split, merge, snapping, radius.
+export const IconCurve = (p) => (
+  <svg {...base} {...p}><path d="M4 18C6 8 10 5 13 9s5 4 7-3" /><circle cx="4" cy="18" r="1.2" /><circle cx="20" cy="6" r="1.2" /></svg>
+);
+export const IconTrace = (p) => (
+  <svg {...base} {...p}><path d="M4 20V8l6-4 10 4v12Z" strokeDasharray="2 2.5" /><path d="M4 14V8l6-4 6 2.4" /><circle cx="16" cy="6.4" r="1.4" /></svg>
+);
+export const IconSplit = (p) => (
+  <svg {...base} {...p}><path d="M4 6h16v12H4Z" /><path d="M14 3 10 21" /></svg>
+);
+export const IconMerge = (p) => (
+  <svg {...base} {...p}><path d="M3 9h8v-4h10v10h-8v4H3Z" /></svg>
+);
+export const IconMagnet = (p) => (
+  <svg {...base} {...p}><path d="M6 4v8a6 6 0 0 0 12 0V4" /><path d="M6 8h3M15 8h3M9 4v8a3 3 0 0 0 6 0V4" /></svg>
+);
+export const IconRadius = (p) => (
+  <svg {...base} {...p}><circle cx="12" cy="12" r="8" /><path d="M12 12h8" /><circle cx="12" cy="12" r="1.2" /></svg>
+);
+export const IconEditShape = (p) => (
+  <svg {...base} {...p}><path d="M5 19 19 5" /><rect x="3" y="17" width="4" height="4" /><rect x="10" y="10" width="4" height="4" /><rect x="17" y="3" width="4" height="4" /></svg>
+);

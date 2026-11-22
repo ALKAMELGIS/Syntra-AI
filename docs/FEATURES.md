@@ -414,6 +414,19 @@ for when it is exposed to a network (all in `backend/.env.example`):
   row has a delete button: the class and its labels go, after a confirmation
   when it has labels. Verified with Playwright: 3 classes added from the
   library, one deleted.
+- **Edit tools in the label rail** (ArcGIS Online style; geometry in
+  `frontend/src/lib/geomEdit.js`, MIT `polygon-clipping` for the cuts):
+  Curve (U, a smooth outline through clicked points), Trace (T, the outline
+  follows another label's edge between two clicks on it), Split (K, a line
+  drawn across labels cuts each into parts; with a selection only those),
+  Merge selected (M, union of touching labels), Snapping (N, on by default:
+  corners first, then edges, 10 px; Ctrl held skips it; also while dragging a
+  corner in Reshape), and an exact size in the Rectangle and Circle groups
+  (width × height, or radius, in metres; one click places it). Split and Merge
+  save the new labels before deleting the old ones, and Undo brings the old
+  ones back as one step. Verified: `npm test` (7 geometry tests) and Playwright
+  on a test image: 2 rectangles merged to 1, split to 2, undone to 1, a trace,
+  a curve and a 8 m circle saved.
 - **Label rail on the map.** While labelling (Train > Label) the tools sit in
   a 40 px rail on the map's left edge, below the zoom buttons
   (`components/labels/LabelRail.jsx`): Polygon (Polygon, Freehand),

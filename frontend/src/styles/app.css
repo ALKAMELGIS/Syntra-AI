@@ -2617,3 +2617,7 @@ input[type=range].gauge:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 2px 
 .ai-res-acts button.danger { color: var(--error); }
 .ai-more { align-self: flex-end; border: none; background: none; padding: 0; font-size: var(--fs-11); color: var(--text-dim); cursor: pointer; }
 .ai-more:hover { color: var(--text); text-decoration: underline; }
+/* exact size in a draw tool's flyout: radius, or width × height, in metres */
+.label-rail-size { display: flex; align-items: center; gap: 4px; margin: 4px 8px 8px; }
+.label-rail-size svg { font-size: var(--fs-16); color: var(--text-dim); flex: none; }
+.label-rail-size input { width: 64px; height: 28px; padding: 0 8px; }
