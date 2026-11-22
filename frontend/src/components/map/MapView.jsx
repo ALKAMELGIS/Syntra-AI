@@ -25,7 +25,7 @@ export default function MapView({
   onRemoveImage, onRemoveResult, onLabelsImported,
   layers, detectionsVisible = true, onToggleDetections,
   aoi, onAoiChange, measurement, onMeasurementChange,
-  trainOpen, onToggleTrain, onAnnotate, labels, labelRail, trainPanel, perfOpen, onTogglePerf, perfPanel, libOpen, onToggleLib, libPanel,
+  trainOpen, onToggleTrain, onAnnotate, labelling = false, labels, labelRail, trainPanel, perfOpen, onTogglePerf, perfPanel, libOpen, onToggleLib, libPanel,
   onSelectLibraryImage, currentImageId, sourceImage,
   analysisOpen, onToggleAnalysis, analysisCount, analysisRunning, analysisPanel, focusFeature = null,
 }) {
@@ -396,7 +396,7 @@ export default function MapView({
               onAoiChange={onAoiChange}
               measurement={measurement}
               onMeasurementChange={onMeasurementChange}
-              annotateOpen={false}
+              annotateOpen={labelling}
               onToggleAnnotate={onAnnotate}
               canAnnotate={Boolean(sourceImage?.image_id)}
               otherPanelOpen={panel != null}

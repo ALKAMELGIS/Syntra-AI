@@ -431,7 +431,8 @@ export default function App({ user = null, onSignOut = null }) {
             onMeasurementChange={setMeasurement}
             trainOpen={trainOpen}
             onToggleTrain={() => setTrainOpen((v) => !v)}
-            onAnnotate={() => openTrain(trainClasses.length ? 1 : 0)}
+            labelling={labelling}
+            onAnnotate={() => (labelling ? setTrainOpen(false) : openTrain(1))}   // Label: the rail takes a new class too
             labels={{
               visible: trainOpen,
               mode: trainOpen && trainStep === 1 ? drawMode : null,
