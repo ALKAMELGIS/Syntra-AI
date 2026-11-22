@@ -385,9 +385,15 @@ for when it is exposed to a network (all in `backend/.env.example`):
   Verified: `test_click_segment_offline.py::test_a_box_alone_segments_the_object_inside_it`
   and `::test_box_shape_is_axis_aligned`, a Playwright look at the rail and
   the Auto segment group in both themes. Not run: a box prompt against the
-  real SAM 2.1 weights (not installed in the test machine). Not built yet:
-  box and lasso selection of several labels, merge, split, cut a hole,
-  similar objects and everything in view.
+  real SAM 2.1 weights (not installed in the test machine). Selection: the
+  Select group adds Box select (X), Lasso select (L) and All of this class
+  (Ctrl+A); Shift+click adds or takes one label. A label is picked when its
+  middle falls inside the box or lasso. A bar beside the zoom buttons shows
+  how many are selected, changes their class or deletes them (Delete; Esc lets
+  go). Verified with Playwright on a test image: 3 rectangles drawn, a box
+  picked 2 and moved them to another class, a lasso picked 3 and deleted them
+  (0 left on the server). Not built yet: merge, split, cut a hole, similar
+  objects and everything in view.
 - **Label tools and click-to-segment (plan stage 4).** Train > Label has
   six tools, one key each: Click (A, AI), Polygon (P), Rectangle (R: drag,
   Shift for a square, or three clicks for a rotated rectangle), Square (S,

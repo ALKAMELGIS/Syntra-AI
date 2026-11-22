@@ -2450,6 +2450,22 @@ input[type=range].gauge:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 2px 
 }
 .label-rail-warn p { margin: 0; line-height: 1.4; }
 .label-rail-err { margin: 4px 8px 8px; font-size: var(--fs-11); color: var(--error); line-height: 1.4; }
+.label-selbar {
+  position: absolute; top: 16px; left: 64px; z-index: var(--z-toolbar);    /* beside the zoom buttons, clear of the panels */
+  display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 4px 0 12px;
+  background: var(--panel); border: 1px solid var(--panel-border); border-radius: var(--radius-control);
+  box-shadow: var(--shadow-panel); font-size: var(--fs-12); color: var(--text); white-space: nowrap;
+}
+.label-selbar-class {
+  height: 28px; padding: 0 8px; border: 1px solid var(--panel-border); border-radius: 6px;
+  background: var(--bg); color: var(--text); font-size: var(--fs-12);
+}
+.label-selbar-btn {
+  height: 32px; padding: 0 8px; display: flex; align-items: center; gap: 4px;
+  border: none; border-radius: 6px; background: transparent; color: var(--text); cursor: pointer; font-size: var(--fs-12);
+}
+.label-selbar-btn:hover { background: var(--hover-bg); }
+.label-selbar-btn.danger { color: var(--error); }
 .label-current { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 8px; font-size: var(--fs-12); }
 .label-current svg { font-size: var(--fs-16); }
 .label-current-hint { flex-basis: 100%; }

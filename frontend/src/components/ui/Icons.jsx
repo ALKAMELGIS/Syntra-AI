@@ -185,3 +185,9 @@ export const IconAreaDashed = (p) => (
 export const IconUndo = (p) => (
   <svg {...base} {...p}><path d="M9 14 4 9l5-5" /><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" /></svg>
 );
+export const IconBoxSelect = (p) => (
+  <svg {...base} {...p}><path d="M4 7V4h3M10 4h2M15 4h1M4 10v2M4 15v1M4 19v1h1M8 20h1" /><path d="M12 12 12 21l2.6-2.4 1.8 3.8 1.7-.8-1.8-3.8H20Z" /></svg>
+);
+export const IconLasso = (p) => (
+  <svg {...base} {...p}><path d="M7.5 17.5C4.8 16.3 3 14.3 3 12c0-4 4-7 9-7s9 3 9 7-4 7-9 7c-.9 0-1.7-.1-2.5-.3" /><circle cx="7.5" cy="18" r="1.6" /><path d="M7 19.6c-.4 1.2-1.3 2-2.5 2.4" /></svg>
+);

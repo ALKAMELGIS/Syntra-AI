@@ -281,6 +281,17 @@ export default function App({ user = null, onSignOut = null }) {
       setLabelError(err.detail?.message || err.message);
     }
   }
+  // several labels selected at once (box, lasso, Shift+click): delete or change class together
+  const [selectedIds, setSelectedIds] = useState([]);
+  useEffect(() => setSelectedIds([]), [image?.image_id]);
+  async function deleteLabels(ids) {
+    if (!ids.length || (ids.length > 1 && !confirm(`Delete ${ids.length} labels?`))) return;
+    for (const id of ids) await deleteLabel(id);           // one at a time: each is its own request
+    setSelectedIds([]);
+  }
+  async function reclassLabels(ids, c) {
+    for (const id of ids) await updateLabel(id, { class_name: c });
+  }
   // Undo (Ctrl+Z or the rail): removes the labels added on this image, newest first
   const [undoIds, setUndoIds] = useState([]);
   useEffect(() => setUndoIds([]), [image?.image_id]);
@@ -439,7 +450,9 @@ export default function App({ user = null, onSignOut = null }) {
               className: activeClass, annotations,
               onDrawn: saveLabel, onShapeClick: deleteLabel,
               editable: trainOpen && trainStep === 1, editId,
-              onEdit: setEditId, onUpdate: (id, latlngs) => updateLabel(id, { latlngs }), onDeleteSelected: deleteLabel,
+              onEdit: setEditId, onUpdate: (id, latlngs) => updateLabel(id, { latlngs }),
+              onDeleteSelected: (x) => (Array.isArray(x) ? deleteLabels(x) : deleteLabel(x)),
+              selectedIds: labelling ? selectedIds : [], onSelect: setSelectedIds,
               onSegment: segmentClick, onPreview: setSegPreview, exact: exactSize,
             }}
             labelRail={labelling ? {
@@ -450,6 +463,8 @@ export default function App({ user = null, onSignOut = null }) {
               onEditClass: (c) => editId && updateLabel(editId, { class_name: c }), onEditDelete: () => editId && deleteLabel(editId),
               onClear: clearLabels, onUndo: undoLabel, canUndo: undoable.length > 0,
               outline, onOutline: setOutline, segPreview,
+              annotations, selectedIds, onSelect: setSelectedIds,
+              onDeleteMany: deleteLabels, onReclassMany: reclassLabels,
               onAddClass: (c) => { setExtraClasses((l) => (l.includes(c) ? l : [...l, c])); setActiveClass(c); },
             } : null}
             perfOpen={perfOpen}

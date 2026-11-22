@@ -7,7 +7,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { api } from "../../api/client.js";
 import { classColor, TRAIN_AREA, CHECK_AREA } from "./AnnotationTool.jsx";
 import {
-  IconAreaDashed, IconBoxAI, IconCircle, IconClickAI, IconPencil, IconPointer, IconPolygon,
+  IconAreaDashed, IconBoxAI, IconBoxSelect, IconClose, IconLasso, IconCircle, IconClickAI, IconPencil, IconPointer, IconPolygon,
   IconRectangle, IconSparkle, IconSquare, IconTag, IconTrash, IconUndo,
 } from "../ui/Icons.jsx";
 
@@ -25,8 +25,11 @@ const GROUPS = [
   { id: "circle", tools: [{ id: "circle", label: "Circle", key: "C", Icon: IconCircle }] },
   { id: "class", title: "Class", Icon: IconTag },
   { sep: true },
-  { id: "select", tools: [{ id: SELECT, label: "Select and edit", key: "V", Icon: IconPointer,
-    note: "Click a label: drag corners to reshape, the shape to move it, the round handle to rotate" }] },
+  { id: "select", title: "Select", tools: [
+    { id: SELECT, label: "Select and edit", key: "V", Icon: IconPointer, note: "Click a label to reshape, move or rotate it. Shift+click adds it to the selection" },
+    { id: "boxsel", label: "Box select", key: "X", Icon: IconBoxSelect, note: "Drag over labels. Shift adds" },
+    { id: "lasso", label: "Lasso select", key: "L", Icon: IconLasso, note: "Draw around labels. Shift adds" },
+    { id: "allclass", label: "All of this class", key: "Ctrl+A", Icon: IconTag, action: "all" }] },
   { sep: true },
   { id: "ai", title: "Auto segment", Icon: IconSparkle, tools: [
     { id: "click", label: "Click object", key: "A", Icon: IconClickAI, note: "Alt+click removes a part" },
@@ -48,6 +51,7 @@ function isTyping(el) {
 export default function LabelRail({
   classes = [], counts = {}, activeClass, onActiveClass, mode, onMode, editId, onEditClass, onEditDelete,
   onClear, onUndo, canUndo, outline, onOutline, editingClass, onAddClass, segPreview,
+  annotations = [], selectedIds = [], onSelect, onDeleteMany, onReclassMany,
 }) {
   const [open, setOpen] = useState(null);
   const [last, setLast] = useState({});            // group -> tool id last picked there
@@ -85,15 +89,19 @@ export default function LabelRail({
     if (!c) return;
     onAddClass?.(c);
     setNewClass("");
+    e.currentTarget.querySelector("input")?.blur();   // the tool keys (P, R, B…) work straight away
   }
 
-  // Ctrl+Z: the last label added here
+  // Ctrl+Z: the last label added here; Ctrl+A: every label of the current class
+  const selectAll = () => onSelect?.(annotations.filter((a) => a.class_name === activeClass).map((a) => a.id));
   const live = useRef();
-  live.current = { onUndo, canUndo };
+  live.current = { onUndo, canUndo, selectAll };
   useEffect(() => {
     function key(e) {
-      if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== "z" || e.shiftKey || isTyping(e.target)) return;
-      if (live.current.canUndo) { e.preventDefault(); live.current.onUndo?.(); }
+      if (!(e.ctrlKey || e.metaKey) || e.shiftKey || isTyping(e.target)) return;
+      const k = e.key.toLowerCase();
+      if (k === "z" && live.current.canUndo) { e.preventDefault(); live.current.onUndo?.(); }
+      if (k === "a") { e.preventDefault(); live.current.selectAll(); }
     }
     window.addEventListener("keydown", key);
     return () => { window.removeEventListener("keydown", key); clearTimeout(closeT.current); };
@@ -109,7 +117,11 @@ export default function LabelRail({
   };
   function pick(g, t) {
     setLast((l) => ({ ...l, [g.id]: t.id }));
-    if (t.action === "delete") { if (editId) onEditDelete?.(); return; }
+    if (t.action === "all") { onMode(null); selectAll(); return; }
+    if (t.action === "delete") {
+      if (selectedIds.length) onDeleteMany?.(selectedIds); else if (editId) onEditDelete?.();
+      return;
+    }
     if (t.action === "clear") { onClear?.(); return; }
     if (t.area) { onActiveClass(t.id); onMode("rect"); return; }
     if (drawingArea && classes.length) onActiveClass(classes[0]);
@@ -120,19 +132,35 @@ export default function LabelRail({
     if (needsClass(g)) { setOpen("class"); return; }
     if (!g.tools) { setOpen(open === g.id ? null : g.id); return; }
     const t = g.tools.find((x) => x.id === last[g.id]) || g.tools[0];
-    if (t.action) { setOpen(g.id); return; }       // Delete: choose in the list
+    if (t.action) { setOpen(g.id); return; }       // Delete, All of class: choose in the list
     pick(g, t);
   }
   const shown = (g) => (g.tools ? g.tools.find((x) => x.id === last[g.id]) || g.tools[0] : null);
   const needsClass = (g) => !classes.length && !["class", "undo", "delete", "areas"].includes(g.id);
 
+  const n = selectedIds.length;
   return (
+    <>
+    {n > 0 && (
+      <div className="label-selbar" role="status">
+        <span className="mono">{n}</span><span>selected</span>
+        <select className="label-selbar-class" value="" aria-label="Change the class of the selected labels"
+                onChange={(e) => e.target.value && onReclassMany?.(selectedIds, e.target.value)}>
+          <option value="">Change class</option>
+          {classes.map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <button type="button" className="label-selbar-btn danger" onClick={() => onDeleteMany?.(selectedIds)} title="Delete · Del">
+          <IconTrash /> Delete
+        </button>
+        <button type="button" className="label-selbar-btn" onClick={() => onSelect?.([])} aria-label="Clear the selection" title="Esc"><IconClose /></button>
+      </div>
+    )}
     <div className="label-rail" role="toolbar" aria-label="Label tools" aria-orientation="vertical"
          onMouseDown={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
       {GROUPS.map((g, i) => {
         if (g.sep) return <span key={`s${i}`} className="label-rail-sep" aria-hidden="true" />;
         const t = shown(g);
-        const Icon = g.Icon || t.Icon;
+        const Icon = g.id === "select" ? t.Icon : g.Icon || t.Icon;
         const on = g.tools ? g.tools.some(isOn) : false;
         const title = g.title || t.label;
         const many = (g.tools?.length || 0) > 1 || g.id === "class" || g.draws;
@@ -166,7 +194,7 @@ export default function LabelRail({
                 )}
                 {g.id === "class" && editId && <p className="label-rail-note">Changes the selected label</p>}
                 {g.tools?.map((x) => (
-                  <button key={x.id} type="button" role="menuitem" disabled={x.action === "delete" && !editId}
+                  <button key={x.id} type="button" role="menuitem" disabled={x.action === "delete" && !editId && !selectedIds.length}
                           className={`label-rail-row ${isOn(x) ? "on" : ""} ${x.danger ? "danger" : ""}`}
                           onClick={() => (needsClass(g) ? setOpen("class") : pick(g, x))}
                           title={x.note || undefined}>
@@ -205,5 +233,6 @@ export default function LabelRail({
         );
       })}
     </div>
+    </>
   );
 }

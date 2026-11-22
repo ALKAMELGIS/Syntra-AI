@@ -18,6 +18,8 @@ import L from "leaflet";
 //             saves the outline, Esc discards, Backspace removes the last click
 //   box       AI: drag a box around the object; the outline inside it is
 //             previewed the same way (Alt or right-click removes a part)
+//   boxsel    drag a box: selects the labels whose middle is inside (Shift adds)
+//   lasso     draw around labels to select them (Shift adds)
 // With an exact size set in the panel, one click places the shape there.
 // Lengths shown while drawing are geodesic metres (map.distance).
 
@@ -72,35 +74,67 @@ const ROT = L.divIcon({ className: "edit-rot", iconSize: [14, 14] });
 export default function AnnotationLayer({
   visible, mode, className, annotations = [], onDrawn, onShapeClick, onSegment, exact, onPreview,
   editable = false, editId = null, onEdit, onUpdate, onDeleteSelected,
+  selectedIds = [], onSelect,
 }) {
   const map = useMap();
   const st = useRef({});
   const group = useRef(null);
   const live = useRef({ onDrawn, onSegment, onPreview, exact });
-  live.current = { onDrawn, onSegment, onPreview, exact, onEdit, onUpdate, onDeleteSelected };
+  live.current = { onDrawn, onSegment, onPreview, exact, onEdit, onUpdate, onDeleteSelected, onSelect, annotations };
+  const selKey = selectedIds.join(",");
 
   // saved labels
   useEffect(() => {
     if (group.current) { map.removeLayer(group.current); group.current = null; }
     if (!visible || !annotations.length) return;
     const g = L.layerGroup();
+    const sel = new Set(selectedIds);
     for (const a of annotations) {
       if (a.id === editId && editable && !mode) continue;      // drawn by the editor below
       const color = classColor(a.class_name);
       const area = isArea(a.class_name);
+      if (sel.has(a.id)) {                                     // selected: a white edge over a stronger fill
+        g.addLayer(L.polygon(a.points_lonlat.map(([lon, lat]) => L.latLng(lat, lon)), { ...HALO, interactive: false }));
+      }
       // while a tool is on, saved shapes let clicks through: you often label next to (or inside) one
       const poly = L.polygon(a.points_lonlat.map(([lon, lat]) => L.latLng(lat, lon)),
-        { ...(area ? { color, weight: 2, dashArray: "8 6", fill: false } : { color, weight: 2, fillOpacity: 0.18 }), interactive: !mode });
+        { ...(area ? { color, weight: 2, dashArray: "8 6", fill: false } : { color, weight: 2, fillOpacity: 0.18 }),
+          ...(sel.has(a.id) ? { color: "#ffffff", weight: 2.5, fillColor: color, fillOpacity: 0.4 } : {}), interactive: !mode });
       if (!mode) {
         poly.bindTooltip(AREA_LABEL[a.class_name] || a.class_name, { direction: "center" });
-        poly.on("click", (e) => { L.DomEvent.stopPropagation(e); (editable ? onEdit : onShapeClick)?.(a.id); });
+        poly.on("click", (e) => {
+          L.DomEvent.stopPropagation(e);
+          const ev = e.originalEvent;
+          if (editable && (ev.shiftKey || ev.ctrlKey || ev.metaKey)) {       // add to or take from the selection
+            live.current.onSelect?.((cur) => (cur.includes(a.id) ? cur.filter((x) => x !== a.id) : [...cur, a.id]));
+            onEdit?.(null);
+            return;
+          }
+          if (editable) live.current.onSelect?.([]);
+          (editable ? onEdit : onShapeClick)?.(a.id);
+        });
       }
       g.addLayer(poly);
     }
     g.addTo(map);
     group.current = g;
     return () => { if (group.current) map.removeLayer(group.current); };
-  }, [visible, annotations, map, mode, onShapeClick, editable, editId, onEdit]);
+  }, [visible, annotations, map, mode, onShapeClick, editable, editId, onEdit, selKey]);
+
+  // with a selection and no tool: Delete removes it, Esc lets go of it
+  useEffect(() => {
+    if (!visible || !editable || mode || editId || !selectedIds.length) return;
+    function key(e) {
+      const t = e.target;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT")) return;
+      if (e.key === "Escape") { e.preventDefault(); live.current.onSelect?.([]); }
+      else if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); live.current.onDeleteSelected?.(selectedIds); }
+    }
+    const clear = () => live.current.onSelect?.([]);
+    window.addEventListener("keydown", key);
+    map.on("click", clear);
+    return () => { window.removeEventListener("keydown", key); map.off("click", clear); };
+  }, [visible, editable, mode, editId, selKey, map]);
 
   // editing the selected label: drag vertices, add one from a midpoint, Alt+click
   // or right-click a vertex to remove it, drag the shape to move it, the round
@@ -350,7 +384,28 @@ export default function AnnotationLayer({
         s.points = [e.latlng]; s.drag = true;
       } else if (mode === "box" && !e.originalEvent.altKey) {
         s.start = p; s.drag = false;
+      } else if (mode === "boxsel") {
+        s.start = p; s.drag = false;
+      } else if (mode === "lasso") {
+        s.points = [e.latlng]; s.drag = true;
       }
+    }
+    // select the labels whose middle falls inside a ring drawn on screen (container pixels)
+    function selectInside(ring, additive) {
+      const inside = (pt) => {
+        let c = false;
+        for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+          const a = ring[i], b = ring[j];
+          if ((a.y > pt.y) !== (b.y > pt.y) && pt.x < ((b.x - a.x) * (pt.y - a.y)) / (b.y - a.y) + a.x) c = !c;
+        }
+        return c;
+      };
+      const ids = (live.current.annotations || []).filter((a) => {
+        const q = a.points_lonlat.map(([lon, lat]) => px(L.latLng(lat, lon)));
+        const mid = L.point(q.reduce((t, v) => t + v.x, 0) / q.length, q.reduce((t, v) => t + v.y, 0) / q.length);
+        return inside(mid);
+      }).map((a) => a.id);
+      live.current.onSelect?.((cur) => (additive ? [...new Set([...cur, ...ids])] : ids));
     }
     function move(e) {
       const p = px(e.latlng);
@@ -385,6 +440,16 @@ export default function AnnotationLayer({
         add(L.polyline(pts, { color: "#fff", weight: 2, interactive: false }));
         for (const q of s.points) add(L.circleMarker(q, { radius: 4, color: "#fff", weight: 1.5, fillColor: "#0d0f12", fillOpacity: 1, interactive: false }));
         say(e.latlng, fmtM(map.distance(s.points[s.points.length - 1], e.latlng)));
+      } else if (mode === "boxsel" && s.start) {
+        if (!s.drag && s.start.distanceTo(p) < 4) return;
+        s.drag = true;
+        clear();
+        add(L.rectangle(L.latLngBounds(ll(s.start), e.latlng), { color: "#ffffff", weight: 1, dashArray: "4 3", fillColor: "#ffffff", fillOpacity: 0.06, interactive: false }));
+      } else if (mode === "lasso" && s.drag) {
+        if (px(s.points[s.points.length - 1]).distanceTo(p) < 3) return;
+        s.points.push(e.latlng);
+        clear();
+        add(L.polygon(s.points, { color: "#ffffff", weight: 1, dashArray: "4 3", fillColor: "#ffffff", fillOpacity: 0.06, interactive: false }));
       } else if (mode === "box" && s.start) {
         if (!s.drag && s.start.distanceTo(p) < 4) return;
         s.drag = true;
@@ -418,6 +483,17 @@ export default function AnnotationLayer({
         // a click, not a drag
         if (placeExact(e.latlng)) return;
         if (mode === "rect") { s.points = [e.latlng]; return; }
+      } else if (mode === "boxsel" && s.start) {
+        const a = s.start;
+        s.start = null; clear();
+        if (!s.drag) { if (!ev.shiftKey) live.current.onSelect?.([]); return; }   // a click on nothing lets go
+        s.drag = false;
+        selectInside([a, L.point(p.x, a.y), p, L.point(a.x, p.y)], ev.shiftKey);
+      } else if (mode === "lasso" && s.drag) {
+        s.drag = false; clear();
+        if (s.points.length >= 3) selectInside(s.points.map(px), ev.shiftKey);
+        else if (!ev.shiftKey) live.current.onSelect?.([]);
+        s.points = [];
       } else if (mode === "box" && s.start) {
         const start = s.start;
         s.start = null;
