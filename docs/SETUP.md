@@ -65,7 +65,9 @@ From this computer instead: `deploy-space.bat` builds the interface and uploads 
 or `HF_TOKEN`, or `hf auth login`; the token needs write access.
 
 Space settings: variable `SYNTRA_PUBLIC_URL=https://alkamelgis-syntra-ai.hf.space` (set), secret
-`SYNTRA_OWNER_EMAIL` (the owner's email: only it may create the first account). Open the app at that
+`SYNTRA_OWNER_EMAIL` (the owner's email: only it may create the first account) and secret
+`SYNTRA_OWNER_PASSWORD` (8+ characters: the owner account is made again at every start while the
+disk is empty, so the "create the admin account" screen doesn't come back after a restart). Open the app at that
 address, not inside the Hugging Face page (the sign-in cookie needs it). The Space's disk is reset on
 restart: accounts, credits and images are kept only if a storage bucket is mounted at `/data`.
 

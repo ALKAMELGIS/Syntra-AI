@@ -58,6 +58,24 @@ def signup_open() -> bool:
     return os.getenv("SYNTRA_ALLOW_SIGNUP", "1").strip().lower() not in ("0", "off", "false", "no")
 
 
+def ensure_owner_from_env() -> "User | None":
+    """A hosted install whose disk is reset on restart (a free Hugging Face Space)
+    makes its owner account again at start-up from two secrets, SYNTRA_OWNER_EMAIL
+    and SYNTRA_OWNER_PASSWORD, so the "create the admin account" screen doesn't
+    come back after every restart. Only when there are no accounts yet."""
+    email = os.getenv("SYNTRA_OWNER_EMAIL", "").strip()
+    password = os.getenv("SYNTRA_OWNER_PASSWORD", "")
+    if not email or len(password) < MIN_PASSWORD:
+        return None
+    store = get_auth_store()
+    if store.count():
+        return None
+    try:
+        return store.create(email, os.getenv("SYNTRA_OWNER_NAME", "").strip() or "Admin", password)
+    except ValueError:
+        return None
+
+
 def may_create_first(request: Request, email: str | None) -> bool:
     """The first (owner) account: from the computer Syntra runs on, or on a server
     whose SYNTRA_OWNER_EMAIL names this email (a hosted install has no local screen)."""

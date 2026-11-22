@@ -113,3 +113,21 @@ def test_auth_off_restores_open_access(client, monkeypatch):
     client.post("/api/auth/signout")
     monkeypatch.setenv("SYNTRA_AUTH", "off")
     assert client.get("/api/images").status_code == 200
+
+
+def test_owner_comes_back_from_the_environment_after_a_reset(client, monkeypatch):
+    """A free Space loses its disk on restart: the owner is made again from its secrets."""
+    from app.core import auth
+
+    c = client
+    monkeypatch.setenv("SYNTRA_OWNER_EMAIL", "Admin@Syntra.ai")
+    monkeypatch.setenv("SYNTRA_OWNER_PASSWORD", "short")
+    assert auth.ensure_owner_from_env() is None                    # too short: nothing made
+    monkeypatch.setenv("SYNTRA_OWNER_PASSWORD", "long-enough-pw")
+    u = auth.ensure_owner_from_env()
+    assert u is not None and u.is_admin and u.email == "admin@syntra.ai" and u.name == "Admin"
+    assert auth.ensure_owner_from_env() is None                    # accounts exist: never again
+    st = c.get("/api/auth/status").json()
+    assert st["accounts_exist"] is True
+    r = c.post("/api/auth/signin", json={"email": "admin@syntra.ai", "password": "long-enough-pw"})
+    assert r.status_code == 200 and r.json()["user"]["role"] == "owner"

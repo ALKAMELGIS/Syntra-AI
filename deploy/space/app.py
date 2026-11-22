@@ -4,6 +4,8 @@ served by one uvicorn process on port 7860.
 
 Space settings (Settings > Variables and secrets):
   SYNTRA_OWNER_EMAIL   the email whose sign-up becomes the owner (required: a Space has no local screen)
+  SYNTRA_OWNER_PASSWORD  secret: with it the owner account is made again at every start
+                       while the disk is empty, so a restart doesn't ask for it again
   SYNTRA_PUBLIC_URL    https://alkamelgis-syntra-ai.hf.space (OAuth and Stripe return addresses)
   SENTINELHUB_INSTANCE_ID, … as in backend/.env.example
 

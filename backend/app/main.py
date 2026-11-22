@@ -31,6 +31,11 @@ async def lifespan(_app: FastAPI):
     # Jobs a previous process left running can't still be running: their
     # worker threads died with it. Say so instead of showing them as live.
     get_store().mark_interrupted()
+    try:                                     # hosted, reset disk: the owner account from its secrets
+        from app.core.auth import ensure_owner_from_env
+        ensure_owner_from_env()
+    except Exception:  # noqa: BLE001 - never block start-up on this
+        logging.getLogger(__name__).exception("Owner account from the environment failed")
     try:                                     # GPU runs on RunPod keep going while Syntra is closed
         from app.api.cloud import resume_watchers
         resume_watchers()
