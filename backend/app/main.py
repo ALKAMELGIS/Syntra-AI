@@ -17,7 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api import annotations, auth, basemaps, cloud, samples, segment, library, remote_sensing, billing, admin, oauth, benchmark, compute, datasets, environment, images, jobs, models, predict, results, training, usage, vector
 from app.core.config import settings
 from app.core.jobs import get_store
-from app.core.auth import require_access
+from app.core.auth import COOKIE as COOKIE_NAME, require_access
 
 
 @asynccontextmanager
@@ -53,6 +53,22 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
     allow_headers=["Content-Type", "X-API-Key"],
 )
+
+@app.middleware("http")
+async def same_origin_writes(request, call_next):
+    """The session cookie is SameSite=None over https (it must work inside the Space's frame),
+    so a form on another site could post with it. Browsers send Origin on such posts: a write
+    that carries the cookie and comes from another origin is refused."""
+    if request.method not in ("GET", "HEAD", "OPTIONS") and request.cookies.get(COOKIE_NAME):
+        origin = request.headers.get("origin")
+        if origin and origin != "null":
+            from urllib.parse import urlsplit
+            host = request.headers.get("x-forwarded-host") or request.headers.get("host") or ""
+            if urlsplit(origin).netloc != host and origin not in settings.CORS_ORIGINS:
+                from fastapi.responses import JSONResponse
+                return JSONResponse({"detail": "Cross-site request refused"}, status_code=403)
+    return await call_next(request)
+
 
 _protected = [Depends(require_access)]
 

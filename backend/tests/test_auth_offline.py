@@ -131,3 +131,20 @@ def test_owner_comes_back_from_the_environment_after_a_reset(client, monkeypatch
     assert st["accounts_exist"] is True
     r = c.post("/api/auth/signin", json={"email": "admin@syntra.ai", "password": "long-enough-pw"})
     assert r.status_code == 200 and r.json()["user"]["role"] == "owner"
+
+
+def test_session_cookie_works_inside_the_space_frame_and_refuses_other_sites(client):
+    """Over https the cookie is SameSite=None; Secure; Partitioned (the Space shows Syntra in
+    a frame); a write carrying it from another origin is refused."""
+    from fastapi.testclient import TestClient
+    from app.main import app
+
+    c = TestClient(app, base_url="https://syntra.example")
+    r = c.post("/api/auth/signup", json={"email": "a@b.co", "password": "correct-horse", "name": "A"})
+    assert r.status_code == 200, r.text
+    sc = r.headers["set-cookie"].lower()
+    assert "samesite=none" in sc and "secure" in sc and "partitioned" in sc and "httponly" in sc
+    assert c.get("/api/auth/status").json()["user"]["email"] == "a@b.co"
+    assert c.post("/api/auth/signout", headers={"Origin": "https://evil.example"}).status_code == 403
+    assert c.post("/api/auth/signout", headers={"Origin": "https://syntra.example"}).status_code == 200
+    assert c.get("/api/auth/status").json()["user"] is None

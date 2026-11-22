@@ -24,9 +24,19 @@ class SignIn(BaseModel):
     password: str
 
 
-def _set_cookie(response: Response, request: Request, token: str) -> None:
-    response.set_cookie(auth.COOKIE, token, max_age=auth.SESSION_DAYS * 86400, httponly=True,
-                        samesite="lax", secure=request.url.scheme == "https", path="/")
+def _set_cookie(response: Response, request: Request, token: str, max_age: int | None = None) -> None:
+    """The session cookie. Over https it is SameSite=None; Secure; Partitioned, so it also
+    works when Syntra is shown inside another site's frame (the Hugging Face Space page);
+    cross-site form posts are stopped by the Origin check in main.py instead."""
+    https = request.url.scheme == "https"
+    response.set_cookie(auth.COOKIE, token, max_age=auth.SESSION_DAYS * 86400 if max_age is None else max_age,
+                        httponly=True, samesite="none" if https else "lax", secure=https, path="/")
+    if https:                                    # Starlette has no 'partitioned' yet: add it to the header
+        for i in range(len(response.raw_headers) - 1, -1, -1):
+            k, v = response.raw_headers[i]
+            if k == b"set-cookie" and v.startswith(auth.COOKIE.encode() + b"="):
+                response.raw_headers[i] = (k, v + b"; Partitioned")
+                break
 
 
 @router.get("/status")
@@ -92,5 +102,5 @@ async def signin(body: SignIn, request: Request, response: Response):
 @router.post("/signout")
 def signout(request: Request, response: Response):
     auth.get_auth_store().end_session(request.cookies.get(auth.COOKIE))
-    response.delete_cookie(auth.COOKIE, path="/")
+    _set_cookie(response, request, "", max_age=0)          # same attributes, or the browser keeps it
     return {"ok": True}
