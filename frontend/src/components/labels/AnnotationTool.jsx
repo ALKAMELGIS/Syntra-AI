@@ -18,6 +18,8 @@ import L from "leaflet";
 //             saves the outline, Esc discards, Backspace removes the last click
 //   box       AI: drag a box around the object; the outline inside it is
 //             previewed the same way (Alt or right-click removes a part)
+//   everything  AI: every object in the view at once (SAM over a grid of points),
+//             shown dashed: Enter keeps them all, Esc drops them
 //   boxsel    drag a box: selects the labels whose middle is inside (Shift adds)
 //   lasso     draw around labels to select them (Shift adds)
 // With an exact size set in the panel, one click places the shape there.
@@ -74,13 +76,13 @@ const ROT = L.divIcon({ className: "edit-rot", iconSize: [14, 14] });
 export default function AnnotationLayer({
   visible, mode, className, annotations = [], onDrawn, onShapeClick, onSegment, exact, onPreview,
   editable = false, editId = null, onEdit, onUpdate, onDeleteSelected,
-  selectedIds = [], onSelect,
+  selectedIds = [], onSelect, onSegmentAll, onDrawnMany,
 }) {
   const map = useMap();
   const st = useRef({});
   const group = useRef(null);
   const live = useRef({ onDrawn, onSegment, onPreview, exact });
-  live.current = { onDrawn, onSegment, onPreview, exact, onEdit, onUpdate, onDeleteSelected, onSelect, annotations };
+  live.current = { onDrawn, onSegment, onPreview, exact, onEdit, onUpdate, onDeleteSelected, onSelect, annotations, onSegmentAll, onDrawnMany };
   const selKey = selectedIds.join(",");
 
   // saved labels
@@ -546,7 +548,9 @@ export default function AnnotationLayer({
       if (e.key === "Enter") {
         if (mode === "polygon" && s.points.length >= 3) { e.preventDefault(); finish(s.points, { tool: "polygon", shape: "polygon" }); }
         if (mode === "click" || mode === "box") { e.preventDefault(); saveClick(); }
+        if (mode === "everything") { e.preventDefault(); keepAll(); }
       } else if (e.key === "Escape") {
+        if (mode === "everything" && s.all) { e.preventDefault(); e.stopPropagation(); dropAll(); return; }
         if (s.points.length || s.clicks.length || s.start) {
           e.preventDefault(); e.stopPropagation();
           s.clicks = []; s.preview = null; s.points = []; s.start = null; s.drag = false;
@@ -562,6 +566,37 @@ export default function AnnotationLayer({
         if (mode === "rect" && s.points.length) { e.preventDefault(); s.points.pop(); clear(); say(null); }
       }
     }
+    // ----- everything in view: SAM over a grid; the suggestions are kept or dropped together -----
+    async function everything() {
+      const seq = ++s.seq;
+      clear(); s.all = null;
+      live.current.onPreview?.({ all: true, busy: true });
+      container.style.cursor = "progress";
+      try {
+        const b = map.getBounds();
+        const res = await live.current.onSegmentAll?.([b.getWest(), b.getSouth(), b.getEast(), b.getNorth()]);
+        if (seq !== s.seq || st.current !== s) return;
+        s.all = (res?.objects || []).map((o) => ({ latlngs: o.points_lonlat.map(([lon, lat]) => L.latLng(lat, lon)), shape: o.shape }));
+        for (const o of s.all) add(L.polygon(o.latlngs, { color, weight: 1.5, dashArray: "5 4", fillColor: color, fillOpacity: 0.25, interactive: false }));
+        live.current.onPreview?.({ all: true, count: s.all.length, timings: res?.timings });
+      } catch (err) {
+        if (seq !== s.seq || st.current !== s) return;
+        live.current.onPreview?.({ all: true, error: err.detail?.message || err.detail || err.message });
+      } finally {
+        if (seq === s.seq) container.style.cursor = "crosshair";
+      }
+    }
+    function keepAll() {
+      if (!s.all?.length) return;
+      const list = s.all; s.all = null; clear();
+      live.current.onPreview?.(null);
+      live.current.onDrawnMany?.(list.map((o) => [o.latlngs, { tool: "everything", shape: o.shape }]));
+    }
+    function dropAll() { s.all = null; clear(); live.current.onPreview?.({ all: true, count: 0, dropped: true }); }
+    const onAsk = (e) => { if (mode !== "everything") return; if (e.detail === "keep") keepAll(); else if (e.detail === "drop") dropAll(); else everything(); };
+    window.addEventListener("syntra:suggestions", onAsk);
+    if (mode === "everything") everything();
+
     map.on("mousedown", down); map.on("mousemove", move); map.on("mouseup", up);
     map.on("click", click); map.on("dblclick", dbl); map.on("contextmenu", context);
     window.addEventListener("keydown", key, true);
@@ -569,6 +604,7 @@ export default function AnnotationLayer({
       map.off("mousedown", down); map.off("mousemove", move); map.off("mouseup", up);
       map.off("click", click); map.off("dblclick", dbl); map.off("contextmenu", context);
       window.removeEventListener("keydown", key, true);
+      window.removeEventListener("syntra:suggestions", onAsk);
       s.seq++;
       clear(); map.removeLayer(tip);
       live.current.onPreview?.(null);

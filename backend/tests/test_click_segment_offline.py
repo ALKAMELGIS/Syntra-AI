@@ -257,3 +257,37 @@ def test_box_shape_is_axis_aligned():
     res = refine(diamond, RefineOptions(shape="box", px_m=1.0, simplify_m=0.5))
     assert res["shape"] == "box" and res["polygon"].bounds == (0.0, 0.0, 100.0, 100.0)
     assert res["warning"] is None                                     # a box is asked for: no fall-back to the trace
+
+
+class BlobsEngine:
+    """Three round objects (radius 25 px in window pixels); a point inside one returns it."""
+
+    CENTRES = [(100, 100), (300, 150), (200, 300)]
+
+    def encode(self, rgb):
+        return {"size": rgb.shape[:2]}
+
+    def decode(self, emb, points, labels):
+        h, w = emb["size"]
+        yy, xx = np.mgrid[:h, :w]
+        x, y = points[0]
+        for cx, cy in self.CENTRES:
+            if (x - cx) ** 2 + (y - cy) ** 2 <= 25 ** 2:
+                return (xx - cx) ** 2 + (yy - cy) ** 2 <= 25 ** 2, 0.95
+        return np.zeros((h, w), bool), 0.2
+
+
+def test_everything_in_view_finds_each_object_once(app_img):
+    from app.engine import click_segment
+
+    c, img = app_img
+    click_segment.set_engine(BlobsEngine())
+    view = [*lonlat(img, 0, 400)[:1], lonlat(img, 0, 400)[1], *lonlat(img, 400, 0)]     # west, south, east, north
+    r = c.post(f"/api/images/{img['image_id']}/segment-all", json={"view": view, "grid": 24, "shape": "polygon"})
+    assert r.status_code == 200, r.text
+    objs = r.json()["objects"]
+    assert len(objs) == 3                                         # many grid points hit each blob: kept once
+    centres = sorted((round(sum(p[0] for p in o["points_px"]) / len(o["points_px"])),
+                      round(sum(p[1] for p in o["points_px"]) / len(o["points_px"]))) for o in objs)
+    assert all(abs(a - b) <= 3 for (cx, cy), (ex, ey) in zip(centres, sorted(BlobsEngine.CENTRES)) for a, b in ((cx, ex), (cy, ey)))
+    assert all(o["points_lonlat"] and o["score"] >= 0.9 for o in objs)

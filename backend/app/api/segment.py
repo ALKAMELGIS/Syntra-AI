@@ -142,6 +142,37 @@ async def segment_click(image_id: str, req: SegmentRequest):
     return _answer(res, entry)
 
 
+class SegmentAllRequest(Refine):
+    view: list[float]                      # visible map: [west, south, east, north]
+    class_name: str = ""
+    device: str = "cpu"
+    grid: int = Field(default=16, ge=4, le=32)
+
+
+@router.post("/api/images/{image_id}/segment-all")
+async def segment_all(image_id: str, req: SegmentAllRequest):
+    """Every object in the visible part of the image (SAM over a grid of points):
+    suggestions to keep or drop, fitted to the class's shape."""
+    from app.engine import click_segment
+
+    entry = _entry(image_id)
+    b, w, h = entry["bounds_wgs84"], entry["width"], entry["height"]
+    if len(req.view) != 4:
+        raise HTTPException(status_code=400, detail="Send the view as [west, south, east, north]")
+    x0, y0 = store.lonlat_to_pixel(req.view[0], req.view[3], b, w, h)
+    x1, y1 = store.lonlat_to_pixel(req.view[2], req.view[1], b, w, h)
+    try:
+        window = click_segment.view_window((x0, y0, x1, y1), w, h)
+        opts = _opts(req, req.class_name, entry["path"])
+        res = await run_in_threadpool(click_segment.segment_everything, entry["path"], window, opts, req.device, None, req.grid)
+    except click_segment.SegmentUnavailable as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    res["objects"] = [_answer(o, entry) for o in res["objects"]]
+    return res
+
+
 @router.post("/api/images/{image_id}/outline")
 def outline(image_id: str, req: OutlineRequest):
     """Fit a shape to a ring someone drew or traced (no model needed)."""

@@ -7,7 +7,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { api } from "../../api/client.js";
 import { classColor, TRAIN_AREA, CHECK_AREA } from "./AnnotationTool.jsx";
 import {
-  IconAreaDashed, IconBoxAI, IconBoxSelect, IconClose, IconLasso, IconCircle, IconClickAI, IconPencil, IconPointer, IconPolygon,
+  IconAreaDashed, IconGridDots, IconBoxAI, IconBoxSelect, IconClose, IconLasso, IconCircle, IconClickAI, IconPencil, IconPointer, IconPolygon,
   IconRectangle, IconSparkle, IconSquare, IconTag, IconTrash, IconUndo,
 } from "../ui/Icons.jsx";
 
@@ -34,7 +34,8 @@ const GROUPS = [
   { sep: true },
   { id: "ai", title: "Auto segment", Icon: IconSparkle, tools: [
     { id: "click", label: "Click object", key: "A", Icon: IconClickAI, note: "Alt+click removes a part" },
-    { id: "box", label: "Box around object", key: "B", Icon: IconBoxAI, note: "Drag a box around it" }], draws: true },
+    { id: "box", label: "Box around object", key: "B", Icon: IconBoxAI, note: "Drag a box around it" },
+    { id: "everything", label: "Everything in view", key: "E", Icon: IconGridDots, note: "Every object in the view at once" }], draws: true },
   { id: "areas", title: "Areas", Icon: IconAreaDashed, tools: [
     { id: TRAIN_AREA, label: "Training area", area: true, Icon: IconAreaDashed, note: "Label everything inside it" },
     { id: CHECK_AREA, label: "Accuracy area", area: true, Icon: IconAreaDashed, note: "Kept out of training, for scoring" }] },
@@ -128,6 +129,7 @@ export default function LabelRail({
     const draws = !["select"].includes(g.id);
     if (draws && !classes.length) onAddClass?.(DEFAULT_CLASS);   // every tool starts at once: rename or reclass later
     else if (draws && drawingArea) onActiveClass(classes[0]);
+    if (t.id === "everything" && mode === "everything") { window.dispatchEvent(new CustomEvent("syntra:suggestions", { detail: "again" })); return; }
     onMode(t.id === SELECT ? null : t.id);
   }
   function main(g) {
@@ -141,8 +143,25 @@ export default function LabelRail({
 
 
   const n = selectedIds.length;
+  const all = mode === "everything" && segPreview?.all ? segPreview : null;
+  const ask = (what) => window.dispatchEvent(new CustomEvent("syntra:suggestions", { detail: what }));
   return (
     <>
+    {all && (
+      <div className="label-selbar" role="status">
+        {all.busy ? <span>Finding every object in the view…</span>
+          : all.error ? <span className="label-rail-err" style={{ margin: 0 }}>{all.error}</span>
+          : all.dropped ? <span>Suggestions dropped</span>
+          : <><span className="mono">{all.count}</span><span>{all.count === 1 ? "object found" : "objects found"}</span></>}
+        {!all.busy && all.count > 0 && !all.dropped && (
+          <button type="button" className="label-selbar-btn" onClick={() => ask("keep")} title="Enter">Keep all</button>
+        )}
+        {!all.busy && all.count > 0 && !all.dropped && (
+          <button type="button" className="label-selbar-btn" onClick={() => ask("drop")} title="Esc">Drop</button>
+        )}
+        {!all.busy && <button type="button" className="label-selbar-btn" onClick={() => ask("again")}>Run here again</button>}
+      </div>
+    )}
     {n > 0 && (
       <div className="label-selbar" role="status">
         <span className="mono">{n}</span><span>selected</span>

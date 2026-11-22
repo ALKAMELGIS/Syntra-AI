@@ -267,6 +267,83 @@ def view_window(view_px: tuple[float, float, float, float], width: int, height: 
     return c0, r0, c1 - c0, r1 - r0
 
 
+def _embedded(path: str, window: tuple[int, int, int, int], device: str, engine=None):
+    """The view encoded once (cached per view): (engine, embedding, scale, encode_ms). Holds _lock."""
+    col, row, w, h = window
+    scale = max(1.0, max(w, h) / SIZE)
+    out_h, out_w = max(1, round(h / scale)), max(1, round(w / scale))
+    eng = engine or _get_engine(device)
+    key = (path, window, (out_h, out_w), _engine_name)
+    t0 = time.perf_counter()
+    emb = _cache.get(key)
+    encode_ms = 0.0
+    if emb is None:
+        import rasterio
+        from rasterio.windows import Window
+
+        from app.engine.raster_prep import read_rgb
+
+        with rasterio.open(path) as ds:
+            rgb, _valid = read_rgb(ds, _plan(path), window=Window(col, row, w, h), out_shape=(out_h, out_w))
+        emb = eng.encode(rgb)
+        _cache[key] = emb
+        while len(_cache) > CACHE_VIEWS:
+            _cache.popitem(last=False)
+        encode_ms = (time.perf_counter() - t0) * 1000
+    else:
+        _cache.move_to_end(key)
+    return eng, emb, scale, encode_ms
+
+
+def segment_everything(path: str, window: tuple[int, int, int, int], opts, device: str = "cpu",
+                       engine=None, grid: int = 16, min_score: float = 0.7) -> dict:
+    """Every object in the view, SAM's automatic way: one add-point at each node of a
+    grid x grid lattice, masks below `min_score` dropped, the rest de-duplicated
+    (higher score first; a mask overlapping a kept one by more than half, or lying
+    mostly inside it, is dropped), then fitted to the class's shape. Masks covering
+    more than a third of the view are background (roads, fields), not objects."""
+    from shapely.geometry import box as sbox
+
+    from app.engine.shapes import mask_to_polygon, refine
+
+    col, row, w, h = window
+    with _lock:
+        eng, emb, scale, encode_ms = _embedded(path, window, device, engine)
+        eh, ew = emb["size"]
+        t1 = time.perf_counter()
+        found = []
+        for gy in range(grid):
+            for gx in range(grid):
+                pt = np.array([[(gx + 0.5) * ew / grid, (gy + 0.5) * eh / grid]], np.float32)
+                mask, score = eng.decode(emb, pt, np.array([1], np.float32))
+                if score < min_score or not mask.any():
+                    continue
+                poly = mask_to_polygon(mask, seed_xy=tuple(pt[0]), fill_holes_px2=opts.px2(opts.fill_holes_m2),
+                                       offset=(col, row), scale=scale)
+                if poly is not None:
+                    found.append((score, poly))
+        decode_ms = (time.perf_counter() - t1) * 1000
+    view_area = sbox(col, row, col + w, row + h).area
+    kept = []
+    for score, poly in sorted(found, key=lambda t: -t[0]):
+        if poly.area > view_area / 3 or poly.area < 16:
+            continue
+        if any(poly.intersection(k).area > 0.5 * min(poly.area, k.area) for _, k in kept):
+            continue
+        kept.append((score, poly))
+    objects = []
+    for score, poly in kept:
+        try:
+            res = refine(poly, opts)
+        except ValueError:
+            continue
+        res.update(score=round(float(score), 3))
+        objects.append(res)
+    timings = {"encode_ms": round(encode_ms, 1), "decode_ms": round(decode_ms, 1), "prompts": grid * grid}
+    _last_timings.update(timings)
+    return {"objects": objects, "timings": timings}
+
+
 def segment(path: str, window: tuple[int, int, int, int], clicks: list[tuple[float, float, int]],
             opts, device: str = "cpu", engine=None) -> dict:
     """Clicks in raster pixels -> refined outline in raster pixels + stats."""
@@ -277,29 +354,8 @@ def segment(path: str, window: tuple[int, int, int, int], clicks: list[tuple[flo
     if not (any(l == 1 for l in labels) or boxed):
         raise ValueError("Click inside the object, or draw a box around it")
     col, row, w, h = window
-    scale = max(1.0, max(w, h) / SIZE)
-    out_h, out_w = max(1, round(h / scale)), max(1, round(w / scale))
     with _lock:
-        eng = engine or _get_engine(device)
-        key = (path, window, (out_h, out_w), _engine_name)
-        t0 = time.perf_counter()
-        emb = _cache.get(key)
-        encode_ms = 0.0
-        if emb is None:
-            import rasterio
-            from rasterio.windows import Window
-
-            from app.engine.raster_prep import read_rgb
-
-            with rasterio.open(path) as ds:
-                rgb, _valid = read_rgb(ds, _plan(path), window=Window(col, row, w, h), out_shape=(out_h, out_w))
-            emb = eng.encode(rgb)
-            _cache[key] = emb
-            while len(_cache) > CACHE_VIEWS:
-                _cache.popitem(last=False)
-            encode_ms = (time.perf_counter() - t0) * 1000
-        else:
-            _cache.move_to_end(key)
+        eng, emb, scale, encode_ms = _embedded(path, window, device, engine)
         pts = np.array([[(x - col) / scale, (y - row) / scale] for x, y, _ in clicks], dtype=np.float32)
         lbl = np.array([l if l in (1, 2, 3) else 0 for _, _, l in clicks], dtype=np.float32)
         t1 = time.perf_counter()

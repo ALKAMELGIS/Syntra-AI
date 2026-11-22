@@ -415,8 +415,15 @@ for when it is exposed to a network (all in `backend/.env.example`):
   how many are selected, changes their class or deletes them (Delete; Esc lets
   go). Verified with Playwright on a test image: 3 rectangles drawn, a box
   picked 2 and moved them to another class, a lasso picked 3 and deleted them
-  (0 left on the server). Not built yet: merge, split, cut a hole, similar
-  objects and everything in view.
+  (0 left on the server). Everything in view (E): SAM over a 16 x 16 grid of
+  points on the visible part of the image, masks under 0.7 dropped, duplicates
+  merged (more than half overlapping a better one), masks over a third of the
+  view dropped as background, each fitted to the class's shape and shown dashed
+  until Keep all (Enter) or Drop (Esc). Verified:
+  `test_everything_in_view_finds_each_object_once`, and in the browser with a
+  stand-in engine: 4 objects found and kept as 4 labels. Not run: the real SAM
+  weights on real imagery. Not built yet: merge, split, cut a hole, similar
+  objects.
 - **Label tools and click-to-segment (plan stage 4).** Train > Label has
   six tools, one key each: Click (A, AI), Polygon (P), Rectangle (R: drag,
   Shift for a square, or three clicks for a rotated rectangle), Square (S,

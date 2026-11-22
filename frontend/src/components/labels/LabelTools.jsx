@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { api } from "../../api/client.js";
 import LabelImport from "./LabelImport.jsx";
 import { classColor, isArea, TRAIN_AREA, CHECK_AREA, AREA_LABEL, fmtArea } from "./AnnotationTool.jsx";
-import { IconBoxSelect, IconLasso, IconBoxAI, IconCheck, IconClickAI, IconCircle, IconPencil, IconPolygon, IconRectangle, IconSquare, IconTrash } from "../ui/Icons.jsx";
+import { IconGridDots, IconBoxSelect, IconLasso, IconBoxAI, IconCheck, IconClickAI, IconCircle, IconPencil, IconPolygon, IconRectangle, IconSquare, IconTrash } from "../ui/Icons.jsx";
 
 // The Label step of the Train panel: classes (keys 1-9), the tools (one
 // letter each) and what the active tool needs. The map layer that does the
@@ -11,6 +11,7 @@ import { IconBoxSelect, IconLasso, IconBoxAI, IconCheck, IconClickAI, IconCircle
 export const LABEL_TOOLS = [
   { id: "click", group: "AI", label: "Click object", key: "A", Icon: IconClickAI },
   { id: "box", group: "AI", label: "Box around object", key: "B", Icon: IconBoxAI },
+  { id: "everything", group: "AI", label: "Everything in view", key: "E", Icon: IconGridDots },
   { id: "boxsel", group: "Select", label: "Box select", key: "X", Icon: IconBoxSelect },
   { id: "lasso", group: "Select", label: "Lasso select", key: "L", Icon: IconLasso },
   { id: "polygon", group: "Draw", label: "Polygon", key: "P", Icon: IconPolygon },
@@ -32,6 +33,7 @@ const HINTS = {
   circle: "Drag from the centre outwards",
   freehand: "Press and draw around the object",
   click: "Click inside the object. Alt+click or right-click removes a part. Enter saves, Esc discards",
+  everything: "Finds every object in the view. Enter keeps them all, Esc drops them. Pick it again after moving the map",
   boxsel: "Drag a box over labels to select them. Shift adds to the selection",
   lasso: "Draw around labels to select them. Shift adds to the selection",
   box: "Drag a box around the object. Alt+click or right-click removes a part. Enter saves, Esc discards",
@@ -227,7 +229,7 @@ export default function LabelTools({
             <span className="train-dim label-current-hint">{HINTS[t.id]}</span></p>
         ) : <p className="train-dim">The tools are on the map's left edge. Point at one to see its group</p>;
       })()}
-      {(mode === "click" || mode === "box") && !drawingArea && <ClickTool outline={outline} onOutline={onOutline} preview={segPreview} />}
+      {["click", "box", "everything"].includes(mode) && !drawingArea && <ClickTool outline={outline} onOutline={onOutline} preview={segPreview} />}
       {["rect", "square", "circle"].includes(mode) && !drawingArea && <ExactSize mode={mode} exact={exact} onExact={onExact} />}
 
       <p className="train-label">Areas</p>

@@ -191,3 +191,6 @@ export const IconBoxSelect = (p) => (
 export const IconLasso = (p) => (
   <svg {...base} {...p}><path d="M7.5 17.5C4.8 16.3 3 14.3 3 12c0-4 4-7 9-7s9 3 9 7-4 7-9 7c-.9 0-1.7-.1-2.5-.3" /><circle cx="7.5" cy="18" r="1.6" /><path d="M7 19.6c-.4 1.2-1.3 2-2.5 2.4" /></svg>
 );
+export const IconGridDots = (p) => (
+  <svg {...base} {...p}><circle cx="5" cy="5" r="1.2" /><circle cx="12" cy="5" r="1.2" /><circle cx="19" cy="5" r="1.2" /><circle cx="5" cy="12" r="1.2" /><circle cx="12" cy="12" r="1.2" /><circle cx="19" cy="12" r="1.2" /><circle cx="5" cy="19" r="1.2" /><circle cx="12" cy="19" r="1.2" /><circle cx="19" cy="19" r="1.2" /></svg>
+);

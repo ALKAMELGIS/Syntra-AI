@@ -308,6 +308,15 @@ export default function App({ user = null, onSignOut = null }) {
     shape: outline.shape === "auto" ? null : outline.shape,
     simplify_m: outline.simplify_m, grow_m: outline.grow_m,
   });
+  // every object in the view at once: suggestions the map layer shows dashed until kept
+  const segmentAll = (view) => api.segmentAll(image.image_id, {
+    view, class_name: activeClass || "", device: devices?.gpu_count > 0 ? "cuda:0" : "cpu",
+    shape: outline.shape === "auto" ? null : outline.shape,
+    simplify_m: outline.simplify_m, grow_m: outline.grow_m,
+  });
+  async function saveMany(list) {
+    for (const [latlngs, meta] of list) await saveLabel(latlngs, meta);
+  }
   const labelling = trainOpen && trainStep === 1;
   useEffect(() => {
     // the map's own letter shortcuts (R, C, F, M, A) pause while label tools own the keys
@@ -454,6 +463,7 @@ export default function App({ user = null, onSignOut = null }) {
               onDeleteSelected: (x) => (Array.isArray(x) ? deleteLabels(x) : deleteLabel(x)),
               selectedIds: labelling ? selectedIds : [], onSelect: setSelectedIds,
               onSegment: segmentClick, onPreview: setSegPreview, exact: exactSize,
+              onSegmentAll: segmentAll, onDrawnMany: saveMany,
             }}
             labelRail={labelling ? {
               classes: trainClasses, activeClass, onActiveClass: setActiveClass,
