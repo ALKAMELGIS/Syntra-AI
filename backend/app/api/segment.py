@@ -33,6 +33,7 @@ class Refine(BaseModel):
 
 
 class SegmentRequest(Refine):
+    pick: str = "large"                    # one click: "large" = the whole object, "best" = SAM's top mask (a crown, a part)
     clicks: list[list[float]]              # [lon, lat, 1 add | 0 remove | 2 box top-left | 3 box bottom-right]
     view: list[float]                      # visible map: [west, south, east, north]
     class_name: str = ""
@@ -134,7 +135,7 @@ async def segment_click(image_id: str, req: SegmentRequest):
     try:
         window = click_segment.view_window((x0, y0, x1, y1), w, h)
         opts = _opts(req, req.class_name, entry["path"])
-        res = await run_in_threadpool(click_segment.segment, entry["path"], window, clicks, opts, req.device)
+        res = await run_in_threadpool(click_segment.segment, entry["path"], window, clicks, opts, req.device, None, req.pick != "best")
     except click_segment.SegmentUnavailable as exc:
         raise HTTPException(status_code=409, detail=str(exc))
     except ValueError as exc:

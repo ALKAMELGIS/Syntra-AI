@@ -393,6 +393,17 @@ for when it is exposed to a network (all in `backend/.env.example`):
   `test_basemap_capture_offline.py` (4: bounds within 2e-5° of the box, tile
   limit, refused hosts, the API adding the image). Not run: a capture from the
   live USGS service (no network in the test machine).
+- **What the AI tools outline.** Click, Box and Everything in view take an
+  Object (Building boundaries: whole object, right angles; Tree canopies:
+  SAM's top mask, smooth edge; Natural features: whole area, smooth, coarser;
+  Object outlines: top mask, traced; Auto: by class) and an Output (Polygon
+  outline, Right angles, Smooth, Oriented box OBB, Square box SBB, Box,
+  Circle). `pick: best|large` chooses between SAM's top mask and the largest
+  close to it; `square` is the smallest square covering the mask. Rectangle,
+  square and circle sizes can be typed in metres or image pixels (x GSD).
+  Verified: `test_pick_best_keeps_the_part_and_square_box_is_square`; in the
+  browser with a stand-in engine (Tree canopies + SBB gave a square, a 32 px
+  box placed one label).
 - **Class library and deleting a class.** Label > Class has a library button
   (`components/labels/ClassLibrary.jsx`, `lib/classLibrary.js`): 58 classes in
   six themes (agriculture, urban, environment, infrastructure, transportation,

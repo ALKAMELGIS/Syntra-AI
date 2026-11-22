@@ -87,8 +87,10 @@ def status() -> dict:
         reason = "Installing the click tool… try again in a minute"
     elif not name:
         reason = f"Install the click tool once ({MODELS[DEFAULT_MODEL]['label']}, about {MODELS[DEFAULT_MODEL]['approx_mb']} MB)"
+    if _pinned and _engine is not None:                       # a stand-in engine (tests, demos): ready
+        name, reason, ort_ok = None, None, True
     return {
-        "ready": bool(name) and ort_ok,
+        "ready": (bool(name) and ort_ok) or (_pinned and _engine is not None),
         "model": name,
         "label": MODELS[name]["label"] if name else None,
         "models": {n: {**{k: v for k, v in m.items() if k != "url"}, "installed": installed[n]} for n, m in MODELS.items()},
@@ -377,7 +379,7 @@ def segment_everything(path: str, window: tuple[int, int, int, int], opts, devic
 
 
 def segment(path: str, window: tuple[int, int, int, int], clicks: list[tuple[float, float, int]],
-            opts, device: str = "cpu", engine=None) -> dict:
+            opts, device: str = "cpu", engine=None, prefer_large: bool = True) -> dict:
     """Clicks in raster pixels -> refined outline in raster pixels + stats."""
     from app.engine.shapes import mask_to_polygon, refine
 
@@ -391,7 +393,7 @@ def segment(path: str, window: tuple[int, int, int, int], clicks: list[tuple[flo
         pts = np.array([[(x - col) / scale, (y - row) / scale] for x, y, _ in clicks], dtype=np.float32)
         lbl = np.array([l if l in (1, 2, 3) else 0 for _, _, l in clicks], dtype=np.float32)
         t1 = time.perf_counter()
-        single = int((lbl == 1).sum()) == 1 and not boxed and not (lbl == 0).any()
+        single = prefer_large and int((lbl == 1).sum()) == 1 and not boxed and not (lbl == 0).any()
         try:
             mask, score = eng.decode(emb, pts, lbl, prefer_large=single)
         except TypeError:                                         # a stand-in engine without the option

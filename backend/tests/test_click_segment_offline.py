@@ -343,3 +343,20 @@ def test_one_click_takes_the_whole_object_and_prepare_warms_the_view(app_img):
     xs = [q[0] for q in r.json()["points_px"]]
     assert max(xs) - min(xs) > 60                                   # the object (80 px wide at this scale), not the 20 px part
     assert r.json()["timings"]["cached"] is True                    # prepared: the click only decoded
+
+
+def test_pick_best_keeps_the_part_and_square_box_is_square(app_img):
+    from app.engine import click_segment
+
+    c, img = app_img
+    click_segment.set_engine(ThreeMasksEngine())
+    b = img["bounds_wgs84"]
+    view = [b["west"], b["south"], b["east"], b["north"]]
+    one = [lonlat(img, 500, 500) + [1]]
+    best = c.post(f"/api/images/{img['image_id']}/segment", json={"clicks": one, "view": view, "shape": "polygon", "pick": "best"}).json()
+    large = c.post(f"/api/images/{img['image_id']}/segment", json={"clicks": one, "view": view, "shape": "polygon"}).json()
+    w = lambda r: max(p[0] for p in r["points_px"]) - min(p[0] for p in r["points_px"])  # noqa: E731
+    assert w(best) < w(large)                                       # a crown or part, not the whole
+    sq = c.post(f"/api/images/{img['image_id']}/segment", json={"clicks": one, "view": view, "shape": "square"}).json()
+    xs, ys = [p[0] for p in sq["points_px"]], [p[1] for p in sq["points_px"]]
+    assert sq["shape"] == "square" and abs((max(xs) - min(xs)) - (max(ys) - min(ys))) < 1.5

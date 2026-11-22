@@ -2583,3 +2583,5 @@ input[type=range].gauge:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 2px 
 .label-result-acts .quiet-button { flex: 1; justify-content: center; gap: 8px; }
 .label-result-acts .quiet-button.danger { color: var(--error); }
 .label-result-acts kbd { font-size: var(--fs-11); }
+.label-unit { width: 56px; flex: none; height: 28px; }
+.lt-auto { width: 100%; justify-content: center; gap: 8px; }

@@ -22,9 +22,17 @@ export const LABEL_TOOLS = [
   { id: "freehand", group: "Draw", label: "Freehand", key: "F", Icon: IconPencil },
 ];
 
+// What is being outlined: how SAM's answer is chosen and cleaned, and the output it suits
+export const TARGETS = [
+  ["auto", "Auto (by class)", { shape: "auto", pick: "large", simplify_m: 0.6 }],
+  ["building", "Building boundaries", { shape: "right_angles", pick: "large", simplify_m: 0.5 }],
+  ["tree", "Tree canopies", { shape: "smooth", pick: "best", simplify_m: 0.3 }],
+  ["natural", "Natural features", { shape: "smooth", pick: "large", simplify_m: 1.0 }],
+  ["object", "Object outlines", { shape: "polygon", pick: "best", simplify_m: 0.3 }],
+];
 const SHAPES = [
-  ["auto", "By class"], ["polygon", "Traced"], ["right_angles", "Right angles"],
-  ["box", "Box"], ["rectangle", "Rotated box"], ["circle", "Circle"], ["smooth", "Smooth"],
+  ["auto", "By class"], ["polygon", "Polygon outline"], ["right_angles", "Right angles"], ["smooth", "Smooth"],
+  ["rectangle", "Oriented box (OBB)"], ["square", "Square box (SBB)"], ["box", "Box"], ["circle", "Circle"],
 ];
 
 export const HINTS = {
@@ -49,15 +57,20 @@ function num(v) {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
-function ExactSize({ mode, exact, onExact }) {
+function ExactSize({ mode, exact, onExact, gsd }) {
   const fields = mode === "circle" ? [["r", "Radius"]] : mode === "square" ? [["s", "Side"]] : [["w", "Width"], ["h", "Height"]];
   const [vals, setVals] = useState({});
+  const [unit, setUnit] = useState("m");             // "px": the image's pixels, sent in metres (× GSD)
   useEffect(() => { if (!exact) setVals({}); }, [exact, mode]);
+  function emit(next, u) {
+    const k = u === "px" && gsd ? gsd : 1;
+    const parsed = Object.fromEntries(fields.map(([f]) => [f, num(next[f]) && num(next[f]) * k]));
+    onExact(fields.every(([f]) => parsed[f]) ? parsed : null);
+  }
   function set(k, v) {
     const next = { ...vals, [k]: v };
     setVals(next);
-    const parsed = Object.fromEntries(fields.map(([f]) => [f, num(next[f])]));
-    onExact(fields.every(([f]) => parsed[f]) ? parsed : null);
+    emit(next, unit);
   }
   return (
     <div className="label-exact">
@@ -66,16 +79,18 @@ function ExactSize({ mode, exact, onExact }) {
         <label key={k} className="label-exact-field">
           <span className="sr-only">{l}</span>
           <input className="train-input mono" inputMode="decimal" placeholder={l} value={vals[k] || ""}
-                 onChange={(e) => set(k, e.target.value)} aria-label={`${l} in metres`} />
-          <span className="train-dim">m</span>
+                 onChange={(e) => set(k, e.target.value)} aria-label={`${l} in ${unit === "px" ? "pixels" : "metres"}`} />
         </label>
       ))}
-      {exact && <span className="train-dim">click the map to place it</span>}
+      <select className="train-select label-unit" value={unit} aria-label="Unit"
+              onChange={(e) => { setUnit(e.target.value); emit(vals, e.target.value); }} disabled={!gsd}>
+        <option value="m">m</option><option value="px">px</option>
+      </select>
     </div>
   );
 }
 
-function ClickTool({ outline, onOutline, preview }) {
+function ClickTool({ outline, onOutline, preview, onAutoAll }) {
   const [st, setSt] = useState(null);
   const [job, setJob] = useState(null);
   const timer = useRef(null);
@@ -120,7 +135,16 @@ function ClickTool({ outline, onOutline, preview }) {
   const res = preview?.res;
   return (
     <div className="label-ctx">
-      <label className="train-field">Outline
+      <label className="train-field">Object
+        <select className="train-select" value={outline.target || "auto"}
+                onChange={(e) => { const t = TARGETS.find(([id]) => id === e.target.value); onOutline({ ...outline, target: t[0], ...t[2] }); }}>
+          {TARGETS.map(([id, l]) => <option key={id} value={id}>{l}</option>)}
+        </select>
+      </label>
+      <button type="button" className="quiet-button lt-auto" onClick={() => onAutoAll?.()}>
+        <IconGridDots /> Auto segment the view <kbd className="label-key">E</kbd>
+      </button>
+      <label className="train-field">Output
         <select className="train-select" value={outline.shape} onChange={(e) => onOutline({ ...outline, shape: e.target.value })}>
           {SHAPES.map(([id, l]) => <option key={id} value={id}>{l}</option>)}
         </select>
@@ -143,7 +167,7 @@ function ClickTool({ outline, onOutline, preview }) {
       {preview?.error && <p className="train-error">{preview.error}</p>}
       {res && (
         <div className="label-result">
-          <span>{SHAPES.find(([id]) => id === res.shape)?.[1] || res.shape}</span>
+          <span>{SHAPES.find(([id]) => id === res.shape)?.[1] || (res.shape === "polygon" ? "Polygon outline" : res.shape)}</span>
           <span className="mono">{res.area_m2 != null ? fmtArea(res.area_m2) : ""} · {res.vertices} pts</span>
           {res.warning && <span className="train-dim label-result-wide">{res.warning}</span>}
           <span className="train-dim mono label-result-wide">
@@ -243,8 +267,8 @@ export default function LabelTools({
       )}
       <ClassLibrary open={libOpen} onClose={() => setLibOpen(false)} existing={classes} onAdd={(list) => onAddClasses?.(list)} />
 
-      {["click", "box", "everything"].includes(mode) && !drawingArea && <ClickTool outline={outline} onOutline={onOutline} preview={segPreview} />}
-      {["rect", "square", "circle"].includes(mode) && !drawingArea && <ExactSize mode={mode} exact={exact} onExact={onExact} />}
+      {["click", "box", "everything"].includes(mode) && !drawingArea && <ClickTool outline={outline} onOutline={onOutline} preview={segPreview} onAutoAll={() => onMode("everything")} />}
+      {["rect", "square", "circle"].includes(mode) && !drawingArea && <ExactSize mode={mode} exact={exact} onExact={onExact} gsd={image?.health?.gsd_m} />}
 
       <p className="train-label">Areas</p>
       <div className="label-areas">

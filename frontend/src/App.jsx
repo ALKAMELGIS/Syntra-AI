@@ -60,7 +60,7 @@ export default function App({ user = null, onSignOut = null }) {
   const [annotations, setAnnotations] = useState([]);
   const [extraClasses, setExtraClasses] = useState([]);
   const [activeClass, setActiveClass] = useState(null);
-  const [outline, setOutline] = useState({ shape: "auto", simplify_m: 0.6, grow_m: 0 });
+  const [outline, setOutline] = useState({ target: "auto", shape: "auto", pick: "large", simplify_m: 0.6, grow_m: 0 });
   const [exactSize, setExactSize] = useState(null);       // {w, h} | {s} | {r} in metres: one click places it
   const [segPreview, setSegPreview] = useState(null);
   const [drawMode, setDrawMode] = useState(null);
@@ -327,7 +327,7 @@ export default function App({ user = null, onSignOut = null }) {
   }
   // click to segment: the outline comes from the engine, fitted to the class's shape
   const segmentClick = (clicks, view) => api.segmentClick(image.image_id, {
-    clicks, view, class_name: activeClass || "",
+    clicks, view, class_name: activeClass || "", pick: outline.pick || "large",
     shape: classShape(),
     simplify_m: outline.simplify_m, grow_m: outline.grow_m,
   });

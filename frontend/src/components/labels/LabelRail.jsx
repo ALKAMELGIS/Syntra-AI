@@ -13,9 +13,9 @@ import {
 
 const SELECT = "select";
 export const DEFAULT_CLASS = "object";
-const SHAPE_LABEL = { polygon: "Outline", right_angles: "Right angles", rectangle: "Rotated box", box: "Box", circle: "Circle", smooth: "Smooth" };      // made when a tool is picked before any class exists
+const SHAPE_LABEL = { polygon: "Outline", right_angles: "Right angles", rectangle: "Oriented box", square: "Square box", box: "Box", circle: "Circle", smooth: "Smooth" };      // made when a tool is picked before any class exists
 // what the AI tools draw: the Refine `shape` sent to the engine
-const DRAWS = [["auto", "Auto"], ["box", "Box"], ["rectangle", "Rotated"], ["polygon", "Outline"]];
+const DRAWS = [["auto", "Auto"], ["polygon", "Outline"], ["rectangle", "OBB"], ["square", "SBB"]];
 
 const GROUPS = [
   { id: "polygon", tools: [

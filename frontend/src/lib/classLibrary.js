@@ -5,12 +5,12 @@ const g = (group, rows) => rows.map(([name, tool, shape]) => ({ group, name, too
 
 export const CLASS_GROUPS = ["Agriculture", "Urban", "Environment", "Infrastructure", "Transportation", "Natural features"];
 
-export const SHAPE_NAMES = { circle: "Circle", rectangle: "Rotated box", box: "Box", right_angles: "Right angles", smooth: "Smooth", polygon: "Polygon" };
+export const SHAPE_NAMES = { circle: "Circle", rectangle: "Oriented box (OBB)", square: "Square box (SBB)", box: "Box", right_angles: "Right angles", smooth: "Smooth", polygon: "Polygon" };
 export const TOOL_NAMES = { square: "Square", rect: "Rectangle", polygon: "Polygon", circle: "Circle", freehand: "Freehand", click: "Click object" };
 
 export const CLASS_LIBRARY = [
   ...g("Agriculture", [
-    ["Tree", "square", "circle"], ["Palm tree", "square", "circle"], ["Date palm", "square", "circle"], ["Fruit tree", "square", "circle"],
+    ["Tree", "square", "smooth"], ["Palm tree", "square", "smooth"], ["Date palm", "square", "smooth"], ["Fruit tree", "square", "smooth"],
     ["Field", "polygon", "polygon"], ["Crop row", "rect", "rectangle"], ["Greenhouse", "rect", "rectangle"], ["Net house", "rect", "rectangle"],
     ["Irrigation pivot", "circle", "circle"], ["Tractor", "rect", "rectangle"], ["Farm machinery", "rect", "rectangle"],
     ["Livestock", "square", "polygon"], ["Farm building", "polygon", "right_angles"],
