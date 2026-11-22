@@ -42,7 +42,7 @@ def review_path(result_geojson: Path) -> Path:
 
 def load_review(result_geojson: Path) -> dict[str, str]:
     try:
-        d = json.loads(review_path(result_geojson).read_text()).get("decisions", {})
+        d = json.loads(review_path(result_geojson).read_text(encoding="utf-8")).get("decisions", {})
     except (OSError, ValueError):
         return {}
     return {k: v for k, v in d.items() if valid_decision(v)}
@@ -60,7 +60,7 @@ def save_review(result_geojson: Path, changes: dict[str, str | None]) -> dict[st
             raise ValueError(f"Unknown decision '{v}': use accept, reject, fix:<class> or null")
     p = review_path(result_geojson)
     tmp = p.with_suffix(".tmp")
-    tmp.write_text(json.dumps({"decisions": d}, indent=1))
+    tmp.write_text(json.dumps({"decisions": d}, indent=1), encoding="utf-8")
     os.replace(tmp, p)
     return d
 
@@ -76,7 +76,7 @@ def _ring(feature: dict) -> list[list[float]] | None:
 
 def apply_review(result_geojson: Path, job_id: str, model_id: str, entry: dict) -> dict:
     """Write the review into the image's training annotations. Returns counts."""
-    fc = json.loads(Path(result_geojson).read_text())
+    fc = json.loads(Path(result_geojson).read_text(encoding="utf-8"))
     feats = fc.get("features", [])
     decisions = load_review(result_geojson)
     bounds, width, height = entry["bounds_wgs84"], entry["width"], entry["height"]

@@ -167,7 +167,7 @@ def attributes(req: AttributesRequest):
         from app.api.results import _result_path
 
         path = _result_path(req.job_id, req.model_id)
-        fc = json.loads(path.read_text())
+        fc = json.loads(path.read_text(encoding="utf-8"))
     elif req.features:
         fc = req.features
     else:
@@ -199,7 +199,7 @@ def attributes(req: AttributesRequest):
                 p[f"{k}_{suffix}"] = st[suffix]
     if path is not None:
         tmp = path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(fc))
+        tmp.write_text(json.dumps(fc), encoding="utf-8")
         os.replace(tmp, path)
     return {"index": k, "features": len(feats), "with_values": len(feats) - small - nodata,
             "too_small": small, "no_data": nodata, "time": when, "saved": path is not None,

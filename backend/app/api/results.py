@@ -25,7 +25,7 @@ WGS84_PRJ = (
 def _result_crs(job_id: str, model_id: str) -> str | None:
     manifest = _result_path(job_id, model_id).with_name(f"{model_id}.manifest.json")
     try:
-        return json.loads(manifest.read_text()).get("crs")
+        return json.loads(manifest.read_text(encoding="utf-8")).get("crs")
     except (OSError, ValueError):
         return None
 
@@ -50,13 +50,13 @@ def _result_path(job_id: str, model_id: str) -> Path:
 @router.get("/{job_id}/{model_id}")
 def get_geojson(job_id: str, model_id: str):
     path = _result_path(job_id, model_id)
-    return json.loads(path.read_text())
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 @router.get("/{job_id}/{model_id}/kml")
 def get_kml(job_id: str, model_id: str):
     path = _result_path(job_id, model_id)
-    geojson = json.loads(path.read_text())
+    geojson = json.loads(path.read_text(encoding="utf-8"))
     kml = geojson_to_kml(geojson, document_name=f"Syntra AI — {model_id}")
     return Response(content=kml, media_type="application/vnd.google-earth.kml+xml")
 
@@ -64,7 +64,7 @@ def get_kml(job_id: str, model_id: str):
 @router.get("/{job_id}/{model_id}/shapefile")
 def get_shapefile(job_id: str, model_id: str):
     path = _result_path(job_id, model_id)
-    geojson = json.loads(path.read_text())
+    geojson = json.loads(path.read_text(encoding="utf-8"))
 
     with tempfile.TemporaryDirectory() as tmp:
         try:
@@ -92,7 +92,7 @@ def get_shapefile(job_id: str, model_id: str):
 def get_gpkg(job_id: str, model_id: str):
     from app.engine.gpkg_export import write_gpkg
 
-    geojson = json.loads(_result_path(job_id, model_id).read_text())
+    geojson = json.loads(_result_path(job_id, model_id).read_text(encoding="utf-8"))
     with tempfile.TemporaryDirectory() as tmp:
         out = write_gpkg(Path(tmp) / f"{model_id}.gpkg", geojson, table=model_id)
         data = out.read_bytes()
@@ -104,7 +104,7 @@ def get_gpkg(job_id: str, model_id: str):
 def get_csv(job_id: str, model_id: str):
     from app.engine.gpkg_export import to_csv
 
-    geojson = json.loads(_result_path(job_id, model_id).read_text())
+    geojson = json.loads(_result_path(job_id, model_id).read_text(encoding="utf-8"))
     return Response(content=to_csv(geojson), media_type="text/csv",
                     headers={"Content-Disposition": f'attachment; filename="{model_id}.csv"'})
 
@@ -114,7 +114,7 @@ def get_manifest(job_id: str, model_id: str):
     path = settings.RESULTS_DIR / job_id / f"{model_id}.manifest.json"
     if not path.exists():
         raise HTTPException(status_code=404, detail="No manifest found for this job/model.")
-    return json.loads(path.read_text())
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 # ---------------------------------------------------------------------------
@@ -140,7 +140,7 @@ def get_review(job_id: str, model_id: str):
 
     path = _result_path(job_id, model_id)
     d = load_review(path)
-    total = len(json.loads(path.read_text()).get("features", []))
+    total = len(json.loads(path.read_text(encoding="utf-8")).get("features", []))
     return {"decisions": d, **_review_counts(d, total)}
 
 
@@ -149,7 +149,7 @@ def put_review(job_id: str, model_id: str, body: ReviewChanges):
     from app.engine.review import save_review
 
     path = _result_path(job_id, model_id)
-    total = len(json.loads(path.read_text()).get("features", []))
+    total = len(json.loads(path.read_text(encoding="utf-8")).get("features", []))
     for k in body.changes:
         if not k.isdigit() or int(k) >= total:
             raise HTTPException(status_code=400, detail=f"No result number {k} in this run")
@@ -201,10 +201,10 @@ def _run_refine(rid: str, job_id: str, model_id: str, path: str) -> None:
     store = get_store()
     try:
         store.update(rid, status="processing")
-        fc = json.loads(_result_path(job_id, model_id).read_text())
+        fc = json.loads(_result_path(job_id, model_id).read_text(encoding="utf-8"))
         out, stats = refine_layer(path, fc, progress=lambda d, n: store.update(rid, done=d, total=n))
         target = _result_path(job_id, model_id).with_name(f"{model_id}__refined.geojson")
-        target.write_text(json.dumps(out))
+        target.write_text(json.dumps(out), encoding="utf-8")
         store.update(rid, status="completed", stats=stats, result_model_id=f"{model_id}__refined")
     except Exception as exc:  # noqa: BLE001 - the reason goes to the person
         store.update(rid, status="error", error=str(exc))
@@ -242,7 +242,7 @@ def score_against_labels(job_id: str, model_id: str, body: dict | None = None):
     areas = [feat(a) for a in anns if a["class_name"] == store.CHECK_AREA]
     labels = [feat(a) for a in anns if a["class_name"] not in (store.CHECK_AREA, store.TRAIN_AREA)]
     try:
-        return score_layer(json.loads(src.read_text()).get("features", []), labels, areas,
+        return score_layer(json.loads(src.read_text(encoding="utf-8")).get("features", []), labels, areas,
                            class_name=(body or {}).get("class_name"), iou_min=float((body or {}).get("iou_min", 0.5)))
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from None

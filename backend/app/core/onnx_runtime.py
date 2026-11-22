@@ -47,7 +47,7 @@ def nvidia_gpus() -> tuple[dict, ...]:
     try:
         out = subprocess.run(
             [exe, "--query-gpu=index,name,memory.total,memory.free", "--format=csv,noheader,nounits"],
-            capture_output=True, text=True, timeout=5, check=True,
+            capture_output=True, text=True, timeout=5, check=True, encoding="utf-8", errors="replace"
         ).stdout
     except (OSError, subprocess.SubprocessError):
         return ()

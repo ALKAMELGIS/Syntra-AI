@@ -347,7 +347,7 @@ async def _register(dest: Path, filename: str, image_id: str, background_tasks: 
 def _save_dict(dest: Path, entry: dict) -> None:
     import json
     from app.core.image_library import sidecar_path
-    sidecar_path(dest).write_text(json.dumps(entry, indent=2))
+    sidecar_path(dest).write_text(json.dumps(entry, indent=2), encoding="utf-8")
 
 
 def _run_optimize(job_id: str, path: str) -> None:
@@ -362,11 +362,11 @@ def _run_optimize(job_id: str, path: str) -> None:
         import json
         from app.core.image_library import sidecar_path
         sc = sidecar_path(Path(path))
-        entry = json.loads(sc.read_text())
+        entry = json.loads(sc.read_text(encoding="utf-8"))
         if entry.get("health"):
             entry["health"]["version"] = 0
         entry.pop("optimize_job_id", None)
-        sc.write_text(json.dumps(entry, indent=2))
+        sc.write_text(json.dumps(entry, indent=2), encoding="utf-8")
         jobs.update(job_id, status="completed", result=res, progress=100.0)
     except Exception as exc:
         jobs.update(job_id, status="error", error=str(exc))
@@ -409,7 +409,7 @@ def _save(entry: dict) -> None:
     try:
         import json
         from app.core.image_library import sidecar_path
-        sidecar_path(Path(entry["path"])).write_text(json.dumps(entry, indent=2))
+        sidecar_path(Path(entry["path"])).write_text(json.dumps(entry, indent=2), encoding="utf-8")
     except OSError:
         pass
 
@@ -539,7 +539,7 @@ def get_image_preview(image_id: str, request: Request):
     cache = path.with_name(path.name + ".preview.png")
     tag = cache.with_name(cache.name + ".etag")
     try:
-        if cache.exists() and tag.exists() and tag.read_text() == etag:
+        if cache.exists() and tag.exists() and tag.read_text(encoding="utf-8") == etag:
             return Response(content=cache.read_bytes(), media_type="image/png", headers=headers)
     except OSError:
         pass
@@ -554,7 +554,7 @@ def get_image_preview(image_id: str, request: Request):
         tmp = cache.with_name(cache.name + f".{os.getpid()}.tmp")
         tmp.write_bytes(png_bytes)
         os.replace(tmp, cache)
-        tag.write_text(etag)
+        tag.write_text(etag, encoding="utf-8")
     except OSError:
         pass                                    # read-only data folder: serve without caching
     return Response(content=png_bytes, media_type="image/png", headers=headers)

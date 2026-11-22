@@ -64,7 +64,7 @@ def parse_requirements(path: Path | None = None, _seen: set | None = None) -> di
     if not path.exists() or path in seen:
         return lines
     seen.add(path)
-    for raw in path.read_text().splitlines():
+    for raw in path.read_text(encoding="utf-8").splitlines():
         line = raw.split("#", 1)[0].strip()
         if not line:
             continue

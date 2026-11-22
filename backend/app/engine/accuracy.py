@@ -105,15 +105,15 @@ def _store(data_dir: Path) -> Path:
 
 def save_check(data_dir: Path, model_id: str, record: dict) -> None:
     p = _store(data_dir) / f"{model_id}.json"
-    hist = json.loads(p.read_text()) if p.exists() else []
+    hist = json.loads(p.read_text(encoding="utf-8")) if p.exists() else []
     hist.insert(0, record)
-    p.write_text(json.dumps(hist[:20], indent=1))
+    p.write_text(json.dumps(hist[:20], indent=1), encoding="utf-8")
 
 
 def checks(data_dir: Path, model_id: str) -> list[dict]:
     p = _store(data_dir) / f"{model_id}.json"
     try:
-        return json.loads(p.read_text())
+        return json.loads(p.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return []
 

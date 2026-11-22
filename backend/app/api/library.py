@@ -44,7 +44,7 @@ def _metrics(run: Path) -> dict:
     csv_path = next(iter(sorted(run.rglob("results.csv"))), None)
     if csv_path:
         try:
-            rows = list(csv.DictReader(open(csv_path, newline="")))
+            rows = list(csv.DictReader(open(csv_path, newline="", encoding="utf-8")))
             keys = [k for k in (rows[0] if rows else {}) if k.strip().startswith("metrics/mAP50(")]
             if keys:
                 out["val_map50"] = round(max(float(r[keys[0]]) for r in rows), 4)
@@ -211,7 +211,7 @@ def _run_class_build(job_id: str, slug: str, name: str, parts: list[dict], req: 
             _merge(out / "_parts" / part["key"], out)
             idx = out / "_parts" / part["key"] / "tiles_index.csv"
             if idx.exists():
-                index_rows += list(csv.reader(open(idx, newline="")))[1:]
+                index_rows += list(csv.reader(open(idx, newline="", encoding="utf-8")))[1:]
             for key, val in info["stats"].items():
                 if isinstance(val, (int, float)):
                     total[key] = total.get(key, 0) + val
@@ -223,14 +223,14 @@ def _run_class_build(job_id: str, slug: str, name: str, parts: list[dict], req: 
             (out / "images" / split).mkdir(parents=True, exist_ok=True)
             (out / "labels" / split).mkdir(parents=True, exist_ok=True)
         write_data_yaml(str(out / "data.yaml"), str(out), [name], req.task, test=has_test)
-        with open(out / "tiles_index.csv", "w", newline="") as fh:
+        with open(out / "tiles_index.csv", "w", newline="", encoding="utf-8") as fh:
             w = csv.writer(fh)
             w.writerow(["image", "split", "augmentation", "x_offset_px", "y_offset_px", "objects", "black_ratio"])
             w.writerows(index_rows)
         info = {"created": __import__("time").strftime("%Y-%m-%d %H:%M:%S"), "classes": [name], "task": req.task,
                 "tile_size": req.tile, "overlap": req.overlap, "stats": total,
                 "split": splits[0] if len(splits) == 1 else {"per_image": splits}}
-        (out / "dataset_info.json").write_text(json.dumps(info, indent=2, ensure_ascii=False))
+        (out / "dataset_info.json").write_text(json.dumps(info, indent=2, ensure_ascii=False), encoding="utf-8")
         req_like = type("R", (), {"image_path": parts[0]["image_path"]})()
         manifest = write_manifest(out, group, version, req_like, info)
         manifest["sources"] = [{"image": p["key"], "file": Path(p["image_path"]).name} for p in parts]

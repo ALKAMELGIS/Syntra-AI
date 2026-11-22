@@ -121,7 +121,7 @@ def run_segmentation(
     out_dir.mkdir(parents=True, exist_ok=True)
     gj = out_dir / f"{model_id}.geojson"
     from app.engine.measure import measure_features
-    gj.write_text(json.dumps(measure_features({"type": "FeatureCollection", "features": features})))
+    gj.write_text(json.dumps(measure_features({"type": "FeatureCollection", "features": features})), encoding="utf-8")
     total_area = sum(f["properties"]["area_m2"] for f in features)
     summary = {"count": len(features), "total_area_ha": round(total_area / 10_000, 3),
                "image_gsd_m": round(gsd, 3) if gsd else None, "model_gsd_m": cfg["resolution"] / 100,
@@ -130,7 +130,7 @@ def run_segmentation(
                 "weights": Path(weights_path).name, "rgb_bands": list(plan.bands), "min_area_m2": min_area_m2,
                 "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), **summary}
     mf = out_dir / f"{model_id}.manifest.json"
-    mf.write_text(json.dumps(manifest, indent=2))
+    mf.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     return {"model_id": model_id, "device_used": "cpu", "device_reason": "onnxruntime",
             "tiles_processed": done, "raw_detection_count": raw, "final_detection_count": len(features),
             "duration_seconds": round(time.time() - t0, 3), "geojson_path": str(gj), "manifest_path": str(mf),

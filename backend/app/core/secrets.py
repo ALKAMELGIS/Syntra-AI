@@ -23,7 +23,7 @@ def _path() -> Path:
 
 def _load() -> dict:
     try:
-        return json.loads(_path().read_text())
+        return json.loads(_path().read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
 
@@ -42,7 +42,7 @@ def set_secret(name: str, value: str | None) -> None:
         p = _path()
         p.parent.mkdir(parents=True, exist_ok=True)
         tmp = p.with_suffix(".tmp")
-        tmp.write_text(json.dumps(d))
+        tmp.write_text(json.dumps(d), encoding="utf-8")
         try:
             os.chmod(tmp, 0o600)
         except OSError:

@@ -136,7 +136,7 @@ def push_dataset(dataset_dir: Path, repo_id: str, token: str, source: dict, *,
         staging = Path(tmp) / "up"
         progress(10, "Packing tiles")
         shards = stage(dataset_dir, staging, source)
-        (staging / "syntra_source.json").write_text(json.dumps({**meta, "pushed_at": stamp, "folder": folder}, indent=1))
+        (staging / "syntra_source.json").write_text(json.dumps({**meta, "pushed_at": stamp, "folder": folder}, indent=1), encoding="utf-8")
         n_files = sum(1 for p in staging.rglob("*") if p.is_file())
         check_folder_sizes(staging)
         progress(20, f"Uploading {n_files} files ({shards} tile packs)")

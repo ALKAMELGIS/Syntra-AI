@@ -41,9 +41,9 @@ _lock = threading.Lock()
 def pod_script() -> str:
     """train_worker.py (without its CLI block) + pod_main.py, as one file."""
     here = Path(__file__).resolve().parent.parent / "training"
-    worker = (here / "train_worker.py").read_text()
+    worker = (here / "train_worker.py").read_text(encoding="utf-8")
     worker = worker.split('\nif __name__ == "__main__":')[0]
-    return worker + "\n\n" + (here / "pod_main.py").read_text()
+    return worker + "\n\n" + (here / "pod_main.py").read_text(encoding="utf-8")
 
 
 def pod_args() -> str:

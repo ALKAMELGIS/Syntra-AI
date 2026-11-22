@@ -131,7 +131,7 @@ def detect_sensor(path: str | Path) -> str | None:
             return prefix
     for xml in (p.with_suffix(".xml"), p.with_suffix(".XML")):
         try:
-            text = xml.read_text(errors="ignore")
+            text = xml.read_text(errors="ignore", encoding="utf-8")
         except OSError:
             continue
         import re

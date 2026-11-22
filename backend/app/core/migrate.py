@@ -38,7 +38,7 @@ def migrate_layout(data_dir: Path | None = None) -> dict:
     if not legacy.is_dir() or legacy.resolve() == images.resolve():
         return report
     record = data_dir / "migration.json"
-    done = json.loads(record.read_text()) if record.exists() else {"moves": []}
+    done = json.loads(record.read_text(encoding="utf-8")) if record.exists() else {"moves": []}
 
     for tif in sorted(legacy.iterdir()):
         m = _LEGACY.match(tif.name)
@@ -56,16 +56,16 @@ def migrate_layout(data_dir: Path | None = None) -> dict:
                 if xml.exists():
                     moves.append((xml, folder / (Path(name).stem + xml.suffix)))
             done["moves"].extend({"from": str(a), "to": str(b), "at": time.strftime("%Y-%m-%dT%H:%M:%S")} for a, b in moves)
-            record.write_text(json.dumps(done, indent=2))
+            record.write_text(json.dumps(done, indent=2), encoding="utf-8")
             for a, b in moves:
                 shutil.move(str(a), str(b))
                 report["moved_files"] += 1
             report["moved_images"] += 1
             meta = folder / (name + ".meta.json")
             if meta.exists():
-                entry = json.loads(meta.read_text())
+                entry = json.loads(meta.read_text(encoding="utf-8"))
                 entry["path"] = str(folder / name)
-                meta.write_text(json.dumps(entry, indent=2))
+                meta.write_text(json.dumps(entry, indent=2), encoding="utf-8")
             report["labels"] += len(store.load_annotations(folder / name))   # moves the old label file
         except Exception as exc:  # noqa: BLE001 - one bad file must not stop the rest
             report["errors"].append(f"{tif.name}: {exc}")

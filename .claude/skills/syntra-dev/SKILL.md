@@ -149,6 +149,11 @@ reimplement them.
   on restart. Give each job kind its own name, add it to `_KINDS` in
   `api/jobs.py`, and treat `interrupted` as a terminal state in the UI.
 - Blocking I/O inside `async def` goes through `run_in_threadpool`.
+- **Windows reads text in cp1252 unless told.** Every `open()`, `read_text()`,
+  `write_text()` and text-mode subprocess pipe names `encoding="utf-8"` (pipes
+  also `errors="replace"`, and a Python child gets `PYTHONUTF8=1`).
+  `test_text_encoding_offline.py` fails the build otherwise: training once
+  failed on Windows with "'charmap' codec can't decode byte 0x81".
 
 ## 3. Tests
 

@@ -90,7 +90,7 @@ def run(job: dict) -> int:
                         "f1": round(2 * p * r / (p + r), 4) if p + r else 0.0}
             except Exception as exc:  # noqa: BLE001 - the model is still good; say why there is no test score
                 test = {"error": f"Test evaluation failed: {exc}"}
-            (save_dir / "test_metrics.json").write_text(json.dumps(test, indent=2))
+            (save_dir / "test_metrics.json").write_text(json.dumps(test, indent=2), encoding="utf-8")
         _emit({
             "type": "canceled" if canceled["flag"] else "done",
             "best": str(best) if best.exists() else None,

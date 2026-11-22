@@ -29,7 +29,7 @@ def _key(model_id: str, device: str, tile_size: int) -> str:
 
 def _load(data_dir: Path) -> dict:
     try:
-        return json.loads(_file(data_dir).read_text())
+        return json.loads(_file(data_dir).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
 
@@ -42,7 +42,7 @@ def record(data_dir: Path, model_id: str, device: str, tile_size: int, model_til
         k = _key(model_id, device, tile_size)
         d[k] = (d.get(k, []) + [round(seconds / model_tiles, 4)])[-_KEEP:]
         tmp = _file(data_dir).with_suffix(".tmp")
-        tmp.write_text(json.dumps(d, indent=1))
+        tmp.write_text(json.dumps(d, indent=1), encoding="utf-8")
         os.replace(tmp, _file(data_dir))
 
 

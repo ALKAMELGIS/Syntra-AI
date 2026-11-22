@@ -95,7 +95,7 @@ def build_entry(
 
 def write_entry(image_path: Path, entry: LibraryEntry) -> Path:
     sc = sidecar_path(image_path)
-    sc.write_text(json.dumps(entry.to_dict(), indent=2))
+    sc.write_text(json.dumps(entry.to_dict(), indent=2), encoding="utf-8")
     return sc
 
 
@@ -104,7 +104,7 @@ def read_entry(image_path: Path) -> dict[str, Any] | None:
     if not sc.exists():
         return None
     try:
-        return json.loads(sc.read_text())
+        return json.loads(sc.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
         return None
 

@@ -37,7 +37,7 @@ def _pod_main() -> int:
         line = _json.dumps(obj)
         print(line, flush=True)
         with lock:
-            with events.open("a") as fh:
+            with events.open("a", encoding="utf-8") as fh:
                 fh.write(line + "\n")
 
     globals()["_emit"] = emit            # train_worker.run() reports through _emit
@@ -71,8 +71,8 @@ def _pod_main() -> int:
                 t.extractall(ds, filter="data") if hasattr(_tar, "data_filter") else t.extractall(ds)
             shard.unlink()
         yaml_path = ds / "data.yaml"
-        lines = [ln for ln in yaml_path.read_text().splitlines() if not ln.startswith("path:")]
-        yaml_path.write_text(f"path: {ds}\n" + "\n".join(lines) + "\n")
+        lines = [ln for ln in yaml_path.read_text(encoding="utf-8").splitlines() if not ln.startswith("path:")]
+        yaml_path.write_text(f"path: {ds}\n" + "\n".join(lines) + "\n", encoding="utf-8")
         _th.Thread(target=pusher, daemon=True).start()
         emit({"type": "status", "message": "Training"})
         job.update(data_yaml=str(yaml_path), project=str(root / "run"), name="run", device=0)

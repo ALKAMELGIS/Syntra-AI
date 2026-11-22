@@ -280,7 +280,7 @@ class DatasetBuilder:
             gt = self.r.tile_geotransform(xoff, yoff) if (v == "orig" and self.write_world) else None
             write_image(ip, img, self.fmt, geotransform=gt,
                        wkt=self.r.wkt if gt else None)
-            with open(os.path.join(self.out, "labels", split, stem + ".txt"), "w") as fh:
+            with open(os.path.join(self.out, "labels", split, stem + ".txt"), "w", encoding="utf-8") as fh:
                 fh.write(self._format(lab))
             self.stats["%s_images" % split] += 1
             self.stats["%s_objects" % split] += len(lab)
@@ -527,7 +527,7 @@ class DatasetBuilder:
         write_data_yaml(yaml_path, self.out, self.names, self.task, test=self.stats["test_images"] > 0)
         with open(os.path.join(self.out, "classes.txt"), "w", encoding="utf-8") as fh:
             fh.write("\n".join(self.names) + "\n")
-        with open(os.path.join(self.out, "tiles_index.csv"), "w", newline="") as fh:
+        with open(os.path.join(self.out, "tiles_index.csv"), "w", newline="", encoding="utf-8") as fh:
             w = csv.writer(fh)
             w.writerow(["image", "split", "augmentation", "x_offset_px", "y_offset_px",
                         "objects", "black_ratio"])

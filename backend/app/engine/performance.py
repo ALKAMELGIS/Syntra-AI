@@ -33,7 +33,7 @@ def _f(v) -> float | None:
 
 def parse_results_csv(path: str | Path) -> list[dict]:
     """ultralytics results.csv -> [{epoch, train_loss, val_loss, precision, recall, map50, map50_95}]."""
-    with open(path, newline="") as fh:
+    with open(path, newline="", encoding="utf-8") as fh:
         rows = [{k.strip(): v for k, v in r.items() if k} for r in csv.DictReader(fh)]
     if not rows:
         return []
@@ -99,7 +99,7 @@ def _training_performance(model_id: str) -> dict | None:
         p = PACK_METRICS_DIR / f"{pack.pack_id}.json"
         if not p.is_file():
             return None
-        data = json.loads(p.read_text())
+        data = json.loads(p.read_text(encoding="utf-8"))
         return _summary(model_id, data.get("name", pack.title), data["epochs"], source=data.get("source", pack.source),
                         per_class=data.get("per_class"), hidden_classes=data.get("hidden_classes", []),
                         task=data.get("task"), classes=data.get("classes"), licence=pack.licence,

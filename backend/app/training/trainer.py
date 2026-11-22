@@ -54,7 +54,7 @@ def dataset_task(data_yaml: str) -> str:
     or 6/8 when the yaml says so)."""
     p = Path(data_yaml)
     try:
-        for line in p.read_text().splitlines():
+        for line in p.read_text(encoding="utf-8", errors="replace").splitlines():
             if line.strip().startswith("task:"):
                 t = line.split(":", 1)[1].strip().strip("'\"")
                 if t in _TASK_SUFFIX:
@@ -62,7 +62,7 @@ def dataset_task(data_yaml: str) -> str:
     except OSError:
         return "detect"
     for lbl in sorted((p.parent / "labels").rglob("*.txt"))[:200]:
-        for row in lbl.read_text().splitlines():
+        for row in lbl.read_text(encoding="utf-8", errors="replace").splitlines():
             n = len(row.split()) - 1
             if n == 4:
                 return "detect"
@@ -147,9 +147,12 @@ def run_training(
 
     final: dict = {"type": "error", "message": "worker produced no output"}
     try:
+        # UTF-8 both ways: on Windows the default code page (cp1252) can't read what
+        # Ultralytics prints (box-drawing progress bars), which failed every run there
+        env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"}
         proc = subprocess.Popen(
             full_cmd, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            text=True, bufsize=1,
+            text=True, encoding="utf-8", errors="replace", bufsize=1, env=env,
         )
         assert proc.stdout is not None
         for raw_line in proc.stdout:

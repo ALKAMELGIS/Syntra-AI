@@ -55,7 +55,7 @@ def get_stats(data_dir: str | Path, model_id: str) -> ModelRunStats:
     path = _stats_path(data_dir, model_id)
     if not path.exists():
         return ModelRunStats(model_id=model_id)
-    raw = json.loads(path.read_text())
+    raw = json.loads(path.read_text(encoding="utf-8"))
     raw.pop("avg_duration_seconds", None)
     raw.pop("avg_detections_per_run", None)
     return ModelRunStats(**raw)
@@ -99,5 +99,5 @@ def record_run(
         stats.last_duration_seconds = duration_seconds
         stats.last_detection_count = detection_count
 
-        path.write_text(json.dumps(asdict(stats), indent=2))
+        path.write_text(json.dumps(asdict(stats), indent=2), encoding="utf-8")
         return stats

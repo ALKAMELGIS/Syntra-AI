@@ -428,7 +428,7 @@ def _run_accuracy(job_id: str, pred_id: str, req: PredictRequest, iou: float):
         jobs.update(job_id, status="error", error=pj.get("error") or "The model run did not complete.")
         return
     try:
-        gj = _json.loads((settings.RESULTS_DIR / pred_id / f"{req.model_id}.geojson").read_text())
+        gj = _json.loads((settings.RESULTS_DIR / pred_id / f"{req.model_id}.geojson").read_text(encoding="utf-8"))
         anns = store.load_annotations(req.image_path)
         meta = get_metadata(req.model_id)
         res = accuracy.evaluate(gj, anns, store.areas(anns, store.CHECK_AREA), list(meta.class_names.values()), iou)
