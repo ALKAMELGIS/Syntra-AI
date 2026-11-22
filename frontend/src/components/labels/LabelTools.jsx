@@ -33,7 +33,7 @@ export const HINTS = {
   square: "Drag from a corner. Alt draws from the centre",
   circle: "Drag from the centre outwards",
   freehand: "Press and draw around the object",
-  click: "Click inside the object. Alt+click or right-click removes a part. Enter saves, Esc discards",
+  click: "Click an object. Click the next one to keep it. Shift+click adds a part, Alt+click removes one. Enter keeps, Del discards",
   everything: "Finds every object in the view. Enter keeps them all, Esc drops them. Pick it again after moving the map",
   boxsel: "Drag a box over labels to select them. Shift adds to the selection",
   lasso: "Draw around labels to select them. Shift adds to the selection",
@@ -85,9 +85,9 @@ function ClickTool({ outline, onOutline, preview }) {
   }, []);
   useEffect(() => () => clearInterval(timer.current), []);
 
-  async function install() {
+  async function install(model) {
     try {
-      const r = await api.segmentInstall();
+      const r = await api.segmentInstall(typeof model === "string" ? model : undefined);
       setJob({ ...r, progress: 0 });
       clearInterval(timer.current);
       timer.current = setInterval(async () => {
@@ -149,7 +149,18 @@ function ClickTool({ outline, onOutline, preview }) {
           <span className="train-dim mono label-result-wide">
             {res.timings?.cached ? "view reused" : `view ${(res.timings?.encode_ms / 1000).toFixed(1)} s`} · click {Math.round(res.timings?.decode_ms)} ms
           </span>
+          <span className="label-result-wide label-result-acts">
+            <button type="button" className="quiet-button" onClick={() => window.dispatchEvent(new CustomEvent("syntra:preview", { detail: "keep" }))}>
+              <IconCheck /> Keep <kbd className="label-key">Enter</kbd></button>
+            <button type="button" className="quiet-button danger" onClick={() => window.dispatchEvent(new CustomEvent("syntra:preview", { detail: "discard" }))}>
+              <IconTrash /> Discard <kbd className="label-key">Del</kbd></button>
+          </span>
         </div>
+      )}
+      {st.models?.["sam2.1_small"] && !st.models["sam2.1_small"].installed && (
+        job && !["completed", "error", "interrupted"].includes(job.status)
+          ? <p className="train-dim mono">SAM 2.1 small · {Math.round(job.progress || 0)}%</p>
+          : <button type="button" className="link-button" onClick={() => install("sam2.1_small")}>More accurate: SAM 2.1 small (150 MB)</button>
       )}
     </div>
   );

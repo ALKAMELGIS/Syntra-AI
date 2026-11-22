@@ -367,6 +367,20 @@ export default function AnnotationLayer({
         if (seq === s.seq) { s.busy = false; container.style.cursor = "crosshair"; }
       }
     }
+    function discardClick() {
+      s.clicks = []; s.preview = null; s.seq++; clear(); say(null);
+      live.current.onPreview?.(null);
+    }
+    function insidePreview(ll) {
+      if (!s.preview) return false;
+      const ring = s.preview.latlngs.map(px), pt = px(ll);
+      let c = false;
+      for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+        const a = ring[i], b = ring[j];
+        if ((a.y > pt.y) !== (b.y > pt.y) && pt.x < ((b.x - a.x) * (pt.y - a.y)) / (b.y - a.y) + a.x) c = !c;
+      }
+      return c;
+    }
     function saveClick() {
       if (!s.preview) return;
       const { latlngs, res } = s.preview;
@@ -522,6 +536,9 @@ export default function AnnotationLayer({
         const pts = rotatedRect(px(s.points[0]), px(s.points[1]), px(e.latlng));
         finish(pts, { tool: "rect", shape: "rectangle" });
       } else if (mode === "click") {
+        // a plain click beside the outline on screen keeps it and starts the next object;
+        // Shift+click adds a part to it, Alt or right-click takes a part away
+        if (s.preview && !ev.shiftKey && !ev.altKey && !insidePreview(e.latlng)) saveClick();
         s.clicks.push({ ll: e.latlng, label: ev.altKey ? 0 : 1 });
         segment();
       } else if (mode === "box" && ev.altKey && s.clicks.length) {
@@ -556,6 +573,8 @@ export default function AnnotationLayer({
           s.clicks = []; s.preview = null; s.points = []; s.start = null; s.drag = false;
           clear(); say(null); live.current.onPreview?.(null);
         }
+      } else if (e.key === "Delete" && (mode === "click" || mode === "box") && (s.preview || s.clicks.length)) {
+        e.preventDefault(); discardClick();
       } else if (e.key === "Backspace") {
         if (mode === "polygon" && s.points.length) { e.preventDefault(); s.points.pop(); clear(); say(null); }
         if ((mode === "click" || mode === "box") && s.clicks.length) {
@@ -593,6 +612,11 @@ export default function AnnotationLayer({
       live.current.onDrawnMany?.(list.map((o) => [o.latlngs, { tool: "everything", shape: o.shape }]));
     }
     function dropAll() { s.all = null; clear(); live.current.onPreview?.({ all: true, count: 0, dropped: true }); }
+    const onPrev = (e) => {
+      if (mode !== "click" && mode !== "box") return;
+      if (e.detail === "keep") saveClick(); else if (e.detail === "discard") discardClick();
+    };
+    window.addEventListener("syntra:preview", onPrev);
     const onAsk = (e) => { if (mode !== "everything") return; if (e.detail === "keep") keepAll(); else if (e.detail === "drop") dropAll(); else everything(); };
     window.addEventListener("syntra:suggestions", onAsk);
     if (mode === "everything") everything();
@@ -615,6 +639,7 @@ export default function AnnotationLayer({
       map.off("click", click); map.off("dblclick", dbl); map.off("contextmenu", context);
       window.removeEventListener("keydown", key, true);
       window.removeEventListener("syntra:suggestions", onAsk);
+      window.removeEventListener("syntra:preview", onPrev);
       map.off("moveend", prepare); clearTimeout(prepT);
       s.seq++;
       clear(); map.removeLayer(tip);

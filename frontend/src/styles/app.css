@@ -2578,3 +2578,8 @@ input[type=range].gauge:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 2px 
 
 .label-saved-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ready); }
 .label-selbar kbd { font-size: var(--fs-11); color: var(--text-muted); margin-left: 4px; }
+
+.label-result-acts { display: flex; gap: 8px; margin-top: 4px; }
+.label-result-acts .quiet-button { flex: 1; justify-content: center; gap: 8px; }
+.label-result-acts .quiet-button.danger { color: var(--error); }
+.label-result-acts kbd { font-size: var(--fs-11); }

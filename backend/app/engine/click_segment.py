@@ -50,6 +50,7 @@ MODELS = {
     },
 }
 DEFAULT_MODEL = "sam2.1_tiny"
+PREFERRED = ("sam2.1_small", "sam2.1_tiny")
 
 
 class SegmentUnavailable(RuntimeError):
@@ -73,7 +74,7 @@ def model_files(name: str = DEFAULT_MODEL) -> tuple[Path, Path] | None:
 
 def status() -> dict:
     installed = {n: model_files(n) is not None for n in MODELS}
-    name = next((n for n in MODELS if installed[n]), None)
+    name = next((n for n in PREFERRED if installed[n]), None)     # the more accurate one once it is there
     try:
         import onnxruntime  # noqa: F401
         ort_ok = True

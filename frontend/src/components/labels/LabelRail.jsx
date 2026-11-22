@@ -7,12 +7,13 @@ import React, { useEffect, useRef, useState } from "react";
 import { api } from "../../api/client.js";
 import { classColor, TRAIN_AREA, CHECK_AREA } from "./AnnotationTool.jsx";
 import {
-  IconAreaDashed, IconGridDots, IconBoxAI, IconBoxSelect, IconClose, IconLasso, IconCircle, IconClickAI, IconPencil, IconPointer, IconPolygon,
+  IconAreaDashed, IconCheck, IconGridDots, IconBoxAI, IconBoxSelect, IconClose, IconLasso, IconCircle, IconClickAI, IconPencil, IconPointer, IconPolygon,
   IconRectangle, IconSparkle, IconSquare, IconTag, IconTrash, IconUndo,
 } from "../ui/Icons.jsx";
 
 const SELECT = "select";
-export const DEFAULT_CLASS = "object";      // made when a tool is picked before any class exists
+export const DEFAULT_CLASS = "object";
+const SHAPE_LABEL = { polygon: "Outline", right_angles: "Right angles", rectangle: "Rotated box", box: "Box", circle: "Circle", smooth: "Smooth" };      // made when a tool is picked before any class exists
 // what the AI tools draw: the Refine `shape` sent to the engine
 const DRAWS = [["auto", "Auto"], ["box", "Box"], ["rectangle", "Rotated"], ["polygon", "Outline"]];
 
@@ -121,6 +122,7 @@ export default function LabelRail({
     setLast((l) => ({ ...l, [g.id]: t.id }));
     if (t.action === "all") { onMode(null); selectAll(); return; }
     if (t.action === "delete") {
+      if (segPreview?.res) { preview("discard"); return; }
       if (selectedIds.length) onDeleteMany?.(selectedIds); else if (editId) onEditDelete?.();
       return;
     }
@@ -144,6 +146,7 @@ export default function LabelRail({
 
   const n = selectedIds.length;
   const all = mode === "everything" && segPreview?.all ? segPreview : null;
+  const preview = (what) => window.dispatchEvent(new CustomEvent("syntra:preview", { detail: what }));
   const ask = (what) => window.dispatchEvent(new CustomEvent("syntra:suggestions", { detail: what }));
   return (
     <>
@@ -162,7 +165,14 @@ export default function LabelRail({
         {!all.busy && <button type="button" className="label-selbar-btn" onClick={() => ask("again")}>Run here again</button>}
       </div>
     )}
-    {recent && !all && n === 0 && (
+    {(mode === "click" || mode === "box") && segPreview?.res && (
+      <div className="label-selbar" role="status">
+        <span>{SHAPE_LABEL[segPreview.res.shape] || segPreview.res.shape}</span>
+        <button type="button" className="label-selbar-btn" onClick={() => preview("keep")} title="Enter"><IconCheck /> Keep <kbd className="mono">Enter</kbd></button>
+        <button type="button" className="label-selbar-btn danger" onClick={() => preview("discard")} title="Del"><IconTrash /> Discard <kbd className="mono">Del</kbd></button>
+      </div>
+    )}
+    {recent && !all && n === 0 && !segPreview?.res && (
       <div className="label-selbar" role="status">
         <span className="label-saved-dot" aria-hidden="true" /><span>Saved</span>
         <button type="button" className="label-selbar-btn" onClick={() => onUndo?.()} title="Ctrl+Z"><IconUndo /> Undo <kbd className="mono">Ctrl+Z</kbd></button>
@@ -228,7 +238,7 @@ export default function LabelRail({
                   </form>
                 )}
                 {g.tools?.map((x) => (
-                  <button key={x.id} type="button" role="menuitem" disabled={x.action === "delete" && !editId && !selectedIds.length}
+                  <button key={x.id} type="button" role="menuitem" disabled={x.action === "delete" && !editId && !selectedIds.length && !segPreview?.res}
                           className={`label-rail-row ${isOn(x) ? "on" : ""} ${x.danger ? "danger" : ""}`}
                           onClick={() => pick(g, x)}
                           title={x.note || undefined}>
