@@ -32,7 +32,7 @@ export const TARGETS = [
 ];
 const SHAPES = [
   ["auto", "By class"], ["polygon", "Polygon outline"], ["right_angles", "Right angles"], ["smooth", "Smooth"],
-  ["rectangle", "Oriented box (OBB)"], ["square", "Square box (SBB)"], ["box", "Box"], ["circle", "Circle"],
+  ["rectangle", "Oriented box"], ["square", "Square box"], ["box", "Box"], ["circle", "Circle"],
 ];
 
 export const HINTS = {
@@ -134,57 +134,52 @@ function ClickTool({ outline, onOutline, preview, onAutoAll }) {
   }
   const res = preview?.res;
   return (
-    <div className="label-ctx">
-      <label className="train-field">Object
-        <select className="train-select" value={outline.target || "auto"}
-                onChange={(e) => { const t = TARGETS.find(([id]) => id === e.target.value); onOutline({ ...outline, target: t[0], ...t[2] }); }}>
-          {TARGETS.map(([id, l]) => <option key={id} value={id}>{l}</option>)}
-        </select>
-      </label>
-      <button type="button" className="quiet-button lt-auto" onClick={() => onAutoAll?.()}>
-        <IconGridDots /> Auto segment the view <kbd className="label-key">E</kbd>
-      </button>
-      <label className="train-field">Output
-        <select className="train-select" value={outline.shape} onChange={(e) => onOutline({ ...outline, shape: e.target.value })}>
-          {SHAPES.map(([id, l]) => <option key={id} value={id}>{l}</option>)}
-        </select>
-      </label>
-      <div className="label-exact">
-        <label className="label-exact-field">
-          <span className="train-dim">Detail</span>
-          <input className="train-input mono" inputMode="decimal" value={outline.simplify_m}
-                 onChange={(e) => onOutline({ ...outline, simplify_m: parseFloat(e.target.value) || 0 })} aria-label="Simplify in metres" />
-          <span className="train-dim">m</span>
+    <div className="ai">
+      <div className="ai-grid">
+        <label className="ai-field"><span>Object</span>
+          <select className="train-select" value={outline.target || "auto"}
+                  onChange={(e) => { const t = TARGETS.find(([id]) => id === e.target.value); onOutline({ ...outline, target: t[0], ...t[2] }); }}>
+            {TARGETS.map(([id, l]) => <option key={id} value={id}>{l}</option>)}
+          </select>
         </label>
-        <label className="label-exact-field">
-          <span className="train-dim">Grow</span>
-          <input className="train-input mono" inputMode="decimal" value={outline.grow_m}
-                 onChange={(e) => onOutline({ ...outline, grow_m: parseFloat(e.target.value) || 0 })} aria-label="Grow or shrink in metres" />
-          <span className="train-dim">m</span>
+        <label className="ai-field"><span>Output</span>
+          <select className="train-select" value={outline.shape} onChange={(e) => onOutline({ ...outline, shape: e.target.value })}>
+            {SHAPES.map(([id, l]) => <option key={id} value={id}>{l}</option>)}
+          </select>
+        </label>
+        <label className="ai-field"><span>Detail</span>
+          <span className="ai-num"><input className="mono" inputMode="decimal" value={outline.simplify_m} aria-label="Detail in metres"
+                 onChange={(e) => onOutline({ ...outline, simplify_m: parseFloat(e.target.value) || 0 })} /><i>m</i></span>
+        </label>
+        <label className="ai-field"><span>Grow</span>
+          <span className="ai-num"><input className="mono" inputMode="decimal" value={outline.grow_m} aria-label="Grow in metres"
+                 onChange={(e) => onOutline({ ...outline, grow_m: parseFloat(e.target.value) || 0 })} /><i>m</i></span>
         </label>
       </div>
-      {preview?.busy && <p className="train-dim">Outlining…</p>}
+      <button type="button" className="ai-auto" onClick={() => onAutoAll?.()}>
+        <IconGridDots /> Auto segment the view <kbd className="mono">E</kbd>
+      </button>
+      {preview?.busy && <p className="ai-status mono">Outlining…</p>}
       {preview?.error && <p className="train-error">{preview.error}</p>}
       {res && (
-        <div className="label-result">
-          <span>{SHAPES.find(([id]) => id === res.shape)?.[1] || (res.shape === "polygon" ? "Polygon outline" : res.shape)}</span>
-          <span className="mono">{res.area_m2 != null ? fmtArea(res.area_m2) : ""} · {res.vertices} pts</span>
-          {res.warning && <span className="train-dim label-result-wide">{res.warning}</span>}
-          <span className="train-dim mono label-result-wide">
-            {res.timings?.cached ? "view reused" : `view ${(res.timings?.encode_ms / 1000).toFixed(1)} s`} · click {Math.round(res.timings?.decode_ms)} ms
-          </span>
-          <span className="label-result-wide label-result-acts">
-            <button type="button" className="quiet-button" onClick={() => window.dispatchEvent(new CustomEvent("syntra:preview", { detail: "keep" }))}>
-              <IconCheck /> Keep <kbd className="label-key">Enter</kbd></button>
-            <button type="button" className="quiet-button danger" onClick={() => window.dispatchEvent(new CustomEvent("syntra:preview", { detail: "discard" }))}>
-              <IconTrash /> Discard <kbd className="label-key">Del</kbd></button>
-          </span>
+        <div className="ai-res">
+          <div className="ai-res-head">
+            <b>{SHAPES.find(([id]) => id === res.shape)?.[1] || (res.shape === "polygon" ? "Polygon outline" : res.shape)}</b>
+            <span className="mono">{res.area_m2 != null ? fmtArea(res.area_m2) : ""} · {res.vertices} pts · {Math.round(res.timings?.decode_ms)} ms</span>
+          </div>
+          {res.warning && <p className="ai-warn" title={res.warning}>Kept the traced outline</p>}
+          <div className="ai-res-acts">
+            <button type="button" onClick={() => window.dispatchEvent(new CustomEvent("syntra:preview", { detail: "keep" }))}>
+              <IconCheck /> Keep <kbd className="mono">Enter</kbd></button>
+            <button type="button" className="danger" onClick={() => window.dispatchEvent(new CustomEvent("syntra:preview", { detail: "discard" }))}>
+              <IconTrash /> Discard <kbd className="mono">Del</kbd></button>
+          </div>
         </div>
       )}
       {st.models?.["sam2.1_small"] && !st.models["sam2.1_small"].installed && (
         job && !["completed", "error", "interrupted"].includes(job.status)
-          ? <p className="train-dim mono">SAM 2.1 small · {Math.round(job.progress || 0)}%</p>
-          : <button type="button" className="link-button" onClick={() => install("sam2.1_small")}>More accurate: SAM 2.1 small (150 MB)</button>
+          ? <p className="ai-status mono">SAM 2.1 small · {Math.round(job.progress || 0)}%</p>
+          : <button type="button" className="ai-more" onClick={() => install("sam2.1_small")} title="SAM 2.1 small · 150 MB">More accurate model</button>
       )}
     </div>
   );

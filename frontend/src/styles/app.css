@@ -2585,3 +2585,35 @@ input[type=range].gauge:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 2px 
 .label-result-acts kbd { font-size: var(--fs-11); }
 .label-unit { width: 56px; flex: none; height: 28px; }
 .lt-auto { width: 100%; justify-content: center; gap: 8px; }
+
+/* AI outline settings (ClickTool): one grid, labels above controls, one result card */
+.ai { display: flex; flex-direction: column; gap: 8px; }
+.ai-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.ai-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.ai-field > span:first-child { font-size: var(--fs-11); color: var(--text-dim); }
+.ai-field .train-select { width: 100%; height: 32px; min-height: 32px; padding: 0 8px; box-sizing: border-box; font-size: var(--fs-12); }
+.ai-num {
+  display: flex; align-items: center; height: 32px; padding: 0 8px; gap: 4px;
+  border: 1px solid var(--panel-border); border-radius: var(--radius-control); background: var(--bg);
+}
+.ai-num input { flex: 1; min-width: 0; border: none; background: transparent; color: var(--text); font-size: var(--fs-12); text-align: right; outline: none; }
+.ai-num i { font-style: normal; font-size: var(--fs-11); color: var(--text-muted); }
+.ai-num:focus-within { border-color: var(--text-dim); }
+.ai-auto, .ai-res-acts button {
+  height: 32px; display: flex; align-items: center; justify-content: center; gap: 8px;
+  border: 1px solid var(--panel-border); border-radius: var(--radius-control); background: transparent;
+  color: var(--text); font-size: var(--fs-12); cursor: pointer;
+}
+.ai-auto:hover, .ai-res-acts button:hover { background: var(--hover-bg); }
+.ai-auto svg, .ai-res-acts svg { width: 16px; height: 16px; }
+.ai kbd { font-size: var(--fs-11); color: var(--text-muted); }
+.ai-status { margin: 0; font-size: var(--fs-11); color: var(--text-muted); }
+.ai-res { display: flex; flex-direction: column; gap: 8px; padding: 8px; border: 1px solid var(--panel-border); border-radius: var(--radius-control); }
+.ai-res-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font-size: var(--fs-12); }
+.ai-res-head b { font-weight: 500; }
+.ai-res-head .mono { font-size: var(--fs-11); color: var(--text-dim); white-space: nowrap; }
+.ai-warn { margin: 0; font-size: var(--fs-11); color: var(--warn); }
+.ai-res-acts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.ai-res-acts button.danger { color: var(--error); }
+.ai-more { align-self: flex-end; border: none; background: none; padding: 0; font-size: var(--fs-11); color: var(--text-dim); cursor: pointer; }
+.ai-more:hover { color: var(--text); text-decoration: underline; }

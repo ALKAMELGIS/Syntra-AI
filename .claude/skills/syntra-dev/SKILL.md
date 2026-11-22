@@ -224,6 +224,19 @@ direction in a comment. Work inside them:
   precision, recall and mAP50, never "accuracy".
 - **Motion.** Name transitions (`background-color`, `color`, `transform`)
   with `var(--ease)`; no looping animation except a live spinner.
+- **Compact panels, no help text (standing request of the owner; never wait
+  to be asked).** A panel shows tools, buttons, names and values only. No
+  sentence that explains how to use something: put it in the control's
+  `title` (hover) or leave it out. Errors and one-word states stay. Lay a
+  panel out on one grid: 11px labels above 32px controls, two controls per
+  row where they fit (`.ai-grid`), 8px between rows, 16px between sections;
+  units inside the field (`.ai-num`); actions as a pair of equal buttons;
+  secondary actions as a small link or icon, right-aligned. Every control in a
+  row shares one height. Before calling UI work done, screenshot it and check
+  nothing is cut off, misaligned or taller than its neighbours.
+- **The interface speaks with buttons, not paragraphs.** When a tool needs a
+  choice (keep or discard, install a model), show the buttons at the place the
+  result appears and on the map chip, never only a key in a hint.
 
 ## 4b. Labelling and auto segmentation
 
