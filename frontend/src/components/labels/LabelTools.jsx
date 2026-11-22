@@ -104,11 +104,12 @@ function ClickTool({ outline, onOutline, preview }) {
   }
 
   if (!st) return <p className="train-dim">Checking the click tool…</p>;
-  if (!st.ready) {
+  const missing = !st.ready || /install/i.test(preview?.error || "");
+  if (missing) {
     const running = job && !["completed", "error", "interrupted"].includes(job.status);
     return (
       <div className="label-ctx">
-        <p className="train-dim">{st.reason}</p>
+        <p className="train-dim">{st.reason || preview?.error}</p>
         <button type="button" className="quiet-button" onClick={install} disabled={running}>
           {running ? `Downloading ${Math.round(job.progress || 0)}%` : "Install click tool"}
         </button>

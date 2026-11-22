@@ -81,6 +81,8 @@ def status() -> dict:
     reason = None
     if not ort_ok:
         reason = "onnxruntime is missing: run the start script again"
+    elif not name and _installing:
+        reason = "Installing the click tool… try again in a minute"
     elif not name:
         reason = f"Install the click tool once ({MODELS[DEFAULT_MODEL]['label']}, about {MODELS[DEFAULT_MODEL]['approx_mb']} MB)"
     return {
@@ -89,15 +91,29 @@ def status() -> dict:
         "label": MODELS[name]["label"] if name else None,
         "models": {n: {**{k: v for k, v in m.items() if k != "url"}, "installed": installed[n]} for n, m in MODELS.items()},
         "reason": reason,
+        "installing": bool(_installing),
         "loaded": _engine is not None,
         "timings": dict(_last_timings),
     }
 
 
+_install_lock = threading.Lock()
+_installing: set = set()
+
+
 def install(name: str = DEFAULT_MODEL, progress=None, opener=None) -> dict:
-    """Download the model zip once and unpack it into the data folder."""
+    """Download the model zip once and unpack it into the data folder (one download at a time)."""
     if name not in MODELS:
         raise ValueError(f"Unknown model '{name}'")
+    _installing.add(name)
+    try:
+        with _install_lock:
+            return _install(name, progress, opener)
+    finally:
+        _installing.discard(name)
+
+
+def _install(name: str, progress=None, opener=None) -> dict:
     dest = models_dir() / name
     if model_files(name):
         return {"model": name, "path": str(dest), "already": True}

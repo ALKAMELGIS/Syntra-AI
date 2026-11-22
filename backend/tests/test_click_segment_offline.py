@@ -291,3 +291,17 @@ def test_everything_in_view_finds_each_object_once(app_img):
                       round(sum(p[1] for p in o["points_px"]) / len(o["points_px"]))) for o in objs)
     assert all(abs(a - b) <= 3 for (cx, cy), (ex, ey) in zip(centres, sorted(BlobsEngine.CENTRES)) for a, b in ((cx, ex), (cy, ey)))
     assert all(o["points_lonlat"] and o["score"] >= 0.9 for o in objs)
+
+
+def test_status_says_when_the_model_is_being_installed(tmp_path, monkeypatch):
+    from app.core.config import settings
+    from app.engine import click_segment
+
+    monkeypatch.setattr(settings, "DATA_DIR", tmp_path)
+    click_segment.set_engine(None, None)
+    click_segment._installing.add("sam2.1_tiny")
+    try:
+        st = click_segment.status()
+        assert st["installing"] is True and "Installing" in (st["reason"] or "") or st["reason"].startswith("onnxruntime")
+    finally:
+        click_segment._installing.discard("sam2.1_tiny")

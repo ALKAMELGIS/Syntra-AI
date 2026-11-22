@@ -22,6 +22,7 @@ sys.path.insert(0, str(HERE / "backend"))
 os.environ.setdefault("SYNTRA_DATA_DIR", "/data" if Path("/data").is_dir() and os.access("/data", os.W_OK) else str(HERE / "data"))
 os.environ.setdefault("SYNTRA_STATIC_DIR", str(HERE / "static"))
 os.environ.setdefault("SYNTRA_ALLOW_SIGNUP", "1")
+os.environ.setdefault("SYNTRA_AUTO_INSTALL_SAM", "1")      # the disk is reset on restart: fetch the click tool again
 
 try:                                   # ZeroGPU hardware: import spaces before torch, and declare a GPU function
     import spaces

@@ -9,6 +9,7 @@ without any HTTP layer at all.
 from __future__ import annotations
 
 import logging
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI
@@ -31,6 +32,17 @@ async def lifespan(_app: FastAPI):
     # Jobs a previous process left running can't still be running: their
     # worker threads died with it. Say so instead of showing them as live.
     get_store().mark_interrupted()
+    if os.getenv("SYNTRA_AUTO_INSTALL_SAM") == "1":    # hosted: the click tool's model, fetched once per start
+        import threading
+
+        def _sam():
+            try:
+                from app.engine import click_segment
+                if not click_segment.status()["ready"]:
+                    click_segment.install()
+            except Exception:  # noqa: BLE001 - the Install button stays as the fallback
+                logging.getLogger(__name__).exception("Installing SAM at start-up failed")
+        threading.Thread(target=_sam, name="sam-install", daemon=True).start()
     try:                                     # hosted, reset disk: the owner account from its secrets
         from app.core.auth import ensure_owner_from_env
         ensure_owner_from_env()
