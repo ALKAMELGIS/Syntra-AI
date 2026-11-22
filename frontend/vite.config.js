@@ -39,6 +39,10 @@ export default defineConfig(({ mode }) => {
       // fails loudly instead of silently moving to a different port.
       port: Number(env.VITE_PORT || 5291),
       strictPort: true,
+      // No live reload: Vite's reload on every file change (each update pulled in) and on
+      // reconnecting after a tab sleeps threw away a training session's page. The page
+      // reloads only when you press F5. VITE_HMR=1 brings live reload back for development.
+      hmr: env.VITE_HMR === "1",
       // a Cloudflare quick tunnel (https://<words>.trycloudflare.com) or your own
       // domain from VITE_ALLOWED_HOSTS (comma separated); everything else is refused
       allowedHosts: [".trycloudflare.com", ...(env.VITE_ALLOWED_HOSTS || "").split(",").map((h) => h.trim()).filter(Boolean)],

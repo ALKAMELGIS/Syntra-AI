@@ -77,6 +77,25 @@ export default function TrainPanel({
   }, [open, step]);
   useEffect(() => { setPushJob(null); }, [ds?.job_id]);
 
+  // after a page reload (or another tab, another device) the work is still on the engine:
+  // take back the running or last training and this image's last dataset
+  useEffect(() => {
+    if (!open) return;
+    const live = (j) => j && !["completed", "done", "error", "canceled", "interrupted"].includes(j.status);
+    if (!tr) {
+      api.listJobs("train", 1).then((list) => {
+        const j = list?.[0];
+        if (live(j)) { setTr(j); if (step < 3) onStep(3); }
+      }).catch(() => {});
+    }
+    if (!ds && image?.image_id) {
+      api.listJobs("dataset_export", 1, image.image_id).then((list) => {
+        const j = list?.[0];
+        if (j && (j.status === "completed" || live(j))) setDs(j);
+      }).catch(() => {});
+    }
+  }, [open, image?.image_id]);
+
   usePoll(async () => {
     try {
       const st = await api.exportDatasetStatus(ds.job_id);

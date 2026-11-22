@@ -45,7 +45,7 @@ export default function App({ user = null, onSignOut = null }) {
   const [detectionsVisible, setDetectionsVisible] = useState(true);
   // One panel beside the map toolbar at a time: every flyout (analysis, train,
   // performance, library, layers, remote sensing, settings) is a value of `panel`.
-  const [panel, setPanel] = useState(null);
+  const [panel, setPanel] = useState(() => { try { return JSON.parse(localStorage.getItem("syntra_train_ui") || "{}").open ? "train" : null; } catch { return null; } });
   const [perfModel, setPerfModel] = useState(null);
   // setter for one panel: true opens it (closing any other), false closes it if it is open
   const panelSetter = (name, onOpen, onClose) => (v) => {
@@ -56,7 +56,7 @@ export default function App({ user = null, onSignOut = null }) {
     setPanel((p) => (next ? name : p === name ? null : p));
   };
   const analysisOpen = panel === "analysis", trainOpen = panel === "train", perfOpen = panel === "perf", libOpen = panel === "lib";
-  const [trainStep, setTrainStep] = useState(0);
+  const [trainStep, setTrainStep] = useState(() => { try { return JSON.parse(localStorage.getItem("syntra_train_ui") || "{}").step || 0; } catch { return 0; } });
   const [annotations, setAnnotations] = useState([]);
   const [extraClasses, setExtraClasses] = useState([]);
   const [activeClass, setActiveClass] = useState(null);
@@ -71,6 +71,10 @@ export default function App({ user = null, onSignOut = null }) {
   const setPerfOpen = panelSetter("perf", () => { setDrawMode(null); setMobilePane("map"); });
   const setLibOpen = panelSetter("lib", () => { setDrawMode(null); setMobilePane("map"); });
   function openTrain(step = 0) { setTrainStep(step); setTrainOpen(true); }
+  // the Train panel and its step come back after a page reload (the browser may reload a tab left in the background)
+  useEffect(() => {
+    try { localStorage.setItem("syntra_train_ui", JSON.stringify({ open: trainOpen, step: trainStep })); } catch { /* private mode */ }
+  }, [trainOpen, trainStep]);
   const pollRef = useRef(null);
 
   // The working session survives a refresh or a browser crash. Only small
