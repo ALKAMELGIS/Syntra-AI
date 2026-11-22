@@ -127,9 +127,10 @@ def _serve_interface() -> None:
             from fastapi import HTTPException
             raise HTTPException(status_code=404, detail="Not found")
         f = (root / path).resolve()
-        if path and root in f.parents and f.is_file():
+        if path and path != "index.html" and root in f.parents and f.is_file():
             return FileResponse(f)
-        return FileResponse(root / "index.html")       # the app's own routes
+        # the app's own routes; never kept by the browser, so a deploy shows at once (assets are hashed)
+        return FileResponse(root / "index.html", headers={"Cache-Control": "no-cache"})
 
 
 _serve_interface()
