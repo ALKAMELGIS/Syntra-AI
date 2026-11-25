@@ -1,0 +1,48 @@
+# Builds the interface and commits the result straight into
+# deploy/worker/public/, so Cloudflare's own Git-connected deploy for the
+# syntra-ai Worker (Settings > Builds, on the Cloudflare dashboard) has
+# nothing left to build — it only needs to run `npx wrangler deploy` against
+# files that are already sitting in the repo. This sidesteps that build
+# step entirely (its working directory inside Cloudflare's builder couldn't
+# be made to find frontend/ reliably).
+#
+# Only runs when frontend/ changes, and only commits deploy/worker/public/,
+# so it can't re-trigger itself in a loop.
+name: Build Worker interface assets
+on:
+  push:
+    branches: [main]
+    paths:
+      - "frontend/**"
+      - ".github/workflows/build-worker-assets.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    if: ${{ github.repository == 'ALKAMELGIS/Syntra-AI' && github.actor != 'github-actions[bot]' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Build the interface
+        working-directory: frontend
+        run: npm ci && npx vite build
+      - name: Fill the Worker's asset folder
+        run: |
+          rm -rf deploy/worker/public
+          mkdir -p deploy/worker/public
+          cp -r frontend/dist/. deploy/worker/public/
+          touch deploy/worker/public/.gitkeep
+      - name: Commit the built assets
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add deploy/worker/public
+          git diff --cached --quiet && echo "No asset changes" && exit 0
+          git commit -m "Build Worker interface assets [skip ci]"
+          git push

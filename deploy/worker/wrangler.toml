@@ -1,7 +1,9 @@
 # Deploys the public edge front for Syntra AI to syntra-ai.<your-account>.workers.dev.
 # The Worker itself only proxies /api/* to the engine (see src/index.js) and
-# serves the built interface from ./public (filled in by CI from frontend/dist
-# before `wrangler deploy` runs — see .github/workflows/deploy-worker.yml).
+# serves the built interface from ./public — already built and committed by
+# .github/workflows/build-worker-assets.yml on every frontend change, so
+# Cloudflare's own Git-connected deploy for this Worker (dashboard: Settings >
+# Builds) only has to run `npx wrangler deploy`, no build command needed.
 name = "syntra-ai"
 main = "src/index.js"
 compatibility_date = "2026-11-25"
@@ -10,4 +12,4 @@ compatibility_date = "2026-11-25"
 directory = "./public"
 binding = "ASSETS"
 not_found_handling = "single-page-application"
-run_worker_first = ["/api/*"]
+run_worker_first = true
