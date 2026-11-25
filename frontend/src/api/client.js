@@ -14,7 +14,10 @@ const API_KEY = import.meta.env.VITE_API_KEY || "";
 function request(url, init = {}) {
   const headers = { ...(init.headers || {}) };
   if (API_KEY) headers["X-API-Key"] = API_KEY;
-  return fetch(url, { ...init, headers });
+  // fetch() omits cookies on a cross-origin request unless told otherwise, so the
+  // session cookie would never be sent back once the interface and the engine are
+  // on different origins (BASE above). Harmless to set when same-origin too.
+  return fetch(url, { ...init, headers, credentials: "include" });
 }
 
 // For URLs the browser loads directly (<img>, <a download>), which cannot
