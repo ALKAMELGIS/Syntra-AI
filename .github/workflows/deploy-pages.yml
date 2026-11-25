@@ -1,10 +1,11 @@
-# Publishes the built interface straight to GitHub Pages using GitHub's own
-# Pages deployment, with no Cloudflare step involved at all. The frontend is
-# built with the engine's full Render URL baked in (VITE_API_BASE_URL), since
-# a GitHub Pages page and the Render engine are different origins and there is
-# no reverse proxy here to make them look same-origin; the engine allows that
-# origin through SYNTRA_CORS_ORIGINS (see backend/app/core/config.py) and the
-# session cookie is SameSite=None so sign-in still works across the two.
+# Publishes a one-line redirect page to GitHub Pages, sending the browser
+# straight to the Render engine (which serves the real, built interface from
+# the same origin it runs on). Tried serving the built interface itself from
+# here first, with the engine called cross-origin (VITE_API_BASE_URL); that
+# needs the session cookie to survive a cross-site fetch, which depends on
+# each visitor's own browser privacy settings (third-party / partitioned
+# cookie blocking) and was not reliable. A same-origin redirect sidesteps the
+# whole class of problem: no cross-site request is ever made.
 #
 # One manual step this workflow cannot do itself: in the repo's
 # Settings > Pages, "Build and deployment > Source" must be set to
@@ -14,7 +15,6 @@ on:
   push:
     branches: [main]
     paths:
-      - "frontend/**"
       - ".github/workflows/deploy-pages.yml"
   workflow_dispatch:
 
@@ -31,18 +31,27 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-      - name: Build the interface
-        working-directory: frontend
-        env:
-          VITE_API_BASE_URL: https://syntra-ai-engine.onrender.com/api
-        run: npm ci && npx vite build --base=/Syntra-AI/
+      - name: Write the redirect page
+        run: |
+          mkdir -p pages-site
+          cat > pages-site/index.html <<'HTML'
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+            <meta charset="utf-8">
+            <title>Syntra AI</title>
+            <meta http-equiv="refresh" content="0; url=https://syntra-ai-engine.onrender.com/">
+            <link rel="canonical" href="https://syntra-ai-engine.onrender.com/">
+            <script>location.replace("https://syntra-ai-engine.onrender.com/");</script>
+          </head>
+          <body>
+            <p>Opening Syntra AI… if nothing happens, <a href="https://syntra-ai-engine.onrender.com/">click here</a>.</p>
+          </body>
+          </html>
+          HTML
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: frontend/dist
+          path: pages-site
 
   deploy:
     needs: build
