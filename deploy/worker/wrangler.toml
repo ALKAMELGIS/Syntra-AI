@@ -1,3 +1,5 @@
+# Redeploy trigger: picks up the pre-built assets committed by CI now that
+# Cloudflare's own Build command is empty.
 # Deploys the public edge front for Syntra AI to syntra-ai.<your-account>.workers.dev.
 # The Worker itself only proxies /api/* to the engine (see src/index.js) and
 # serves the built interface from ./public — already built and committed by
