@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { auth, SIGNED_OUT } from "../../api/client.js";
+import { auth, SIGNED_OUT, API_BASE } from "../../api/client.js";
 import { IconEye, IconEyeOff } from "../ui/Icons.jsx";
 import EarthGlobe from "./EarthGlobe.jsx";
 
@@ -139,7 +139,7 @@ function AuthCard({ status, onSignedIn }) {
           <div className="auth-oauth">
             <span className="auth-or"><span>or</span></span>
             {providers.map((p) => (
-              <a key={p} className="auth-provider" href={`/api/auth/oauth/${p}/start`}>
+              <a key={p} className="auth-provider" href={`${API_BASE}/auth/oauth/${p}/start`}>
                 {p === "google" ? <GoogleMark /> : <GitHubMark />}
                 <span>Continue with {p === "google" ? "Google" : "GitHub"}</span>
               </a>

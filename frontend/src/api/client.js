@@ -1,5 +1,9 @@
 // Every call the interface makes to the engine (/api/...), in one place.
-const BASE = "/api";
+// Same-origin by default. A build served from a different origin than the
+// engine (e.g. a static host with no reverse proxy) sets VITE_API_BASE_URL to
+// the engine's full URL (e.g. https://syntra-ai-engine.onrender.com/api).
+const BASE = import.meta.env.VITE_API_BASE_URL || "/api";
+export const API_BASE = BASE;
 // the engine level this interface needs (backend/app/main.py API_LEVEL); lower = an engine started before an update
 export const ENGINE_API = 5;
 

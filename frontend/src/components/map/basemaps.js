@@ -1,6 +1,8 @@
 // Base maps. All keyless except Google, whose tiles come through the engine
 // (/api/basemaps/google, key kept on the server, display only: Google's
 // policy forbids detection on or training from its tiles).
+import { API_BASE } from "../../api/client.js";
+
 const ESRI = "https://server.arcgisonline.com/ArcGIS/rest/services";
 
 export const BASEMAPS = {
@@ -9,7 +11,7 @@ export const BASEMAPS = {
   hybrid: { label: "Hybrid", url: `${ESRI}/World_Imagery/MapServer/tile/{z}/{y}/{x}`,
     overlay: `${ESRI}/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}`,
     attribution: "&copy; Esri, Maxar, Earthstar Geographics", maxNativeZoom: 19 },
-  google: { label: "Google", url: "/api/basemaps/google/tile/{z}/{x}/{y}", attribution: "&copy; Google",
+  google: { label: "Google", url: `${API_BASE}/basemaps/google/tile/{z}/{x}/{y}`, attribution: "&copy; Google",
     maxNativeZoom: 21, needsKey: true },
   streets: { label: "OSM", url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
     attribution: "&copy; OpenStreetMap contributors", maxNativeZoom: 19 },

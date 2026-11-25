@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { SaveSamples } from "./SamplesStore.jsx";
 import TrainSetup, { placeReady } from "./TrainSetup.jsx";
 import BasemapSource from "./BasemapSource.jsx";
-import { api, ENGINE_API } from "../../api/client.js";
+import { api, ENGINE_API, API_BASE } from "../../api/client.js";
 import { classColor, isArea, CHECK_AREA } from "../labels/AnnotationTool.jsx";
 import LabelTools from "../labels/LabelTools.jsx";
 import { IconChevronDown, IconClose, IconFolder, IconMap, IconUpload } from "../ui/Icons.jsx";
@@ -73,7 +73,7 @@ export default function TrainPanel({
   // an engine started before the last update runs old code: say so before a run fails
   const [engineOld, setEngineOld] = useState(false);
   useEffect(() => {
-    if (open && step === 3) fetch("/api/health").then((r) => r.json()).then((h) => setEngineOld((h.api || 0) < ENGINE_API)).catch(() => {});
+    if (open && step === 3) fetch(`${API_BASE}/health`).then((r) => r.json()).then((h) => setEngineOld((h.api || 0) < ENGINE_API)).catch(() => {});
   }, [open, step]);
   useEffect(() => { setPushJob(null); }, [ds?.job_id]);
 

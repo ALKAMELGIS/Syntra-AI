@@ -4,7 +4,7 @@
 // last used in it and clicking it picks that tool again. The keys are the same
 // as in the Train panel (LabelTools.jsx handles them).
 import React, { useEffect, useRef, useState } from "react";
-import { api, ENGINE_API } from "../../api/client.js";
+import { api, ENGINE_API, API_BASE } from "../../api/client.js";
 import { classColor, TRAIN_AREA, CHECK_AREA } from "./AnnotationTool.jsx";
 import {
   IconAreaDashed, IconCheck, IconGridDots, IconBoxAI, IconBoxSelect, IconClose, IconLasso, IconCircle, IconClickAI, IconPencil, IconPointer, IconPolygon,
@@ -105,7 +105,7 @@ export default function LabelRail({
   const [install, setInstall] = useState(null);
   const poll = useRef(null);
   const checkSeg = () => Promise.all([
-    fetch("/api/health").then((r) => r.json()).catch(() => null),
+    fetch(`${API_BASE}/health`).then((r) => r.json()).catch(() => null),
     api.segmentStatus().catch((e) => ({ ready: false, reason: e.message })),
   ]).then(([h, st]) => setSeg(!h ? { down: "The engine isn't answering. Run start-local.bat" }
     : (h.api || 0) < ENGINE_API ? { down: "The engine is out of date: close the Syntra engine window and run update.bat" } : st));

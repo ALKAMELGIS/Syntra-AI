@@ -1,0 +1,55 @@
+# Publishes the built interface straight to GitHub Pages using GitHub's own
+# Pages deployment, with no Cloudflare step involved at all. The frontend is
+# built with the engine's full Render URL baked in (VITE_API_BASE_URL), since
+# a GitHub Pages page and the Render engine are different origins and there is
+# no reverse proxy here to make them look same-origin; the engine allows that
+# origin through SYNTRA_CORS_ORIGINS (see backend/app/core/config.py) and the
+# session cookie is SameSite=None so sign-in still works across the two.
+#
+# One manual step this workflow cannot do itself: in the repo's
+# Settings > Pages, "Build and deployment > Source" must be set to
+# "GitHub Actions" (not "Deploy from a branch") for this to take effect.
+name: Deploy interface to GitHub Pages
+on:
+  push:
+    branches: [main]
+    paths:
+      - "frontend/**"
+      - ".github/workflows/deploy-pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Build the interface
+        working-directory: frontend
+        env:
+          VITE_API_BASE_URL: https://syntra-ai-engine.onrender.com/api
+        run: npm ci && npx vite build --base=/Syntra-AI/
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: frontend/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
