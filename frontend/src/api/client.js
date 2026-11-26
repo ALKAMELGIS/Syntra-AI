@@ -87,6 +87,87 @@ export const auth = {
   engineUp: () => fetch(`${BASE}/health`).then((r) => r.ok).catch(() => false),
 };
 
+const UPLOAD_CHUNK_BYTES = 16 * 1024 * 1024;   // one PUT; small enough to retry cheaply after a blip
+const UPLOAD_CHUNK_RETRIES = 5;
+
+// One chunk PUT with real upload-progress events (XHR, not fetch). Resolves
+// with { offset, complete }; rejects with an Error carrying .status and,
+// for a 409 offset mismatch, .serverOffset (the real offset to resync to).
+function putChunk(url, blob, offset, onChunkProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("PUT", url);
+    if (API_KEY) xhr.setRequestHeader("X-API-Key", API_KEY);
+    xhr.setRequestHeader("X-Upload-Offset", String(offset));
+    xhr.withCredentials = true;
+    xhr.upload.onprogress = (e) => { if (e.lengthComputable) onChunkProgress?.(e.loaded); };
+    xhr.onload = () => {
+      let body = {};
+      try { body = JSON.parse(xhr.responseText); } catch { /* non-JSON error body */ }
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(body);
+      } else {
+        const err = new Error(body.detail || `Upload chunk failed (HTTP ${xhr.status}).`);
+        err.status = xhr.status;
+        if (xhr.status === 409) {
+          const h = xhr.getResponseHeader("X-Upload-Offset");
+          if (h != null) err.serverOffset = Number(h);
+        }
+        reject(err);
+      }
+    };
+    xhr.onerror = () => { const err = new Error("network"); err.status = 0; reject(err); };
+    xhr.send(blob);
+  });
+}
+
+async function uploadResumable(file, onProgress, metadataFile = null) {
+  if (!file.name.toLowerCase().endsWith(".tif") && !file.name.toLowerCase().endsWith(".tiff")) {
+    throw new Error("Only GeoTIFF (.tif/.tiff) uploads are supported.");
+  }
+  const { key, offset: startOffset } = await request(`${BASE}/images/resumable`, json({
+    name: file.name, size: file.size, modified: String(file.lastModified || 0),
+  })).then(handle);
+
+  let offset = startOffset;
+  onProgress?.(offset / file.size);
+  while (offset < file.size) {
+    const end = Math.min(offset + UPLOAD_CHUNK_BYTES, file.size);
+    const blob = file.slice(offset, end);
+    const base = offset;
+    let attempt = 0;
+    for (;;) {
+      try {
+        const result = await putChunk(`${BASE}/images/resumable/${key}`, blob, offset, (loaded) => {
+          onProgress?.((base + loaded) / file.size);
+        });
+        offset = result.offset;
+        break;
+      } catch (err) {
+        if (err.status === 409 && Number.isFinite(err.serverOffset)) {
+          // another tab, or a retried chunk the server already has: resync and retry from there
+          offset = err.serverOffset;
+          break;
+        }
+        if (err.status !== 0 || ++attempt > UPLOAD_CHUNK_RETRIES) {
+          const up = await fetch(`${BASE}/health`).then((r) => r.ok).catch(() => false);
+          if (err.status === 0) {
+            throw new Error(up
+              ? `The upload was cut off (at ${Math.round((100 * offset) / file.size)}%). The server kept what arrived — try again with the same file to continue from there, instead of from the start.`
+              : "Couldn't reach the Syntra AI server. Check that the backend window is still open, then try again with the same file to continue from where it left off.");
+          }
+          throw err;
+        }
+        await new Promise((r) => setTimeout(r, 500 * 2 ** (attempt - 1)));   // 0.5s, 1s, 2s, 4s, 8s
+      }
+    }
+  }
+
+  const form = new FormData();
+  if (metadataFile) form.append("metadata", metadataFile);
+  return request(`${BASE}/images/resumable/${key}/finish`, { method: "POST", body: form }).then(handle);
+}
+
 export const api = {
   libraryPushModel: (group, body) => request(`${BASE}/library/${encodeURIComponent(group)}/push`, json(body)).then(handle),
   googleBasemap: () => request(`${BASE}/basemaps/google`).then(handle),
@@ -156,45 +237,13 @@ export const api = {
   deleteModel: (modelId) => request(`${BASE}/models/${modelId}`, { method: "DELETE" }).then(handle),
   listImages: () => request(`${BASE}/images`).then(handle),
   getImage: (imageId) => request(`${BASE}/images/${imageId}`).then(handle),
-  // Uses XMLHttpRequest (not fetch) because only XHR exposes real upload
-  // progress events — needed for honest percentage feedback on multi-GB
-  // GeoTIFF uploads, instead of a static "Uploading…" that looks frozen.
-  uploadImage: (file, onProgress, metadataFile = null) =>
-    new Promise((resolve, reject) => {
-      const form = new FormData();
-      form.append("file", file);
-      if (metadataFile) form.append("metadata", metadataFile);
-      const xhr = new XMLHttpRequest();
-      xhr.open("POST", `${BASE}/images`);
-      if (API_KEY) xhr.setRequestHeader("X-API-Key", API_KEY);
-      let sent = 0;
-      xhr.upload.onprogress = (e) => {
-        if (!e.lengthComputable) return;
-        sent = Math.round((100 * e.loaded) / e.total);
-        onProgress?.(e.loaded / e.total);
-      };
-      xhr.onload = () => {
-        let body = {};
-        try { body = JSON.parse(xhr.responseText); } catch { /* non-JSON error body */ }
-        if (xhr.status >= 200 && xhr.status < 300) {
-          resolve(body);
-        } else {
-          if (xhr.status === 401) window.dispatchEvent(new Event(SIGNED_OUT));
-          const detail = body.detail;
-          const message = failureMessage(xhr.status, detail, true);
-          const err = new Error(message);
-          err.detail = detail;
-          reject(err);
-        }
-      };
-      // The browser can't tell why a connection dropped; ask the server whether it is up.
-      xhr.onerror = () => {
-        fetch(`${BASE}/health`).then((r) => r.ok).catch(() => false).then((up) => reject(new Error(up
-          ? `The upload was cut off at ${sent}%. The server is running: try again, or open the file from the This PC tab, which needs no upload.`
-          : "Couldn't reach the Syntra AI server. Check that the backend window is still open, then try again.")));
-      };
-      xhr.send(form);
-    }),
+  // Sent in chunks, resumable by the file's own identity (name, size, last
+  // modified), not by anything the browser remembers: a File object cannot
+  // survive a crash or a reload anyway, so re-picking the same file in the
+  // chooser after one continues from the byte already on the server instead
+  // of starting over. Uses XMLHttpRequest for each chunk PUT (not fetch)
+  // because only XHR exposes real upload progress events.
+  uploadImage: (file, onProgress, metadataFile = null) => uploadResumable(file, onProgress, metadataFile),
   devices: () => request(`${BASE}/compute`).then(handle),
   startPrediction: (payload) =>
     request(`${BASE}/predict`, {

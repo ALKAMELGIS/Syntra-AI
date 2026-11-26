@@ -260,6 +260,176 @@ async def upload_image(file: UploadFile, background_tasks: BackgroundTasks, requ
     return _claim(await _register(dest, filename, image_id, background_tasks), request)
 
 
+# ---------------------------------------------------------------------------
+# Resumable upload: a large GeoTIFF sent over the internet (as opposed to the
+# This PC tab, which needs no network at all) can be interrupted by a dropped
+# connection, a browser crash, or an accidental tab close. Re-sending the
+# whole file from byte 0 every time is what actually made a slow link feel
+# unusable, not anything about how the bytes are processed once they arrive.
+#
+# The key is derived from the file's own identity (name, size, last-modified)
+# plus the acting user, not handed out and remembered by the browser: a File
+# object cannot survive a reload anyway, so what "resuming" means in practice
+# is that re-selecting the same file in the picker after a crash is recognised
+# as the same upload and continues from the byte already on disk, instead of
+# starting over. Chunks are appended in order (X-Upload-Offset must match the
+# partial file's current size exactly), so a retried chunk after a network
+# blip is simply rejected with the real offset instead of corrupting the file.
+# ---------------------------------------------------------------------------
+_RESUMABLE_DIR_NAME = "_resumable"
+_MAX_CHUNK_BYTES = 64 * 1024 * 1024       # one PUT; the frontend sends chunks well under this
+_RESUMABLE_MAX_AGE_DAYS = 14               # an abandoned upload is swept away after this long
+
+
+def _resumable_dir() -> Path:
+    d = settings.UPLOAD_DIR / _RESUMABLE_DIR_NAME
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _resumable_key(owner: int | None, name: str, size: int, modified: str) -> str:
+    import hashlib
+
+    raw = f"{owner if owner is not None else ''}:{name}:{size}:{modified}"
+    return hashlib.sha256(raw.encode()).hexdigest()[:40]
+
+
+def _resumable_paths(key: str) -> tuple[Path, Path]:
+    import re
+
+    if not re.fullmatch(r"[0-9a-f]{40}", key or ""):
+        raise HTTPException(status_code=400, detail="Invalid upload key.")
+    d = _resumable_dir()
+    return d / f"{key}.part", d / f"{key}.json"
+
+
+def _sweep_stale_resumables() -> None:
+    import time
+
+    cutoff = time.time() - _RESUMABLE_MAX_AGE_DAYS * 86400
+    for meta in _resumable_dir().glob("*.json"):
+        try:
+            if meta.stat().st_mtime < cutoff:
+                meta.unlink(missing_ok=True)
+                meta.with_suffix(".part").unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
+class ResumableStart(BaseModel):
+    name: str
+    size: int
+    modified: str = "0"
+
+
+@router.post("/resumable")
+async def resumable_start(body: ResumableStart, request: Request):
+    """Begin a chunked upload, or report how far an already-started one got."""
+    import json
+
+    from app.core.auth import acting_user_id
+
+    filename = safe_filename(body.name)
+    if not filename.lower().endswith(_RASTER_EXT):
+        raise HTTPException(status_code=400, detail="Only GeoTIFF (.tif/.tiff) uploads are supported.")
+    max_bytes = settings.MAX_UPLOAD_MB * 1024 * 1024
+    if body.size <= 0 or body.size > max_bytes:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File exceeds the {settings.MAX_UPLOAD_MB} MB upload limit (SYNTRA_MAX_UPLOAD_MB).",
+        )
+
+    await run_in_threadpool(_sweep_stale_resumables)
+    uid = acting_user_id(request)
+    key = _resumable_key(uid, filename, body.size, body.modified)
+    part, meta = _resumable_paths(key)
+    if part.exists() and meta.exists():
+        offset = part.stat().st_size
+    else:
+        part.write_bytes(b"")
+        meta.write_text(json.dumps({"name": filename, "size": body.size, "owner": uid}), encoding="utf-8")
+        offset = 0
+    return {"key": key, "offset": offset}
+
+
+@router.put("/resumable/{key}")
+async def resumable_chunk(key: str, request: Request):
+    """Append one chunk at the offset the client believes it is at. A mismatch
+    (a retried chunk, two tabs racing) is refused with the real offset in a
+    header rather than silently duplicating or corrupting bytes."""
+    import json
+
+    part, meta = _resumable_paths(key)
+    if not part.exists() or not meta.exists():
+        raise HTTPException(status_code=404, detail="No upload in progress with this key. Start again.")
+    info = json.loads(meta.read_text(encoding="utf-8"))
+
+    try:
+        claimed_offset = int(request.headers.get("x-upload-offset", "-1"))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Missing or invalid X-Upload-Offset header.")
+    current = part.stat().st_size
+    if claimed_offset != current:
+        raise HTTPException(status_code=409, detail="Offset mismatch.", headers={"X-Upload-Offset": str(current)})
+
+    content_length = int(request.headers.get("content-length") or 0)
+    if content_length <= 0 or content_length > _MAX_CHUNK_BYTES:
+        raise HTTPException(status_code=413, detail=f"Each chunk must be under {_MAX_CHUNK_BYTES // (1024 * 1024)} MB.")
+    if current + content_length > info["size"]:
+        raise HTTPException(status_code=400, detail="Chunk would exceed the file's declared size.")
+
+    chunk = await request.body()
+
+    def _append() -> int:
+        with part.open("ab") as f:
+            f.write(chunk)
+        return part.stat().st_size
+
+    new_offset = await run_in_threadpool(_append)
+    return {"offset": new_offset, "complete": new_offset >= info["size"]}
+
+
+@router.post("/resumable/{key}/finish")
+async def resumable_finish(key: str, background_tasks: BackgroundTasks, request: Request, metadata: UploadFile | None = None):
+    """All bytes are in: move the partial file into the library (same disk,
+    so this is instant, not a second copy) and run the normal import."""
+    import json
+
+    part, meta = _resumable_paths(key)
+    if not part.exists() or not meta.exists():
+        raise HTTPException(status_code=404, detail="No upload in progress with this key.")
+    info = json.loads(meta.read_text(encoding="utf-8"))
+    size_now = part.stat().st_size
+    if size_now != info["size"]:
+        raise HTTPException(status_code=409, detail=f"Upload is not complete yet ({size_now} of {info['size']} bytes).")
+
+    image_id = str(uuid.uuid4())
+    dest = _library_path(image_id, info["name"])
+    await run_in_threadpool(lambda: part.replace(dest))
+    meta.unlink(missing_ok=True)
+
+    if metadata is not None and metadata.filename:
+        if not safe_filename(metadata.filename).lower().endswith(".xml"):
+            dest.unlink(missing_ok=True)
+            raise HTTPException(status_code=400, detail="Product metadata must be an .xml file.")
+        xml_bytes = await metadata.read(2 * 1024 * 1024 + 1)
+        if len(xml_bytes) > 2 * 1024 * 1024:
+            raise HTTPException(status_code=413, detail="Product metadata XML is larger than 2 MB.")
+        dest.with_suffix(".xml").write_bytes(xml_bytes)
+
+    return _claim(await _register(dest, info["name"], image_id, background_tasks), request)
+
+
+@router.delete("/resumable/{key}")
+async def resumable_cancel(key: str):
+    """The user discarded the upload: free the partial bytes right away
+    instead of waiting for the stale-upload sweep."""
+    part, meta = _resumable_paths(key)
+    part.unlink(missing_ok=True)
+    meta.unlink(missing_ok=True)
+    return Response(status_code=204)
+
+
 def _library_path(image_id: str, filename: str) -> Path:
     """images/<key>/<name>.tif: one folder per image (app.core.layout)."""
     from app.core.layout import image_key
