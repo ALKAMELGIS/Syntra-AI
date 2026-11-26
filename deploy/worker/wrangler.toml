@@ -8,7 +8,7 @@
 # Builds) only has to run `npx wrangler deploy`, no build command needed.
 name = "syntra-ai"
 main = "src/index.js"
-compatibility_date = "2026-11-25"
+compatibility_date = "2026-11-26"
 
 [assets]
 directory = "./public"
