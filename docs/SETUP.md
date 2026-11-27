@@ -75,3 +75,17 @@ restart: accounts, credits and images are kept only if a storage bucket is mount
 
 `docker compose up --build` builds the engine (Python 3.13, CPU) and the interface behind nginx.
 Not yet run end to end.
+
+
+## Keeping data on the Hugging Face Space
+
+A Space's disk is wiped on every restart, and on ZeroGPU a mounted storage bucket
+can't be written to. Syntra copies its data folder (accounts, images, labels,
+results, trained models) to a private dataset repo instead:
+
+1. Create a token with **Write** access: huggingface.co > Settings > Access Tokens.
+2. In the Space's Settings > Variables and secrets add the secret `HF_TOKEN` (the
+   token) and the variable `SYNTRA_SYNC_REPO`, e.g. `Alkamelgis/syntra-data`.
+3. Restart the Space. The repo is made private if missing, the data comes back
+   from it at every start and changes are sent every 2 minutes
+   (`SYNTRA_SYNC_EVERY` seconds). Train > Setup shows "Data kept".

@@ -21,8 +21,11 @@ def hosting():
     zero_gpu   the Space is on ZeroGPU: a GPU lent for short calls (60 s by default,
                5 min a day on a free account), too little to train; Spaces set SPACES_ZERO_GPU
     train_gpu  a GPU this engine can train on (CUDA, and not ZeroGPU)
+    data_sync  on a Space: is the data folder kept across restarts (SYNTRA_SYNC_REPO), last save
     """
     import os
+
+    from app.core import space_sync
 
     inv = list_devices()
     space = os.getenv("SPACE_ID") or None
@@ -34,4 +37,5 @@ def hosting():
         "zero_gpu": zero,
         "gpu_name": gpus[0].get("name") if gpus else None,
         "train_gpu": bool(gpus) and not zero,
+        "data_sync": space_sync.status(),
     }

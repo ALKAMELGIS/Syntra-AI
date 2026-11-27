@@ -7,11 +7,14 @@ Space settings (Settings > Variables and secrets):
   SYNTRA_OWNER_PASSWORD  secret: with it the owner account is made again at every start
                        while the disk is empty, so a restart doesn't ask for it again
   SYNTRA_PUBLIC_URL    https://alkamelgis-syntra-ai.hf.space (OAuth and Stripe return addresses)
+  SYNTRA_SYNC_REPO     e.g. Alkamelgis/syntra-data: a private dataset repo the data folder is
+                       copied to every 2 minutes and restored from at start (app/core/space_sync.py)
+  HF_TOKEN             secret: a token with write access to that repo
   SENTINELHUB_INSTANCE_ID, … as in backend/.env.example
 
 Storage: a Space's disk is reset when it restarts or is rebuilt. Accounts, credits,
-images and results live in SYNTRA_DATA_DIR: /data when a storage bucket is mounted
-there, otherwise ./data (lost on restart).
+images and results live in SYNTRA_DATA_DIR: /data when a writable storage bucket is
+mounted there, otherwise ./data, kept across restarts by the data sync above.
 """
 import os
 import sys
@@ -35,7 +38,14 @@ try:                                   # ZeroGPU hardware: import spaces before 
 except ImportError:                    # CPU hardware or a local run
     spaces = None
 
+from app.core import space_sync  # noqa: E402
+
+# the data folder comes back from the Hub before anything opens it (SYNTRA_SYNC_REPO + HF_TOKEN)
+print(space_sync.restore_at_start(Path(os.environ["SYNTRA_DATA_DIR"])), flush=True)
+
 from app.main import app  # noqa: E402
+
+space_sync.start_saving()
 
 try:                                   # a small Gradio page at /gradio: the SDK this Space runs on
     import gradio as gr

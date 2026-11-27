@@ -81,6 +81,14 @@ export default function TrainSetup({ open, where, onWhere, hosting, rp, onRefres
             : "CPU"}
         </Option>
       </div>
+      {space && (
+        <p className="setup-sync">
+          <span className={`setup-dot ${hosting.data_sync?.on && !hosting.data_sync.error ? "ok" : "bad"}`} aria-hidden="true" />
+          {hosting.data_sync?.on
+            ? <>Data kept · <span className="mono">{hosting.data_sync.repo}</span>{hosting.data_sync.error ? <span className="train-error"> · {hosting.data_sync.error}</span> : null}</>
+            : <>Data lost on restart · <a href={`https://huggingface.co/spaces/${space}/settings`} target="_blank" rel="noreferrer">Add SYNTRA_SYNC_REPO and HF_TOKEN</a></>}
+        </p>
+      )}
 
       {where === "local" && local && (
         <>
