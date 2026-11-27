@@ -12,6 +12,17 @@ same fix as converting to a Cloud-Optimized GeoTIFF:
 
 Only the copy in the upload folder is changed; pixels, georeferencing,
 no-data, band order, colour interpretation and masks are kept exactly.
+
+This rewrite is the CPU-bound step in importing a large, high-resolution
+drone GeoTIFF (most consumer drone software exports plain strips, not an
+already-tiled/COG file, so `needs_optimizing` fires for them). It runs in
+a background job, after the image is already usable, but on a shared,
+single-vCPU host it is still the slow part the user actually waits on.
+DEFLATE's default zlib compression level (6) trades CPU time for a smaller
+file; `zlevel=1` here spends far less CPU for a lossless file that is only
+slightly larger on disk -- a fair trade for working storage that nothing
+else reads directly (predict, map tiles and overviews all decode it either
+way, and the user's own original upload is never touched or recompressed).
 """
 from __future__ import annotations
 
@@ -58,7 +69,8 @@ def optimize(path: str | Path, progress=lambda pct: None) -> dict:
         with rasterio.open(path) as src:
             profile = src.profile.copy()
             profile.update(driver="GTiff", tiled=True, blockxsize=512, blockysize=512,
-                           compress="deflate", predictor=2 if src.dtypes[0] in ("uint8", "uint16", "int16") else 1,
+                           compress="deflate", zlevel=1,
+                           predictor=2 if src.dtypes[0] in ("uint8", "uint16", "int16") else 1,
                            BIGTIFF="IF_SAFER", interleave="pixel")
             profile.pop("photometric", None)
             per_dataset_mask = MaskFlags.per_dataset in src.mask_flag_enums[0] and src.nodata is None \
