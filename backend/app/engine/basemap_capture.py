@@ -44,9 +44,24 @@ class CaptureError(ValueError):
     pass
 
 
+def arcgis_template(url: str) -> str:
+    """An ArcGIS MapServer address as pasted (…/MapServer, ?f=jsapi or the like) -> its
+    cached tiles' URL, …/MapServer/tile/{z}/{y}/{x}. Other URLs come back as they are."""
+    t = (url or "").strip()
+    if "{z}" in t:
+        return t
+    base = t.split("?")[0].split("#")[0].rstrip("/")
+    for tail in ("/MapServer", "/ImageServer"):
+        i = base.lower().rfind(tail.lower())
+        if i != -1 and base[i + len(tail):] in ("", "/tile"):
+            return base[:i + len(tail)] + "/tile/{z}/{y}/{x}"
+    return t
+
+
 def check_url(template: str) -> str:
-    """A custom tile URL: http(s), {z} {x} {y}, a public host, not one whose terms forbid this."""
-    t = (template or "").strip()
+    """A custom tile URL: http(s), {z} {x} {y}, a public host, not one whose terms forbid this.
+    An ArcGIS MapServer address is turned into its tile URL first."""
+    t = arcgis_template(template)
     parts = urlsplit(t.replace("{", "").replace("}", ""))
     if parts.scheme not in ("http", "https") or not parts.hostname:
         raise CaptureError("Give a tile URL starting with https://")

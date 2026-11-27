@@ -33,8 +33,10 @@ function estimate(b, z) {
 
 export default function BasemapSource({ aoi, onImage }) {
   const [srcs, setSrcs] = useState(null);
-  const [source, setSource] = useState("usgs");
-  const [url, setUrl] = useState("");
+  const [source, setSource] = useState(() => { try { return localStorage.getItem("syntra_basemap_url") ? "custom" : "usgs"; } catch { return "usgs"; } });
+  // the last service used is kept in this browser
+  const [url, setUrlState] = useState(() => { try { return localStorage.getItem("syntra_basemap_url") || ""; } catch { return ""; } });
+  const setUrl = (v) => { setUrlState(v); try { localStorage.setItem("syntra_basemap_url", v); } catch { /* private mode */ } };
   const [zoom, setZoom] = useState(16);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
@@ -61,13 +63,13 @@ export default function BasemapSource({ aoi, onImage }) {
       <label className="train-field">Imagery
         <select className="train-select" value={source} onChange={(e) => setSource(e.target.value)}>
           {(srcs?.sources || []).map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
-          <option value="custom">Your tile service (XYZ URL)</option>
+          <option value="custom">Your service (XYZ or ArcGIS MapServer)</option>
           {BLOCKED.map(([id, l]) => <option key={id} value={id} disabled>{l}: not allowed</option>)}
         </select>
       </label>
       {source === "custom" && (
         <input className="train-input mono" value={url} onChange={(e) => setUrl(e.target.value)} spellCheck={false}
-               placeholder="https://tiles.example.com/{z}/{x}/{y}.jpg" aria-label="Tile URL" />
+               placeholder="XYZ tile URL or ArcGIS …/MapServer" aria-label="Tile URL" />
       )}
       {src && source !== "custom" && <p className="train-dim">{src.licence}</p>}
       <label className="train-field">Zoom

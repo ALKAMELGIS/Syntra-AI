@@ -82,3 +82,14 @@ def test_api_adds_the_area_to_the_library(tmp_path, monkeypatch):
     assert c.post("/api/images/from-basemap", json={"source": "usgs", "bbox": [-77.04, 38.89, -77.03, 38.90], "zoom": 19}).status_code == 422
     assert c.post("/api/images/from-basemap", json={"source": "custom", "url": "https://mt0.google.com/vt?x={x}&y={y}&z={z}",
                                                     "bbox": [-77.04, 38.89, -77.03, 38.90], "zoom": 16}).status_code == 422
+
+
+def test_an_arcgis_mapserver_address_becomes_its_tile_url():
+    from app.engine.basemap_capture import arcgis_template
+    base = "https://maps.example.ae/agsimage/rest/services/Sat/AD_2026_WM/MapServer"
+    want = base + "/tile/{z}/{y}/{x}"
+    assert arcgis_template(base + "?f=jsapi") == want
+    assert arcgis_template(base + "/") == want
+    assert arcgis_template(base + "/tile") == want
+    assert arcgis_template(want) == want
+    assert arcgis_template("https://tiles.example.com/a.png") == "https://tiles.example.com/a.png"
