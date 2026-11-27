@@ -86,6 +86,9 @@ function viewRings(map, annotations = [], skipId = null) {
   return out;
 }
 
+const DRAGS = ["rect", "square", "circle", "ellipse"];   // drawn by dragging a box or radius
+const LINES = ["split", "reshape"];                        // a line, ended by double-click or Enter
+
 const VX = L.divIcon({ className: "edit-vx", iconSize: [10, 10] });
 const MID = L.divIcon({ className: "edit-mid", iconSize: [8, 8] });
 const ROT = L.divIcon({ className: "edit-rot", iconSize: [14, 14] });
@@ -93,13 +96,13 @@ const ROT = L.divIcon({ className: "edit-rot", iconSize: [14, 14] });
 export default function AnnotationLayer({
   visible, mode, className, annotations = [], onDrawn, onShapeClick, onSegment, exact, onPreview,
   editable = false, editId = null, onEdit, onUpdate, onDeleteSelected,
-  selectedIds = [], onSelect, onSegmentAll, onDrawnMany, onPrepare, snap = false, onSplit,
+  selectedIds = [], onSelect, onSegmentAll, onDrawnMany, onPrepare, snap = false, onSplit, onCut, onReshape,
 }) {
   const map = useMap();
   const st = useRef({});
   const group = useRef(null);
   const live = useRef({ onDrawn, onSegment, onPreview, exact });
-  live.current = { onDrawn, onSegment, onPreview, exact, onEdit, onUpdate, onDeleteSelected, onSelect, annotations, onSegmentAll, onDrawnMany, onPrepare, snap, onSplit };
+  live.current = { onDrawn, onSegment, onPreview, exact, onEdit, onUpdate, onDeleteSelected, onSelect, annotations, onSegmentAll, onDrawnMany, onPrepare, snap, onSplit, onCut, onReshape };
   const selKey = selectedIds.join(",");
 
   // saved labels
@@ -317,7 +320,7 @@ export default function AnnotationLayer({
     map.on("moveend", dropRings);
     const snapRings = () => rings || (rings = viewRings(map, live.current.annotations));
     const snapDot = L.circleMarker([0, 0], { radius: 5, color: "#0d0f12", weight: 2, fillColor: "#ffffff", fillOpacity: 1, interactive: false });
-    const SNAPS = ["polygon", "curve", "trace", "split", "rect", "square", "circle"];
+    const SNAPS = ["polygon", "curve", "trace", "split", "reshape", "cut", "rect", "square", "circle", "ellipse"];
     function snapped(e) {
       if (!SNAPS.includes(mode) || !e.latlng) return e;
       const on = (mode === "trace" || live.current.snap) && !e.originalEvent?.ctrlKey;
@@ -335,6 +338,17 @@ export default function AnnotationLayer({
       return r ? tracePath(r.ring, from, hit).map(ll) : [];
     }
     const curve = (latlngs) => smoothClosed(latlngs.map(px), 12).map(ll);
+
+    // an ellipse inside the dragged box (Shift: a circle in it)
+    function ellipseIn(a, b, round) {
+      let w = b.x - a.x, h = b.y - a.y;
+      if (round) { const m = Math.max(Math.abs(w), Math.abs(h)); w = Math.sign(w || 1) * m; h = Math.sign(h || 1) * m; }
+      const cx = a.x + w / 2, cy = a.y + h / 2;
+      return Array.from({ length: 48 }, (_, i) => {
+        const t = (i / 48) * 2 * Math.PI;
+        return ll(L.point(cx + (Math.abs(w) / 2) * Math.cos(t), cy + (Math.abs(h) / 2) * Math.sin(t)));
+      });
+    }
 
     function rectFrom(a, b, square, fromCentre) {
       let dx = b.x - a.x, dy = b.y - a.y;
@@ -447,7 +461,7 @@ export default function AnnotationLayer({
       if (e0.originalEvent.button === 2) return;
       const e = snapped(e0);
       const p = px(e.latlng);
-      if (mode === "rect" || mode === "square" || mode === "circle") {
+      if (DRAGS.includes(mode)) {
         if (s.points.length) return;                        // 3-click rectangle in progress: clicks only
         s.start = p; s.drag = false;
       } else if (mode === "freehand") {
@@ -481,11 +495,15 @@ export default function AnnotationLayer({
       const e = e0.snap === undefined ? snapped(e0) : e0;
       const p = px(e.latlng);
       const ev = e.originalEvent;
-      if ((mode === "rect" || mode === "square" || mode === "circle") && s.start) {
+      if (DRAGS.includes(mode) && s.start) {
         if (!s.drag && s.start.distanceTo(p) < 4) return;
         s.drag = true;
         clear();
-        if (mode === "circle") {
+        if (mode === "ellipse") {
+          const pts = ellipseIn(s.start, p, ev.shiftKey);
+          shape(pts);
+          say(e.latlng, sizeText(rectFrom(s.start, p, ev.shiftKey, false)));
+        } else if (mode === "circle") {
           shape(circleAround(s.start, p));
           add(L.polyline([ll(s.start), e.latlng], { color: "#fff", weight: 1, dashArray: "3 3", interactive: false }));
           say(e.latlng, `r ${fmtM(map.distance(ll(s.start), e.latlng))}`);
@@ -504,7 +522,13 @@ export default function AnnotationLayer({
           shape(pts);
           say(e.latlng, sizeText(pts));
         }
-      } else if (mode === "split" && s.points.length) {
+      } else if (mode === "cut" && s.points.length) {
+        clear();
+        const pts = [...s.points, e.latlng];
+        if (pts.length > 2) add(L.polygon(pts, { color: "#ff6b5e", weight: 1.5, dashArray: "5 4", fillColor: "#ff6b5e", fillOpacity: 0.12, interactive: false }));
+        else add(L.polyline(pts, { color: "#ff6b5e", weight: 2, dashArray: "5 4", interactive: false }));
+        for (const q of s.points) add(L.circleMarker(q, { radius: 4, color: "#fff", weight: 1.5, fillColor: "#0d0f12", fillOpacity: 1, interactive: false }));
+      } else if (LINES.includes(mode) && s.points.length) {
         clear();
         const pts = [...s.points, e.latlng];
         add(L.polyline(pts, { ...HALO, weight: 4 }));
@@ -552,12 +576,15 @@ export default function AnnotationLayer({
       const e = snapped(e0);
       const p = px(e.latlng);
       const ev = e.originalEvent;
-      if ((mode === "rect" || mode === "square" || mode === "circle") && s.start) {
+      if (DRAGS.includes(mode) && s.start) {
         const start = s.start;
         s.start = null;
         if (s.drag) {
           s.drag = false;
-          if (mode === "circle") {
+          if (mode === "ellipse") {
+            if (start.distanceTo(p) < 3) { clear(); say(null); return; }
+            finish(ellipseIn(start, p, ev.shiftKey), { tool: "ellipse", shape: "smooth" });
+          } else if (mode === "circle") {
             if (start.distanceTo(p) < 3) { clear(); say(null); return; }
             finish(circleAround(start, p), { tool: "circle", shape: "circle" });
           } else {
@@ -598,7 +625,7 @@ export default function AnnotationLayer({
     function click(e0) {
       const e = snapped(e0);
       const ev = e.originalEvent;
-      if (mode === "polygon" || mode === "curve" || mode === "split") {
+      if (mode === "polygon" || mode === "curve" || mode === "cut" || LINES.includes(mode)) {
         s.points.push(e.latlng);
         move(e);
       } else if (mode === "trace") {
@@ -629,24 +656,29 @@ export default function AnnotationLayer({
     }
     // close the shape being clicked out (polygon, curve, trace) or end the split line
     function close(pts) {
-      if (mode === "split") {
+      if (LINES.includes(mode)) {
         if (pts.length < 2) return false;
         clear(); say(null); s.points = []; map.removeLayer(snapDot);
-        live.current.onSplit?.(pts);
+        (mode === "split" ? live.current.onSplit : live.current.onReshape)?.(pts);
         return true;
       }
       if (pts.length < 3) return false;
+      if (mode === "cut") {
+        clear(); say(null); s.points = []; map.removeLayer(snapDot);
+        live.current.onCut?.(pts);
+        return true;
+      }
       if (mode === "curve") finish(curve(pts), { tool: "curve", shape: "smooth" });
       else finish(pts, { tool: mode, shape: "polygon" });
       s.hit = null; map.removeLayer(snapDot);
       return true;
     }
-    const CLOSES = ["polygon", "curve", "trace", "split"];
+    const CLOSES = ["polygon", "curve", "trace", "cut", ...LINES];
     function dbl() {
       if (!CLOSES.includes(mode)) return;
       // the double-click's two clicks added one extra point at the same spot
       const pts = s.points.slice(0, -1);
-      close(pts.length >= (mode === "split" ? 2 : 3) ? pts : s.points);
+      close(pts.length >= (LINES.includes(mode) ? 2 : 3) ? pts : s.points);
     }
     function key(e) {
       const t = e.target;

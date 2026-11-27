@@ -216,3 +216,12 @@ export const IconRadius = (p) => (
 export const IconEditShape = (p) => (
   <svg {...base} {...p}><path d="M5 19 19 5" /><rect x="3" y="17" width="4" height="4" /><rect x="10" y="10" width="4" height="4" /><rect x="17" y="3" width="4" height="4" /></svg>
 );
+export const IconEllipse = (p) => (
+  <svg {...base} {...p}><ellipse cx="12" cy="12" rx="9" ry="6" /></svg>
+);
+export const IconCut = (p) => (
+  <svg {...base} {...p}><path d="M4 5h16v14H4Z" /><path d="M12 9h9v10h-9Z" strokeDasharray="2 2" /></svg>
+);
+export const IconReshape = (p) => (
+  <svg {...base} {...p}><path d="M4 20V9h16v11Z" /><path d="M8 9c0-5 8-5 8 0" strokeDasharray="2 2" /></svg>
+);

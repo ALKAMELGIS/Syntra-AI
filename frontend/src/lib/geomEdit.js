@@ -98,6 +98,71 @@ export function splitRing(ring, line) {
   return a.length && b.length && parts.length >= 2 ? parts : [];
 }
 
+// Take a drawn area out of a polygon. Returns the parts left (none when the
+// area covers it all), or null when the polygon would be left with a hole: a
+// training label can't hold one (YOLO polygons have a single outline).
+export function cutRing(ring, area) {
+  let out;
+  try { out = pc.difference(toPc(ring), toPc(area)); } catch { return [ring]; }
+  if (out.some((poly) => poly.length > 1)) return null;
+  const min = ringArea(ring) * 1e-4;
+  return fromPc(out).filter((r) => r.length >= 3 && ringArea(r) > min);
+}
+
+function segHit(p, q, a, b) {
+  const r = { x: q.x - p.x, y: q.y - p.y }, s = { x: b.x - a.x, y: b.y - a.y };
+  const den = r.x * s.y - r.y * s.x;
+  if (Math.abs(den) < 1e-12) return null;
+  const t = ((a.x - p.x) * s.y - (a.y - p.y) * s.x) / den;
+  const u = ((a.x - p.x) * r.y - (a.y - p.y) * r.x) / den;
+  return t >= 0 && t <= 1 && u >= 0 && u <= 1 ? { t, u } : null;
+}
+
+// The ring's vertices walking from position a to position b ({i, t}), forwards
+// (dir 1) or backwards (dir -1), without the end points.
+function walk(ring, a, b, dir) {
+  const n = ring.length, out = [];
+  if (dir > 0) {
+    if (a.i === b.i && a.t <= b.t) return out;
+    for (let k = (a.i + 1) % n, g = 0; g <= n; g++, k = (k + 1) % n) { out.push(ring[k]); if (k === b.i) break; }
+  } else {
+    if (a.i === b.i && a.t >= b.t) return out;
+    for (let k = a.i, g = 0; g <= n; g++, k = (k - 1 + n) % n) { out.push(ring[k]); if (k === (b.i + 1) % n) break; }
+  }
+  return out;
+}
+
+// Reshape (as in ArcGIS): a line that crosses the outline twice replaces the
+// outline between those crossings. Drawn outside it adds area, inside it takes
+// some away; of the two outlines this could give, the larger is kept. The line's
+// ends may stop just short of the outline (tol): they are put onto it.
+export function reshapeRing(ring, line, tol = 0) {
+  if (ring.length < 3 || line.length < 2) return null;
+  const pts = line.slice();
+  for (const k of [0, pts.length - 1]) {
+    const n = nearestOnRing(pts[k], ring);
+    if (n.d <= tol) pts[k] = n.q;
+  }
+  const hits = [];
+  for (let j = 0; j < pts.length - 1; j++) {
+    for (let i = 0; i < ring.length; i++) {
+      const h = segHit(pts[j], pts[j + 1], ring[i], ring[(i + 1) % ring.length]);
+      if (h) hits.push({ j, along: j + h.t, i, t: Math.min(h.u, 1 - 1e-9) });
+    }
+  }
+  if (hits.length < 2) return null;
+  hits.sort((a, b) => a.along - b.along);
+  const first = hits[0], last = hits[hits.length - 1];
+  const at = (h) => ({ x: pts[h.j].x + (pts[h.j + 1].x - pts[h.j].x) * (h.along - h.j), y: pts[h.j].y + (pts[h.j + 1].y - pts[h.j].y) * (h.along - h.j) });
+  const mid = [at(first)];
+  for (let j = first.j + 1; j <= last.j; j++) mid.push(pts[j]);
+  mid.push(at(last));
+  const a = [...mid, ...walk(ring, last, first, 1)];
+  const b = [...mid, ...walk(ring, last, first, -1)];
+  const best = ringArea(a) >= ringArea(b) ? a : b;
+  return best.length >= 3 ? best : null;
+}
+
 // Union of rings: one ring when they touch or overlap, else each part.
 export function mergeRings(rings) {
   if (rings.length < 2) return rings;

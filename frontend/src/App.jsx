@@ -13,7 +13,7 @@ import { api } from "./api/client.js";
 import { getPref, detectionOptions } from "./lib/prefs.js";
 import L from "leaflet";
 import { isArea } from "./components/labels/AnnotationTool.jsx";
-import { splitRing, mergeRings } from "./lib/geomEdit.js";
+import { splitRing, mergeRings, cutRing, reshapeRing, ringArea } from "./lib/geomEdit.js";
 
 const PALETTE = ["#5b8cff", "#b48ead", "#f5a623", "#ff5d6c", "#c678dd", "#56c7d6", "#e8a87c", "#a8e6cf"];
 
@@ -323,6 +323,35 @@ export default function App({ user = null, onSignOut = null }) {
     if (!old.length) { setLabelError("The line doesn't cross a label: draw it from outside to outside"); return; }
     await replaceLabels(old, parts, "split");
   }
+  // the labels a tool acts on: the selection, else every label (not the areas)
+  const editPool = () => (selectedIds.length ? annotations.filter((a) => selectedIds.includes(a.id)) : annotations.filter((a) => !isArea(a.class_name)));
+  async function cutLabels(area) {
+    const hole = area.map((p) => ({ x: p.lng, y: p.lat }));
+    const old = [], parts = [];
+    let holes = 0;
+    for (const a of editPool()) {
+      const ring = toXY(a);
+      const got = cutRing(ring, hole);
+      if (got === null) { holes++; continue; }
+      if (got.length === 1 && Math.abs(ringArea(got[0]) - ringArea(ring)) < ringArea(ring) * 1e-6) continue;   // not touched
+      old.push(a); got.forEach((r) => parts.push([toLL(r), a.class_name]));
+    }
+    if (!old.length) { setLabelError(holes ? "Cut can't leave a hole in a label: draw the cut across its edge" : "The cut doesn't touch a label"); return; }
+    await replaceLabels(old, parts, "cut");
+  }
+  async function reshapeLabels(line) {
+    const cut = line.map((p) => ({ x: p.lng, y: p.lat }));
+    const old = [], parts = [];
+    for (const a of editPool()) {
+      const ring = toXY(a);
+      const xs = ring.map((p) => p.x), ys = ring.map((p) => p.y);
+      const tol = 0.03 * Math.hypot(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
+      const got = reshapeRing(ring, cut, tol);
+      if (got) { old.push(a); parts.push([toLL(got), a.class_name]); }
+    }
+    if (!old.length) { setLabelError("Reshape needs a line that crosses the outline twice"); return; }
+    await replaceLabels(old, parts, "reshape");
+  }
   async function mergeLabels(ids) {
     const old = annotations.filter((a) => ids.includes(a.id));
     if (old.length < 2) return;
@@ -542,7 +571,7 @@ export default function App({ user = null, onSignOut = null }) {
               selectedIds: labelling ? selectedIds : [], onSelect: setSelectedIds,
               onSegment: segmentClick, onPreview: setSegPreview, exact: exactSize,
               onSegmentAll: segmentAll, onDrawnMany: saveMany, onPrepare: prepareView,
-              snap, onSplit: splitLabels,
+              snap, onSplit: splitLabels, onCut: cutLabels, onReshape: reshapeLabels,
             }}
             labelRail={labelling ? {
               classes: trainClasses, activeClass, onActiveClass: setActiveClass,

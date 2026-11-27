@@ -424,7 +424,13 @@ for when it is exposed to a network (all in `backend/.env.example`):
   corner in Reshape), and an exact size in the Rectangle and Circle groups
   (width × height, or radius, in metres; one click places it). Split and Merge
   save the new labels before deleting the old ones, and Undo brings the old
-  ones back as one step. Verified: `npm test` (7 geometry tests) and Playwright
+  ones back as one step. Also Ellipse (O, in the Circle group; Shift keeps it
+  round), Reshape with a line (H: a line crossing the outline twice adds area
+  outside, takes it away inside; the larger of the two outlines is kept, as in
+  ArcGIS) and Cut (Q: an area clicked out is taken away from the labels it
+  touches; a cut that would leave a hole is refused, since a YOLO polygon has
+  one outline). Verified: `npm test` (9 geometry tests), Playwright: ellipse
+  saved, a corner cut, a bulge added, an inner cut refused. Earlier: and Playwright
   on a test image: 2 rectangles merged to 1, split to 2, undone to 1, a trace,
   a curve and a 8 m circle saved.
 - **Label rail on the map.** While labelling (Train > Label) the tools sit in

@@ -9,7 +9,7 @@ import { classColor, TRAIN_AREA, CHECK_AREA } from "./AnnotationTool.jsx";
 import {
   IconAreaDashed, IconCheck, IconGridDots, IconBoxAI, IconBoxSelect, IconClose, IconLasso, IconCircle, IconClickAI, IconPencil, IconPointer, IconPolygon,
   IconRectangle, IconSparkle, IconSquare, IconTag, IconTrash, IconUndo,
-  IconCurve, IconTrace, IconSplit, IconMerge, IconMagnet, IconRadius, IconEditShape,
+  IconCurve, IconTrace, IconSplit, IconMerge, IconMagnet, IconRadius, IconEditShape, IconEllipse, IconCut, IconReshape,
 } from "../ui/Icons.jsx";
 
 const SELECT = "select";
@@ -27,7 +27,9 @@ const GROUPS = [
   { id: "rect", size: "rect", tools: [
     { id: "rect", label: "Rectangle", key: "R", Icon: IconRectangle, note: "Drag, or click 3 times for a rotated one" },
     { id: "square", label: "Square", key: "S", Icon: IconSquare }] },
-  { id: "circle", size: "circle", tools: [{ id: "circle", label: "Circle", key: "C", Icon: IconCircle, note: "Drag from the centre, or type a radius and click" }] },
+  { id: "circle", size: "circle", tools: [
+    { id: "circle", label: "Circle", key: "C", Icon: IconCircle, note: "Drag from the centre, or type a radius and click" },
+    { id: "ellipse", label: "Ellipse", key: "O", Icon: IconEllipse, note: "Drag its box; Shift keeps it round" }] },
   { id: "class", title: "Class", Icon: IconTag },
   { sep: true },
   { id: "select", title: "Select", tools: [
@@ -37,7 +39,9 @@ const GROUPS = [
     { id: "allclass", label: "All of this class", key: "Ctrl+A", Icon: IconTag, action: "all" }] },
   { id: "edit", title: "Edit", Icon: IconEditShape, tools: [
     { id: SELECT, label: "Reshape", key: "V", Icon: IconEditShape, note: "Click a label: drag corners, midpoints add one, Alt+click removes one" },
+    { id: "reshape", label: "Reshape with a line", key: "H", Icon: IconReshape, note: "A line crossing the outline twice: outside adds, inside takes away" },
     { id: "split", label: "Split", key: "K", Icon: IconSplit, note: "Draw a line across a label, double-click to cut. With a selection, only those are cut" },
+    { id: "cut", label: "Cut", key: "Q", Icon: IconCut, note: "Click out an area to take away from labels" },
     { id: "merge", label: "Merge selected", key: "M", Icon: IconMerge, action: "merge" }] },
   { id: "snap", title: "Snapping", key: "N", Icon: IconMagnet, action: "snap" },
   { sep: true },

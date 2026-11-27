@@ -23,6 +23,9 @@ export const LABEL_TOOLS = [
   { id: "curve", group: "Draw", label: "Curve", key: "U", Icon: IconPolygon },
   { id: "trace", group: "Draw", label: "Trace", key: "T", Icon: IconPolygon },
   { id: "split", group: "Edit", label: "Split", key: "K", Icon: IconPolygon },
+  { id: "reshape", group: "Edit", label: "Reshape with a line", key: "H", Icon: IconPolygon },
+  { id: "cut", group: "Edit", label: "Cut", key: "Q", Icon: IconPolygon },
+  { id: "ellipse", group: "Draw", label: "Ellipse", key: "O", Icon: IconPolygon },
 ];
 
 // What is being outlined: how SAM's answer is chosen and cleaned, and the output it suits
@@ -51,6 +54,9 @@ export const HINTS = {
   curve: "Click points: the outline bends smoothly through them. Double-click or Enter closes it",
   trace: "Click on another label's edge, then further along it: the outline follows that edge. Ctrl+click places a free point",
   split: "Draw a line across a label and double-click: it becomes two labels",
+  reshape: "Draw a line that crosses the outline twice and double-click: outside adds area, inside takes it away",
+  cut: "Click out the area to remove and double-click: it is taken out of the labels it covers",
+  ellipse: "Drag the ellipse's box. Shift keeps it round",
   box: "Drag a box around the object. Alt+click or right-click removes a part. Enter saves, Esc discards",
 };
 
@@ -210,7 +216,7 @@ export default function LabelTools({
   const objects = annotations.filter((a) => !isArea(a.class_name));
 
   function pickTool(id) {
-    if (!classes.length && !["boxsel", "lasso", "split"].includes(id)) onAddClass?.("object");   // the tool starts at once; rename or reclass later
+    if (!classes.length && !["boxsel", "lasso", "split", "reshape", "cut"].includes(id)) onAddClass?.("object");   // the tool starts at once; rename or reclass later
     else if (drawingArea) onActiveClass(classes[0]);
     onMode(mode === id && !drawingArea ? null : id);
   }

@@ -37,3 +37,19 @@ test("a curve passes through its points", () => {
   assert.equal(c.length, 16);
   assert.deepEqual(c[0], sq[0]); assert.deepEqual(c[4], sq[1]);
 });
+
+import { cutRing, reshapeRing } from "./geomEdit.js";
+test("cutting a corner leaves the rest; a cut inside (a hole) is refused", () => {
+  assert.deepEqual(areas(cutRing(sq, [{ x: 5, y: -1 }, { x: 11, y: -1 }, { x: 11, y: 5 }, { x: 5, y: 5 }])), [75]);
+  assert.equal(cutRing(sq, [{ x: 4, y: 4 }, { x: 6, y: 4 }, { x: 6, y: 6 }, { x: 4, y: 6 }]), null);
+  assert.deepEqual(cutRing(sq, [{ x: -1, y: -1 }, { x: 11, y: -1 }, { x: 11, y: 11 }, { x: -1, y: 11 }]), []);
+});
+test("reshape outside adds a bulge; inside takes a notch away", () => {
+  // up out of the top edge between x=2 and x=8, 4 high: +24
+  assert.equal(ringArea(reshapeRing(sq, [{ x: 2, y: 1 }, { x: 2, y: -4 }, { x: 8, y: -4 }, { x: 8, y: 1 }])), 124);
+  // a notch 4 deep from the top edge: -24
+  assert.equal(ringArea(reshapeRing(sq, [{ x: 2, y: -1 }, { x: 2, y: 4 }, { x: 8, y: 4 }, { x: 8, y: -1 }])), 76);
+  // ends stopping 0.5 short of the edge are put on it
+  assert.equal(ringArea(reshapeRing(sq, [{ x: 2, y: -0.5 }, { x: 2, y: -4 }, { x: 8, y: -4 }, { x: 8, y: -0.5 }], 1)), 124);
+  assert.equal(reshapeRing(sq, [{ x: 20, y: 0 }, { x: 30, y: 0 }]), null);
+});
