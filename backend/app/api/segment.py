@@ -5,6 +5,7 @@
     GET  /api/segment/install/{job_id}
     POST /api/images/{image_id}/segment      clicks + the visible view -> fitted outline
     POST /api/images/{image_id}/outline      a drawn or traced ring -> fitted outline
+    POST /api/images/{image_id}/similar      more objects like the selected labels, in the view
 """
 from __future__ import annotations
 
@@ -219,3 +220,43 @@ def outline(image_id: str, req: OutlineRequest):
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     return _answer(res, entry)
+
+
+class SimilarRequest(Refine):
+    view: list[float]                      # visible map: [west, south, east, north]
+    example_ids: list[str]                 # the labels to look for more of
+    threshold: float = Field(default=0.6, ge=0.3, le=0.95)   # lowest match score (0..1)
+    device: str = "cpu"
+
+
+@router.post("/api/images/{image_id}/similar")
+async def similar(image_id: str, req: SimilarRequest):
+    """More objects like the example labels in the visible view: suggestions to keep
+    or drop, outlined with SAM when it is installed, else with the example's outline."""
+    from app.engine import click_segment
+    from app.engine.similar import find_similar
+
+    entry = _entry(image_id)
+    b, w, h = entry["bounds_wgs84"], entry["width"], entry["height"]
+    if len(req.view) != 4:
+        raise HTTPException(status_code=400, detail="Send the view as [west, south, east, north]")
+    labels = [a for a in store.load_annotations(entry["path"]) if not store.is_area(a)]
+    examples = [a for a in labels if a.get("id") in set(req.example_ids)]
+    if not examples:
+        raise HTTPException(status_code=400, detail="Select one or more labels to look for more like them")
+    px = lambda a: [store.lonlat_to_pixel(lon, lat, b, w, h) for lon, lat in a["points_lonlat"]]  # noqa: E731
+    x0, y0 = store.lonlat_to_pixel(req.view[0], req.view[3], b, w, h)
+    x1, y1 = store.lonlat_to_pixel(req.view[2], req.view[1], b, w, h)
+    cls = examples[0]["class_name"]
+    try:
+        window = click_segment.view_window((x0, y0, x1, y1), w, h)
+        opts = _opts(req, cls, entry["path"])
+        res = await run_in_threadpool(find_similar, entry["path"], window, [px(a) for a in examples],
+                                      [px(a) for a in labels if a not in examples], opts, req.device, req.threshold)
+    except click_segment.SegmentUnavailable as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    res["objects"] = [_answer(o, entry) for o in res["objects"]]
+    res["class_name"] = cls
+    return res

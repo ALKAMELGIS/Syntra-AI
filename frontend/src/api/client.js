@@ -374,6 +374,7 @@ export const api = {
   segmentInstallStatus: (jobId) => request(`${BASE}/segment/install/${jobId}`).then(handle),
   segmentPrepare: (imageId, payload) => request(`${BASE}/images/${imageId}/segment/prepare`, json(payload)).then(handle),
   segmentAll: (imageId, payload) => request(`${BASE}/images/${imageId}/segment-all`, json(payload)).then(handle),
+  similarObjects: (imageId, payload) => request(`${BASE}/images/${imageId}/similar`, json(payload)).then(handle),
   segmentClick: (imageId, payload) =>
     request(`${BASE}/images/${imageId}/segment`, {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),

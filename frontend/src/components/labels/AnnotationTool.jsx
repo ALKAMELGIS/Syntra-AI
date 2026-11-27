@@ -87,7 +87,8 @@ function viewRings(map, annotations = [], skipId = null) {
 }
 
 const DRAGS = ["rect", "square", "circle", "ellipse"];   // drawn by dragging a box or radius
-const LINES = ["split", "reshape"];                        // a line, ended by double-click or Enter
+const LINES = ["split", "reshape"];
+const SUGGESTS = ["everything", "similar"];                // suggestions kept or dropped together                        // a line, ended by double-click or Enter
 
 const VX = L.divIcon({ className: "edit-vx", iconSize: [10, 10] });
 const MID = L.divIcon({ className: "edit-mid", iconSize: [8, 8] });
@@ -96,13 +97,13 @@ const ROT = L.divIcon({ className: "edit-rot", iconSize: [14, 14] });
 export default function AnnotationLayer({
   visible, mode, className, annotations = [], onDrawn, onShapeClick, onSegment, exact, onPreview,
   editable = false, editId = null, onEdit, onUpdate, onDeleteSelected,
-  selectedIds = [], onSelect, onSegmentAll, onDrawnMany, onPrepare, snap = false, onSplit, onCut, onReshape,
+  selectedIds = [], onSelect, onSegmentAll, onDrawnMany, onPrepare, snap = false, onSplit, onCut, onReshape, onSimilar,
 }) {
   const map = useMap();
   const st = useRef({});
   const group = useRef(null);
   const live = useRef({ onDrawn, onSegment, onPreview, exact });
-  live.current = { onDrawn, onSegment, onPreview, exact, onEdit, onUpdate, onDeleteSelected, onSelect, annotations, onSegmentAll, onDrawnMany, onPrepare, snap, onSplit, onCut, onReshape };
+  live.current = { onDrawn, onSegment, onPreview, exact, onEdit, onUpdate, onDeleteSelected, onSelect, annotations, onSegmentAll, onDrawnMany, onPrepare, snap, onSplit, onCut, onReshape, onSimilar };
   const selKey = selectedIds.join(",");
 
   // saved labels
@@ -686,9 +687,9 @@ export default function AnnotationLayer({
       if (e.key === "Enter") {
         if (CLOSES.includes(mode) && close(s.points)) e.preventDefault();
         if (mode === "click" || mode === "box") { e.preventDefault(); saveClick(); }
-        if (mode === "everything") { e.preventDefault(); keepAll(); }
+        if (SUGGESTS.includes(mode)) { e.preventDefault(); keepAll(); }
       } else if (e.key === "Escape") {
-        if (mode === "everything" && s.all) { e.preventDefault(); e.stopPropagation(); dropAll(); return; }
+        if (SUGGESTS.includes(mode) && s.all) { e.preventDefault(); e.stopPropagation(); dropAll(); return; }
         if (s.points.length || s.clicks.length || s.start) {
           e.preventDefault(); e.stopPropagation();
           s.clicks = []; s.preview = null; s.points = []; s.start = null; s.drag = false; s.hit = null;
@@ -714,9 +715,11 @@ export default function AnnotationLayer({
       container.style.cursor = "progress";
       try {
         const b = map.getBounds();
-        const res = await live.current.onSegmentAll?.([b.getWest(), b.getSouth(), b.getEast(), b.getNorth()]);
+        const view = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()];
+        const res = await (mode === "similar" ? live.current.onSimilar : live.current.onSegmentAll)?.(view);
         if (seq !== s.seq || st.current !== s) return;
         s.all = (res?.objects || []).map((o) => ({ latlngs: o.points_lonlat.map(([lon, lat]) => L.latLng(lat, lon)), shape: o.shape }));
+        s.cls = res?.class_name || null;
         for (const o of s.all) add(L.polygon(o.latlngs, { color, weight: 1.5, dashArray: "5 4", fillColor: color, fillOpacity: 0.25, interactive: false }));
         live.current.onPreview?.({ all: true, count: s.all.length, timings: res?.timings });
       } catch (err) {
@@ -730,7 +733,7 @@ export default function AnnotationLayer({
       if (!s.all?.length) return;
       const list = s.all; s.all = null; clear();
       live.current.onPreview?.(null);
-      live.current.onDrawnMany?.(list.map((o) => [o.latlngs, { tool: "everything", shape: o.shape }]));
+      live.current.onDrawnMany?.(list.map((o) => [o.latlngs, { tool: mode, shape: o.shape, class_name: s.cls || undefined }]));
     }
     function dropAll() { s.all = null; clear(); live.current.onPreview?.({ all: true, count: 0, dropped: true }); }
     const onPrev = (e) => {
@@ -738,9 +741,9 @@ export default function AnnotationLayer({
       if (e.detail === "keep") saveClick(); else if (e.detail === "discard") discardClick();
     };
     window.addEventListener("syntra:preview", onPrev);
-    const onAsk = (e) => { if (mode !== "everything") return; if (e.detail === "keep") keepAll(); else if (e.detail === "drop") dropAll(); else everything(); };
+    const onAsk = (e) => { if (!SUGGESTS.includes(mode)) return; if (e.detail === "keep") keepAll(); else if (e.detail === "drop") dropAll(); else everything(); };
     window.addEventListener("syntra:suggestions", onAsk);
-    if (mode === "everything") everything();
+    if (SUGGESTS.includes(mode)) everything();
     // the AI tools: encode the view ahead of the first click (seconds on a CPU), again after each move
     let prepT = null;
     const prepare = () => {

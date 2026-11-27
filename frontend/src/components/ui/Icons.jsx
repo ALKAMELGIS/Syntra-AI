@@ -225,3 +225,6 @@ export const IconCut = (p) => (
 export const IconReshape = (p) => (
   <svg {...base} {...p}><path d="M4 20V9h16v11Z" /><path d="M8 9c0-5 8-5 8 0" strokeDasharray="2 2" /></svg>
 );
+export const IconSimilar = (p) => (
+  <svg {...base} {...p}><rect x="3" y="3" width="8" height="8" /><rect x="13" y="13" width="8" height="8" strokeDasharray="2 2" /><rect x="13" y="3" width="8" height="8" strokeDasharray="2 2" /></svg>
+);

@@ -414,6 +414,19 @@ for when it is exposed to a network (all in `backend/.env.example`):
   row has a delete button: the class and its labels go, after a confirmation
   when it has labels. Verified with Playwright: 3 classes added from the
   library, one deleted.
+- **Similar to selected** (G, in the Auto segment group, and a Similar button
+  on the selection bar; `app/engine/similar.py`, `POST /api/images/{id}/similar`):
+  the selected labels (or the last one drawn) are matched over the view as
+  pictures with a margin round them, at four quarter turns and three sizes
+  (OpenCV normalised cross-correlation); matches under 0.6 or under 75% of the
+  best are dropped, as are overlaps and places already labelled. Each match is
+  outlined with SAM 2.1 (a box prompt) when it is installed, else with the
+  example's outline carried onto it, then fitted to the class's shape. They show
+  dashed until Keep all (Enter) or Drop (Esc), saved in the example's class.
+  Verified: `test_similar_offline.py` (4 copies found incl. a turned one, a plain
+  look-alike skipped, labelled ones skipped, the SAM path), Playwright: 5 of 5
+  found and kept. Not run: real imagery (works best for objects that look alike:
+  cars, tanks, panels, palms; weak for varied roofs).
 - **Edit tools in the label rail** (ArcGIS Online style; geometry in
   `frontend/src/lib/geomEdit.js`, MIT `polygon-clipping` for the cuts):
   Curve (U, a smooth outline through clicked points), Trace (T, the outline

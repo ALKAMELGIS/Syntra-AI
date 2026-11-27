@@ -421,6 +421,16 @@ export default function App({ user = null, onSignOut = null }) {
     shape: classShape(),
     simplify_m: outline.simplify_m, grow_m: outline.grow_m,
   });
+  // more like the selected labels (or the last one drawn) in the view: suggestions, as with Everything
+  const similarObjects = (view) => {
+    const ids = selectedIds.length ? selectedIds : undoIds.filter((id) => !undoOps.current[id]).slice(-1);
+    if (!ids.length) return Promise.reject(new Error("Select a label first: more like it are found in the view"));
+    return api.similarObjects(image.image_id, {
+      view, example_ids: ids, device: devices?.gpu_count > 0 ? "cuda:0" : "cpu",
+      shape: outline.shape === "auto" ? classInfo[annotations.find((x) => x.id === ids[0])?.class_name]?.shape || null : outline.shape,
+      simplify_m: outline.simplify_m, grow_m: outline.grow_m,
+    });
+  };
   async function saveMany(list) {
     for (const [latlngs, meta] of list) await saveLabel(latlngs, meta);
   }
@@ -571,7 +581,7 @@ export default function App({ user = null, onSignOut = null }) {
               selectedIds: labelling ? selectedIds : [], onSelect: setSelectedIds,
               onSegment: segmentClick, onPreview: setSegPreview, exact: exactSize,
               onSegmentAll: segmentAll, onDrawnMany: saveMany, onPrepare: prepareView,
-              snap, onSplit: splitLabels, onCut: cutLabels, onReshape: reshapeLabels,
+              snap, onSplit: splitLabels, onCut: cutLabels, onReshape: reshapeLabels, onSimilar: similarObjects,
             }}
             labelRail={labelling ? {
               classes: trainClasses, activeClass, onActiveClass: setActiveClass,

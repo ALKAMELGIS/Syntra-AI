@@ -9,7 +9,7 @@ import { classColor, TRAIN_AREA, CHECK_AREA } from "./AnnotationTool.jsx";
 import {
   IconAreaDashed, IconCheck, IconGridDots, IconBoxAI, IconBoxSelect, IconClose, IconLasso, IconCircle, IconClickAI, IconPencil, IconPointer, IconPolygon,
   IconRectangle, IconSparkle, IconSquare, IconTag, IconTrash, IconUndo,
-  IconCurve, IconTrace, IconSplit, IconMerge, IconMagnet, IconRadius, IconEditShape, IconEllipse, IconCut, IconReshape,
+  IconCurve, IconTrace, IconSplit, IconMerge, IconMagnet, IconRadius, IconEditShape, IconEllipse, IconCut, IconReshape, IconSimilar,
 } from "../ui/Icons.jsx";
 
 const SELECT = "select";
@@ -48,7 +48,8 @@ const GROUPS = [
   { id: "ai", title: "Auto segment", Icon: IconSparkle, tools: [
     { id: "click", label: "Click object", key: "A", Icon: IconClickAI, note: "Alt+click removes a part" },
     { id: "box", label: "Box around object", key: "B", Icon: IconBoxAI, note: "Drag a box around it" },
-    { id: "everything", label: "Everything in view", key: "E", Icon: IconGridDots, note: "Every object in the view at once" }], draws: true },
+    { id: "everything", label: "Everything in view", key: "E", Icon: IconGridDots, note: "Every object in the view at once" },
+    { id: "similar", label: "Similar to selected", key: "G", Icon: IconSimilar, note: "More like the selected labels, in the view" }], draws: true },
   { id: "areas", title: "Areas", Icon: IconAreaDashed, tools: [
     { id: TRAIN_AREA, label: "Training area", area: true, Icon: IconAreaDashed, note: "Label everything inside it" },
     { id: CHECK_AREA, label: "Accuracy area", area: true, Icon: IconAreaDashed, note: "Kept out of training, for scoring" }] },
@@ -181,7 +182,7 @@ export default function LabelRail({
     const draws = !["select", "edit"].includes(g.id);
     if (draws && !classes.length) onAddClass?.(DEFAULT_CLASS);   // every tool starts at once: rename or reclass later
     else if (draws && drawingArea) onActiveClass(classes[0]);
-    if (t.id === "everything" && mode === "everything") { window.dispatchEvent(new CustomEvent("syntra:suggestions", { detail: "again" })); return; }
+    if ((t.id === "everything" || t.id === "similar") && mode === t.id) { window.dispatchEvent(new CustomEvent("syntra:suggestions", { detail: "again" })); return; }
     onMode(t.id === SELECT ? null : t.id);
   }
   function main(g) {
@@ -196,14 +197,14 @@ export default function LabelRail({
 
 
   const n = selectedIds.length;
-  const all = mode === "everything" && segPreview?.all ? segPreview : null;
+  const all = (mode === "everything" || mode === "similar") && segPreview?.all ? segPreview : null;
   const preview = (what) => window.dispatchEvent(new CustomEvent("syntra:preview", { detail: what }));
   const ask = (what) => window.dispatchEvent(new CustomEvent("syntra:suggestions", { detail: what }));
   return (
     <>
     {all && (
       <div className="label-selbar" role="status">
-        {all.busy ? <span>Finding every object in the view…</span>
+        {all.busy ? <span>{mode === "similar" ? "Looking for similar objects…" : "Finding every object in the view…"}</span>
           : all.error ? <span className="label-rail-err" style={{ margin: 0 }}>{all.error}</span>
           : all.dropped ? <span>Suggestions dropped</span>
           : <><span className="mono">{all.count}</span><span>{all.count === 1 ? "object found" : "objects found"}</span></>}
@@ -237,9 +238,11 @@ export default function LabelRail({
         {canUndo && <button type="button" className="label-selbar-btn" onClick={() => onUndo?.()} title="Ctrl+Z"><IconUndo /> Undo</button>}
       </div>
     )}
-    {n > 0 && (
+    {n > 0 && !all && (
       <div className="label-selbar" role="status">
         <span className="mono">{n}</span><span>selected</span>
+        <button type="button" className="label-selbar-btn" onClick={() => onMode("similar")} title="G"><IconSimilar /> Similar</button>
+        {n > 1 && <button type="button" className="label-selbar-btn" onClick={() => onMerge?.(selectedIds)} title="M"><IconMerge /> Merge</button>}
         <select className="label-selbar-class" value="" aria-label="Change the class of the selected labels"
                 onChange={(e) => e.target.value && onReclassMany?.(selectedIds, e.target.value)}>
           <option value="">Change class</option>

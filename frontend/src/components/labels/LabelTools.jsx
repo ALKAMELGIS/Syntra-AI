@@ -26,6 +26,7 @@ export const LABEL_TOOLS = [
   { id: "reshape", group: "Edit", label: "Reshape with a line", key: "H", Icon: IconPolygon },
   { id: "cut", group: "Edit", label: "Cut", key: "Q", Icon: IconPolygon },
   { id: "ellipse", group: "Draw", label: "Ellipse", key: "O", Icon: IconPolygon },
+  { id: "similar", group: "AI", label: "Similar to selected", key: "G", Icon: IconPolygon },
 ];
 
 // What is being outlined: how SAM's answer is chosen and cleaned, and the output it suits
@@ -57,6 +58,7 @@ export const HINTS = {
   reshape: "Draw a line that crosses the outline twice and double-click: outside adds area, inside takes it away",
   cut: "Click out the area to remove and double-click: it is taken out of the labels it covers",
   ellipse: "Drag the ellipse's box. Shift keeps it round",
+  similar: "More like the selected labels in the view: Enter keeps them all, Esc drops them",
   box: "Drag a box around the object. Alt+click or right-click removes a part. Enter saves, Esc discards",
 };
 
