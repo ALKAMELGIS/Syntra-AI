@@ -24,9 +24,10 @@ from app.models.base import DetectionModel, ModelMetadata, ModelStatus, RawDetec
 
 
 class CustomYoloDetector(DetectionModel):
-    def __init__(self, metadata: ModelMetadata, weights_path: str):
+    def __init__(self, metadata: ModelMetadata, weights_path: str, training_gsd_m: float | None = None):
         self.metadata = metadata
         self.weights_path = weights_path
+        self.training_gsd_m = training_gsd_m      # ground size of a training pixel, when known
         self._model = None
         self._device = "cpu"
 
@@ -53,10 +54,39 @@ class CustomYoloDetector(DetectionModel):
             )
         return True, f"OK — {len(names)} class(es): {list(names.values())}."
 
+    def train_imgsz(self) -> int:
+        """The image size the weights were trained at (args.yaml beside the run), 640 if unknown."""
+        from pathlib import Path
+
+        for d in (Path(self.weights_path).parent, Path(self.weights_path).parent.parent):
+            f = d / "args.yaml"
+            if f.is_file():
+                for line in f.read_text(encoding="utf-8", errors="ignore").splitlines():
+                    if line.startswith("imgsz:"):
+                        try:
+                            return int(float(line.split(":", 1)[1].strip()))
+                        except ValueError:
+                            break
+        return 640
+
+    def preferred_tile_size(self, gsd_m: float | None) -> int | None:
+        """Tile size (image pixels) that the model sees at its training scale, or None
+        when the training GSD is unknown (then the request's tile size stands)."""
+        if not self.training_gsd_m or not gsd_m or gsd_m <= 0:
+            return None
+        return int(np.clip(round(self.train_imgsz() * self.training_gsd_m / gsd_m), 64, 4096))
+
     def predict(self, tile_rgb: np.ndarray, confidence_threshold: float | None = None) -> list[RawDetection]:
         if self._model is None:
             raise RuntimeError("Model not loaded — call load_model() first.")
         conf = confidence_threshold if confidence_threshold is not None else self.metadata.default_confidence_threshold
+        nominal = getattr(self, "nominal_tile", None)
+        if self.training_gsd_m and nominal and min(tile_rgb.shape[:2]) < nominal:
+            # an edge tile: pad to the full tile so it is scaled exactly like the others
+            h, w = tile_rgb.shape[:2]
+            padded = np.zeros((max(h, nominal), max(w, nominal), tile_rgb.shape[2]), dtype=tile_rgb.dtype)
+            padded[:h, :w] = tile_rgb
+            tile_rgb = padded
 
         results = self._model.predict(source=tile_rgb, conf=conf, device=self._device, verbose=False)
         detections: list[RawDetection] = []

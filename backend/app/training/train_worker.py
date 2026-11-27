@@ -45,20 +45,13 @@ def run(job: dict) -> int:
     canceled = {"flag": False}
 
     def on_epoch_end(trainer):
-        m = trainer.metrics or {}
-        _emit({
-            "type": "epoch",
-            "epoch": int(trainer.epoch) + 1,
-            "epochs": int(trainer.epochs),
-            "box_loss": _f(getattr(trainer, "loss_items", None), 0),
-            "cls_loss": _f(getattr(trainer, "loss_items", None), 1),
-            "dfl_loss": _f(getattr(trainer, "loss_items", None), 2),
-            "precision": _f(m.get("metrics/precision(B)")),
-            "recall": _f(m.get("metrics/recall(B)")),
-            "map50": _f(m.get("metrics/mAP50(B)")),
-            "map50_95": _f(m.get("metrics/mAP50-95(B)")),
-            "elapsed_s": round(time.time() - t0, 1),
-        })
+        # after validation, so the epoch's own precision, recall, mAP and val loss are in trainer.metrics
+        try:
+            tl = trainer.label_loss_items(trainer.tloss, prefix="train")
+        except Exception:  # noqa: BLE001 - older ultralytics: losses by position
+            li = getattr(trainer, "loss_items", None)
+            tl = {f"train/{k}": _f(li, i) for i, k in enumerate(("box_loss", "cls_loss", "dfl_loss"))}
+        _emit(epoch_event(int(trainer.epoch) + 1, int(trainer.epochs), tl, dict(trainer.metrics or {}), time.time() - t0))
         if _cancel_requested(cancel_flag):
             canceled["flag"] = True
             # graceful stop: let the current epoch finish, then exit the loop
@@ -66,7 +59,7 @@ def run(job: dict) -> int:
 
     try:
         model = YOLO(job["model"])
-        model.add_callback("on_train_epoch_end", on_epoch_end)
+        model.add_callback("on_fit_epoch_end", on_epoch_end)
         results = model.train(
             data=job["data_yaml"],
             epochs=int(job["epochs"]),
@@ -84,9 +77,24 @@ def run(job: dict) -> int:
         )
         save_dir = Path(getattr(results, "save_dir", job.get("project", ".")))
         best = save_dir / "weights" / "best.pt"
+        test = None
+        if best.exists() and not canceled["flag"] and "\ntest:" in Path(job["data_yaml"]).read_text(encoding="utf-8"):
+            # the score that counts: the accuracy areas, never seen in training
+            try:
+                m = YOLO(str(best)).val(data=job["data_yaml"], split="test", imgsz=int(job["imgsz"]),
+                                        device=job.get("device", "cpu"), plots=False, verbose=False)
+                box = getattr(m, "seg", None) if str(job.get("task", "")) == "segment" else None
+                box = box or getattr(m, "box", None)
+                p, r = float(box.mp), float(box.mr)
+                test = {"map50": round(float(box.map50), 4), "precision": round(p, 4), "recall": round(r, 4),
+                        "f1": round(2 * p * r / (p + r), 4) if p + r else 0.0}
+            except Exception as exc:  # noqa: BLE001 - the model is still good; say why there is no test score
+                test = {"error": f"Test evaluation failed: {exc}"}
+            (save_dir / "test_metrics.json").write_text(json.dumps(test, indent=2), encoding="utf-8")
         _emit({
             "type": "canceled" if canceled["flag"] else "done",
             "best": str(best) if best.exists() else None,
+            "test": test,
             "results_csv": str(save_dir / "results.csv"),
             "save_dir": str(save_dir),
             "elapsed_s": round(time.time() - t0, 1),
@@ -95,6 +103,34 @@ def run(job: dict) -> int:
     except Exception as exc:  # noqa: BLE001 - must always report, never crash silently
         _emit({"type": "error", "message": str(exc), "elapsed_s": round(time.time() - t0, 1)})
         return 1
+
+
+def epoch_event(epoch: int, epochs: int, train_losses: dict, metrics: dict, elapsed: float) -> dict:
+    """One epoch as the dashboard reads it: summed train and val loss, and the
+    held-out precision / recall / mAP (mask metrics for segmentation)."""
+    def num(v):
+        try:
+            x = float(v)
+        except (TypeError, ValueError):
+            return None
+        return x if x == x else None
+
+    kind = "(M)" if any(str(k).endswith("(M)") for k in metrics) else "(B)"
+    tl = {k.split("/", 1)[-1]: num(v) for k, v in (train_losses or {}).items()}
+    vl = [num(v) for k, v in metrics.items() if str(k).startswith("val/") and str(k).endswith("_loss")]
+    tsum = [v for v in tl.values() if v is not None]
+    vsum = [v for v in vl if v is not None]
+    return {
+        "type": "epoch", "epoch": epoch, "epochs": epochs,
+        "train_loss": round(sum(tsum), 4) if tsum else None,
+        "val_loss": round(sum(vsum), 4) if vsum else None,
+        "box_loss": tl.get("box_loss"), "cls_loss": tl.get("cls_loss"), "dfl_loss": tl.get("dfl_loss"),
+        "precision": num(metrics.get(f"metrics/precision{kind}")),
+        "recall": num(metrics.get(f"metrics/recall{kind}")),
+        "map50": num(metrics.get(f"metrics/mAP50{kind}")),
+        "map50_95": num(metrics.get(f"metrics/mAP50-95{kind}")),
+        "elapsed_s": round(elapsed, 1),
+    }
 
 
 def _f(loss_items, idx: int | None = None):

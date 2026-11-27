@@ -1,0 +1,18 @@
+# The engine: what it needs to start, read GeoTIFFs and serve the interface.
+# Python 3.11 to 3.14. Floors only: newer releases are expected to work.
+fastapi>=0.115
+uvicorn[standard]>=0.34
+pydantic>=2.10
+python-multipart>=0.0.20
+python-dotenv>=1.0
+httpx>=0.27                  # Sentinel Hub (remote sensing)
+pyyaml>=6.0
+numpy>=2.1
+pillow>=11.0
+opencv-python-headless>=4.10
+rasterio>=1.4.3
+shapely>=2.0.6
+pyproj>=3.7
+affine>=2.4
+geopandas>=1.0               # Layers > Add > From a file (Shapefile, GeoPackage, …)
+huggingface_hub>=0.26        # samples and models on Hugging Face

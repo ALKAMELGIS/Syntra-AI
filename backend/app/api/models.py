@@ -8,10 +8,15 @@ from app.core.config import settings
 from app.models.custom_registry import delete_custom_model, get_custom_model
 from app.models.registry import get_metadata, list_catalog
 from app.core.jobs import get_store
-from app.models.packs import PACKS, is_installed, list_packs, pack_for_model, pack_path, verify_onnx
+from app.models.packs import PACKS, check_sha256, is_installed, list_packs, pack_for_model, pack_path, verify_onnx
 from app.models.stats import get_stats
 
 router = APIRouter(prefix="/api/models", tags=["models"])
+
+
+def _latest_f1(model_id: str):
+    from app.engine.accuracy import latest_f1
+    return latest_f1(settings.DATA_DIR, model_id)
 
 
 def _serialize(meta) -> dict:
@@ -30,6 +35,7 @@ def _serialize(meta) -> dict:
         "notes": meta.notes,
         "processing_statistics": stats.to_dict(),
         "pack": _pack_summary(meta.model_id),
+        "accuracy_f1": _latest_f1(meta.model_id),
     }
 
 
@@ -73,6 +79,7 @@ def _download(job_id: str, pack) -> None:
                 if got - last > 2_000_000:
                     jobs.update(job_id, bytes=got, total_bytes=total or None)
                     last = got
+        check_sha256(part, pack)
         info = verify_onnx(part, pack.runtime)
         part.replace(dest)
         jobs.update(job_id, status="completed", bytes=got, total_bytes=total or got, model=info)
@@ -107,10 +114,11 @@ def install_status(job_id: str):
 
 @router.post("/packs/{pack_id}/file")
 async def install_pack_from_file(pack_id: str, file: UploadFile):
-    """Offline install: the same .onnx the pack would download."""
+    """Offline install: the same file the pack would download."""
     pack = _get_pack(pack_id)
-    if not (file.filename or "").lower().endswith(".onnx"):
-        raise HTTPException(status_code=400, detail="Choose the model's .onnx file.")
+    ext = "." + pack.filename.rsplit(".", 1)[-1].lower()
+    if not (file.filename or "").lower().endswith(ext):
+        raise HTTPException(status_code=400, detail=f"Choose the model's {ext} file ({pack.filename}).")
     dest = pack_path(pack)
     part = dest.with_suffix(dest.suffix + ".part")
 
@@ -126,6 +134,7 @@ async def install_pack_from_file(pack_id: str, file: UploadFile):
 
     try:
         size = await run_in_threadpool(_save)
+        await run_in_threadpool(check_sha256, part, pack)
         info = await run_in_threadpool(verify_onnx, part, pack.runtime)
     except Exception as exc:
         part.unlink(missing_ok=True)
@@ -137,8 +146,41 @@ async def install_pack_from_file(pack_id: str, file: UploadFile):
 @router.delete("/packs/{pack_id}")
 def uninstall_pack(pack_id: str):
     pack = _get_pack(pack_id)
-    pack_path(pack).unlink(missing_ok=True)
+    path = pack_path(pack)
+    from app.models.packs import packs_dir
+    if path.exists() and path.parent.resolve() != packs_dir().resolve():
+        # found in one of the user's own model folders: never delete their file
+        raise HTTPException(status_code=409, detail=f"This model is loaded from {path.parent}. Remove the file there to uninstall it.")
+    path.unlink(missing_ok=True)
     return {"pack_id": pack_id, "installed": False}
+
+
+@router.get("/performance")
+def list_performance():
+    """Models that have a training history to show in the Model performance panel."""
+    from app.engine.performance import models_with_performance, training_runs
+    return training_runs() + models_with_performance()
+
+
+@router.get("/{model_id}/performance")
+def get_performance(model_id: str):
+    from app.engine.performance import model_performance, run_performance
+
+    if model_id.startswith("run:"):                       # a training run, live while it trains
+        from app.core.jobs import get_store
+
+        job = get_store().get(model_id[4:], "train")
+        if job is None:
+            raise HTTPException(status_code=404, detail="Unknown training run.")
+        return run_performance(job)
+    try:
+        get_metadata(model_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    perf = model_performance(model_id)
+    if perf is None:
+        raise HTTPException(status_code=404, detail="No training history for this model.")
+    return perf
 
 
 @router.get("")

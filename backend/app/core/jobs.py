@@ -74,6 +74,13 @@ class JobStore:
     def create(self, kind: str, *, job_id: str | None = None, status: str = "queued", **fields: Any) -> str:
         job_id = job_id or str(uuid.uuid4())
         now = _now()
+        if "owner_id" not in fields:               # the account whose request started it (None = the owner)
+            try:
+                from app.core.auth import acting_user_id, current_request
+                req = current_request()
+                fields["owner_id"] = acting_user_id(req) if req is not None else None
+            except Exception:  # noqa: BLE001 - no request context (startup, scripts)
+                fields["owner_id"] = None
         data = {**fields, "status": status}
         with self._lock:
             self._conn.execute(
@@ -148,14 +155,18 @@ class JobStore:
                 ACTIVE_STATUSES,
             ).fetchall()
             now = _now()
+            marked = 0
             for r in rows:
                 data = json.loads(r["data"])
+                if data.get("where") == "runpod":
+                    continue        # runs on a rented GPU, not in this process: watched again at start
+                marked += 1
                 data.update(status="interrupted", error=message, previous_status=data.get("status"))
                 self._conn.execute(
                     "UPDATE jobs SET data = ?, status = 'interrupted', updated_at = ? WHERE id = ?",
                     (_dumps(data), now, r["id"]),
                 )
-        return len(rows)
+        return marked
 
     def close(self) -> None:
         with self._lock:

@@ -29,15 +29,90 @@ real, what is written but unrun, and how it was verified.
   `plan_rgb()` + `iter_tiles(rgb_plan=...)`: chosen RGB bands, scene-wide
   8-bit stretch, empty tiles skipped. New sensors with a known band layout
   go in `SENSOR_RGB` with a note on how the order was established.
+- Remote sensing goes through `app/engine/sentinel.py`: fetch FLOAT32 values once,
+  draw the colours, legend and attributes from those same numbers, cache the answer.
+  Never put a per-feature index value on a feature smaller than a few source pixels;
+  write a `_note` instead.
 - Anything new a GeoTIFF can get wrong belongs in `raster_health.py` as a
   finding with a level, a plain explanation and the fix.
+- Accuracy claims come from `score_layer` (results vs labels inside the
+  accuracy areas), never from a model's own confidence. A refinement that
+  is unsure keeps the detector outline and says why (`outline`,
+  `refine_note`); never replace a shape with one SAM was not sure of.
+- The map shows results of the image that is open, nothing else. Anything
+  restored after a reload is filtered by `image_id`, and Remove on a run's
+  layer must stick (hide the job on the server), never only in React state.
+- Charts and figures in the UI are drawn from data the server has (job
+  history, `results.csv`, pack metrics), and a running job's view polls
+  until the job ends. Never ship a chart as a fixed picture or with numbers
+  typed into the component.
+- Labels that come from a file follow Syntra labels v1 (the docstring of
+  `app/annotations/importer.py`: `class`, optional `role`
+  object / complete / accuracy, polygons only). Change the standard there
+  and in README together, keep imports idempotent (duplicates skipped) and
+  always show the field mapping before writing anything.
+- Base maps are for looking only. Google tiles go through
+  `api/basemaps.py` (key on the server, passed through, never stored) and
+  must never reach a model, a dataset or a cache: its policy forbids it.
 - Exported geometry is WGS84 lon/lat. Do cross-tile merging in the raster
   CRS, then reproject (`reproject_detections_to_wgs84`). Never write
   projected coordinates into GeoJSON or KML.
 - When you add or change a capability, update its README row: what changed,
   and how you verified it (test name, live check, or "not run, needs X").
 - Never claim something ran if it did not. "Written, not built" is a fine
-  status.
+  status. Check a long run's log before quoting it: a training run that
+  stopped early is reported with the epochs it actually completed.
+- Every model that can be run shows its evidence in the Model performance
+  panel. A model trained here has its `results.csv` beside the weights; a
+  pack ships `app/models/pack_metrics/<pack_id>.json` (epochs, per-class
+  mAP50, training images, GSD, note). Classes scoring mAP50 below 0.2 are
+  listed in `hidden_classes` and left out of the catalog entry, not returned.
+- A raster-check rule change bumps `HEALTH_VERSION` in `raster_health.py`
+  so saved checks in the library are redone.
+- Never write into a user's original file. Images opened from disk are
+  hard-linked into the library; call `detach_if_linked(path)` before any
+  in-place write (`rasterio.open(path, "r+")`, overviews). Writes that go
+  through a temp file and `os.replace` are already safe.
+- Work must survive a browser refresh. Keep small identifiers in the
+  browser (`PROJECT_KEY` in App.jsx, the map view and layer settings in
+  MapView) and fetch everything heavy back from the server. Anything
+  expensive to render (previews) is cached on disk keyed by file size and
+  mtime, with an ETag.
+- Credentials (Hugging Face, later RunPod) go through `app/core/secrets.py`:
+  stored in the data folder, never returned by any endpoint, never in
+  `.env` or the repo. Anything uploaded from licensed imagery goes to a
+  private destination; refuse a public one unless the user explicitly asks.
+- Anything that rents hardware has three stops: a time limit on the remote
+  side, the remote job stopping itself, and a local watcher that stops it
+  with the user's key and is resumed when the engine starts. Show the cost
+  while it runs. Build against the provider's current documented API and
+  write the date you checked it next to the code.
+- Test a feature through to what the user gets, not one step of it: a review
+  that wrote correct areas still produced a dataset with 0 tiles.
+- A network error message says whose fault it is (bad token vs blocked
+  network): the fixes are different.
+- Single-letter map shortcuts (MapDrawTools) are global; a panel with its
+  own keys puts `data-own-keys` on its root so they are not taken by the map
+  (the review list's A / R once opened the Train panel instead).
+- Hardware for a model comes from `app/core/onnx_runtime.py`
+  (`session_providers(device)`), never a hand-written provider list, and a
+  GPU is found by what onnxruntime can use, not by torch.
+- A time shown to the user is measured: from this run's pace (`Eta`) or
+  from runs recorded on this machine (`speed.record`). No measurement, no
+  number. A speed-up that changes results (INT8) is measured against the
+  full model on real imagery and stays opt-in until it matches.
+- Caches shared by parallel requests (one map view asks for ~30 tiles at
+  once) need a lock: `lru_cache` alone lets every request miss together.
+- An image that "doesn't show on the map" is first a content question,
+  not a placement one. Satellite products ship side files (cloud, quality,
+  UDM masks) next to the scene; an all-zero mask reads 0% data and draws
+  fully transparent. `looks_like_mask()` names it as an error finding
+  (`no_data`), predict refuses it, optimise skips it, and the map always
+  draws the file's footprint (`ImageFootprint` in MapView) so the location
+  is visible whatever the pixels hold.
+- PROJ/GDAL data comes from this environment (`app/core/proj_env.py`, run
+  from `app/__init__.py`): never rely on a system-wide `PROJ_LIB`, which
+  PostGIS and QGIS installers set on Windows.
 
 ## 2. Security rules for the API
 
@@ -61,12 +136,24 @@ reimplement them.
 - **Anything that runs a subprocess on the server** (pip, training) must be
   gated like `environment_actions_allowed()`: loopback by default, explicit
   env flag otherwise.
+- **Accounts.** A member sees only data stamped with their id: images keep an
+  `owners` list, jobs an `owner_id` (set by `JobStore.create` from the request).
+  New routes that return images, jobs or results check `can_see` / `can_see_any`
+  from `core/auth.py`, answering 404 (not 403) for someone else's data. Owner-only
+  routes depend on `require_owner`. Anything that costs credits goes through
+  `core/billing.py` (charge at start, refund on failure, 402 when short); the owner
+  is never charged.
 - Long work runs as a background job stored with `get_store()` from
   `app/core/jobs.py` (create, update, append, get by kind), with a pollable
   status endpoint. Never keep job state in a module-level dict: it vanishes
   on restart. Give each job kind its own name, add it to `_KINDS` in
   `api/jobs.py`, and treat `interrupted` as a terminal state in the UI.
 - Blocking I/O inside `async def` goes through `run_in_threadpool`.
+- **Windows reads text in cp1252 unless told.** Every `open()`, `read_text()`,
+  `write_text()` and text-mode subprocess pipe names `encoding="utf-8"` (pipes
+  also `errors="replace"`, and a Python child gets `PYTHONUTF8=1`).
+  `test_text_encoding_offline.py` fails the build otherwise: training once
+  failed on Windows with "'charmap' codec can't decode byte 0x81".
 
 ## 3. Tests
 
@@ -79,13 +166,14 @@ reimplement them.
   dir is refused.
 - Run `python -m pytest -q backend/tests` before committing, and say how many
   passed.
-- For the UI, `npx vite build` in `frontend/` must succeed. When you can,
+- For the UI, `npm run build` in `frontend/` must succeed: it runs ESLint
+  first, which fails on a name used but never imported (vite alone does not). When you can,
   start the backend and `npx vite`, screenshot the changed screen, and look
   at it before calling the work done.
 
 ## 4. Interface conventions
 
-The tokens are at the top of `frontend/src/styles.css`, with the design
+The tokens are at the in `frontend/src/styles/tokens.css` (rules in `styles/app.css`), with the design
 direction in a comment. Work inside them:
 
 - **Colour.** Graphite ramp (`--bg`, `--panel`, `--hover-bg`), three text
@@ -105,22 +193,126 @@ direction in a comment. Work inside them:
 - **Status.** "Not ready" is quiet (outlined, muted) because most catalog
   entries are in that state; "Unvalidated" is amber; errors and missing
   dependencies are red.
-- **Icons** come from `components/Icons.jsx` (inline SVG, one stroke). No
+- **Preferences** (theme, accent, units, basemap, restore) live in
+  `frontend/src/lib/prefs.js`: read with `usePref`/`getPref`, format areas with
+  `fmtAreaM2`/`fmtAreaKm2`. A new option goes in Settings as a row (label +
+  segmented control), never as a toggle scattered in a panel.
+- **No hue in the chrome.** The default accent is graphite (matte near-black in the
+  light theme, light grey in the dark). Toolbar icons, active states and badges use
+  the text and primary tokens, never a colour per tool. Hue belongs to the imagery,
+  the detection layers and meaningful status (ready, warning, error).
+- **Icons** come from `components/ui/Icons.jsx` (inline SVG, one stroke). No
   emoji in the UI.
 - **Map panels.** Map tools live in the one toolbar on the right. A tool
-  with content (Edit, Legend, Analysis) opens a floating panel just left of
-  the toolbar, aligned with its icon, never a fixed corner box or a layout
-  column; one panel at a time; Esc closes it. Rows are 32 px: swatch, name,
-  one mono value. Explanations go in tooltips, not on the panel.
+  with content (Edit, Legend, Analysis, Train, Model performance) opens a
+  floating panel just left of the toolbar, never a separate page, a fixed
+  corner box or a layout column; one panel at a time (App.jsx closes the
+  others); Esc closes it. Rows are 32 px: swatch, name, one mono value. On
+  phones panels span the map left of the toolbar.
+- **Imagery on the map** is drawn in Web Mercator: the preview PNG is warped
+  (`_preview_vrt`) and placed with `preview_bounds_wgs84`; zoomed in, full-
+  resolution tiles from `/api/images/{id}/tiles/{z}/{x}/{y}.png` take over.
+  Never stretch a raster-grid picture over a lat/lon box (8 m off north-up,
+  460 m south-up). `test_preview_placement_offline.py` guards it.
+- **No overlap, no page scroll.** The app is one screen tall
+  (`minmax(0, 1fr)` rows); panels, the sidebar and lists scroll inside. Panels
+  stay clear of the library dock (`--dock-h`). After a layout change, run the
+  overlap audit: every pair of floating elements measured with
+  getBoundingClientRect, in every panel state, at 1440, 1280x720, tablet and
+  phone. Zero overlaps is the bar.
+- **Short text.** One line per fact or error, with a small (i) from
+  `InfoNote.jsx` that opens the explanation and the fix in place beneath it,
+  never a popup and never a paragraph on the panel.
+- **Charts** in panels are hand-drawn SVG: the measure that matters in the
+  accent, everything else in grey steps, values at the line ends in mono,
+  no legend box. Detection models are measured with loss (train vs val),
+  precision, recall and mAP50, never "accuracy".
 - **Motion.** Name transitions (`background-color`, `color`, `transform`)
   with `var(--ease)`; no looping animation except a live spinner.
+- **Compact panels, no help text (standing request of the owner; never wait
+  to be asked).** A panel shows tools, buttons, names and values only. No
+  sentence that explains how to use something: put it in the control's
+  `title` (hover) or leave it out. Errors and one-word states stay. Lay a
+  panel out on one grid: 11px labels above 32px controls, two controls per
+  row where they fit (`.ai-grid`), 8px between rows, 16px between sections;
+  units inside the field (`.ai-num`); actions as a pair of equal buttons;
+  secondary actions as a small link or icon, right-aligned. Every control in a
+  row shares one height. Before calling UI work done, screenshot it and check
+  nothing is cut off, misaligned or taller than its neighbours.
+- **The interface speaks with buttons, not paragraphs.** When a tool needs a
+  choice (keep or discard, install a model), show the buttons at the place the
+  result appears and on the map chip, never only a key in a hint.
 
-## 5. Shipping a change
+## 4b. Labelling and auto segmentation
+
+- Labels live in one Labels panel beside the map toolbar, in three groups: AI (click, box, in zone, similar), Draw (polygon, freehand, rectangle, brush), Edit (vertices, cut hole, merge, eraser). Every tool has a one-letter key; classes switch with 1-9.
+- Click-to-segment uses a SAM-family ONNX model (default SAM 2.1 Tiny/Small, Apache 2.0). Encode the view once and cache the embedding by raster, window and zoom; each click runs only the prompt decoder. Never re-encode per click.
+- Positive point = click, negative = Alt+click, save = Enter, discard = Esc, undo = Ctrl+Z. The outline being edited is white with a dark halo so it never matches a class colour.
+- Geometry operations (simplify, right angles, expand/contract in metres, round corners, fill holes, cut, merge, split) run server-side with shapely in a projected CRS, then reproject. Leaflet-Geoman Free (MIT) handles drawing and vertex editing; never add Geoman Pro or other paid code.
+- A saved outline is a geometric shape, never the raw mask. Pipeline: clean mask (open/close, fill holes, largest part) → contour → simplify → shape by class: buildings right angles (length-weighted edge-angle orientation, snap to 0/90°, optional 45°; `buildingregulariser`, MIT, or our own code), solar panels min-area rectangle, tanks circle when IoU ≥ 0.9, trees Chaikin smoothing. Keep the original if the result is invalid or its area ratio leaves 0.7–1.43. Refine values are in metres and converted with the image GSD. Never use GPL or unlicensed regularization code.
+- Prove geometry changes with numbers: IoU against the mask, vertex count, and on reviewed labels boundary IoU or PoLiS.
+- Store labels as full polygons with holes. Only the dataset export clips to tiles and bridges holes into single rings for YOLO-seg.
+- A model ships only after its licence file has been read. SAM 3 weights are gated and under the SAM License: GPU (RunPod) only, never bundled.
+- Report measured encoder and per-click times on the user's machine before calling auto segmentation fast.
+
+## 4c. The data folder
+
+- Paths come from `app/core/layout.py`, never built by hand: `images/<key>/`,
+  `classes/<class>/labels/<key>.geojson`, `classes/_areas/`, `datasets/<class>/vNNN/`,
+  `models/<class>/vNNN/` + `approved.json`, `engines/` for downloaded tools.
+  Keys are 8 hex characters and class folders are slugs: short paths for Windows.
+- Labels in `classes/` are the only thing edited. A dataset or model version is
+  written once; a fix is the next version. Every dataset version has a
+  `manifest.json` (sources, label hashes, split method, counts, samples).
+- Never split train/val per tile at random: tiles overlap. Use the builder's
+  block split with its gap; accuracy areas are the test split and are never
+  trained on. Report test scores, not val scores, when both exist.
+- A change to the layout ships with a move in `app/core/migrate.py` that
+  records every move and keeps the old label files.
+- Tests never write to `backend/data`: `tests/conftest.py` gives each test its
+  own data folder.
+- Labels are changed only through the store (`add_annotation`,
+  `update_annotation`, `delete_annotation`), which recompute the pixel grid
+  and refuse shapes outside the image; never write a class's GeoJSON by hand.
+- The approved version of a class reaches detection only through
+  `app/models/approved.py` as `class_<class>`; never copy weights into the
+  catalog by hand. Its status is Ready only when that version has a test F1,
+  and each predict job stores `model_version` so a result names what made it.
+
+## 5. Where code goes
+
+The layers and folders are in `docs/ARCHITECTURE.md`; every file is listed in
+`docs/TREE.md`. A new backend module goes in the package that owns its job
+(`api` for routes only, `engine` for the work, `models` for detectors); a new
+interface component goes in its feature folder under `frontend/src/components/`
+(`map`, `detection`, `labels`, `training`, `remote-sensing`, `settings`, `shell`,
+`images`, `auth`, `ui`). Start every new file with one line saying what it does,
+then run `python scripts/make_tree.py`. Dependencies go in
+`backend/requirements-core.txt` (engine) or `requirements-ml.txt` (models), as
+floors; model weights never go in git.
+
+## 6. Shipping a change
 
 1. Branch from `main`.
 2. Make the change with its test, update the README status row and
    `.env.example` for any new setting.
-3. Run backend tests and the frontend build.
+3. Run backend tests, `npx eslint src` (no warnings) and the frontend build.
 4. Commit with a message that says what changed and how it was verified.
 5. Open a pull request whose description lists what is verified and what
    still needs checking on the user's machine (GPU, real GeoTIFFs, Windows).
+
+## 6. Map drawing and edit tools
+
+- New label tools go into the rail (`LabelRail.jsx`) as a row in an existing
+  group (Polygon, Rectangle, Circle, Select, Edit) or as one new group: an
+  icon from `Icons.jsx`, a short name and one key letter. No hint paragraphs in
+  the flyout; a one-line `note` shows as the row's tooltip.
+- Give the tool's key to `LABEL_TOOLS` (LabelTools.jsx) and a one-line entry
+  in `HINTS`; check the letter is free first.
+- Geometry (split, merge, trace, snap, curves) lives in `src/lib/geomEdit.js`
+  as pure functions with a test in `geomEdit.test.mjs` (`npm test`). Work in
+  container pixels while drawing.
+- A tool that replaces labels saves the new ones first, then deletes the old,
+  and registers one Undo step (`replaceLabels` in App.jsx).
+- Drawing tools honour Snapping (`snap` prop, Ctrl skips it).
+

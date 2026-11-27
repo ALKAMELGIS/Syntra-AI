@@ -270,7 +270,7 @@ def test_upload_keeps_product_xml_for_calibration(scene, tmp_path, monkeypatch):
         assert r.status_code == 200, r.text
         body = r.json()
         assert any(f["code"] == "calibration" for f in body["health"]["findings"])
-        stored = list(settings.UPLOAD_DIR.glob("*.xml"))
+        stored = list(settings.UPLOAD_DIR.glob("*/*.xml"))      # images/<key>/<name>.xml
         assert len(stored) == 1 and stored[0].read_bytes() == xml
         r = client.post("/api/images", files={"file": ("farm.tif", scene.read_bytes(), "image/tiff"),
                                              "metadata": ("evil.sh", b"rm -rf /", "text/plain")})

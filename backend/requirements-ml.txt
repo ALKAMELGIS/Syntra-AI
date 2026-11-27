@@ -1,0 +1,9 @@
+# Models and training: detection, segmentation, the model packs.
+# Tested on Windows with Python 3.14, torch 2.14 (CPU) and ultralytics 8.4 (Nov 2026).
+# For an NVIDIA GPU, install torch from https://pytorch.org first, then this file.
+torch>=2.5
+torchvision>=0.20
+ultralytics>=8.3.49          # YOLO detection, segmentation, OBB
+onnxruntime>=1.20            # ONNX model packs (onnxruntime-gpu or -directml for a GPU)
+scipy>=1.13                  # date palm crown splitting
+safetensors>=0.4             # date palm SegFormer weights

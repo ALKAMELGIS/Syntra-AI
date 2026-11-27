@@ -1,9 +1,43 @@
-# Syntra AI — Detection Engine (Phase 1)
+# Syntra AI
 
-A satellite/drone imagery AI detection platform. Per the product spec, this
-build prioritizes a **working detection engine** over dashboard polish: the
-engine is fully usable from plain Python (no HTTP layer required) and is
-independently tested.
+Finds objects in satellite and drone GeoTIFFs (trees, date palms, vehicles, ships, buildings,
+fields) and hands them back as GIS layers: GeoJSON, KML, Shapefile, GeoPackage, CSV. It also
+trains your own models from labels you draw, measures their accuracy on your imagery, and maps
+Sentinel-2 spectral indices (NDVI, NDMI, NDWI, …) over an area. Several accounts can share one
+installation, each with its own data and a credit balance; the owner manages them in Settings > Admin.
+
+A local web app: a Python engine (FastAPI) and a browser interface (React + Leaflet).
+
+## Start
+
+Windows: double-click `start-local.bat`, then open http://localhost:5291.
+To update from GitHub: double-click `update.bat` (pulls `main`, installs what changed, starts Syntra).
+
+By hand:
+
+```bash
+cd backend
+pip install -r requirements.txt        # or requirements-core.txt for the engine alone
+cp .env.example .env
+python -m uvicorn app.main:app --port 8011
+
+cd frontend
+npm install
+VITE_API_PORT=8011 npm run dev         # http://localhost:5291
+```
+
+Tests: `cd backend && pip install -r requirements-dev.txt && python -m pytest -q tests`.
+More (GPU, Docker, Windows pitfalls): [docs/SETUP.md](docs/SETUP.md).
+
+## Where things are
+
+| Read | For |
+| --- | --- |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | How the parts fit: layers, a request's path, where data lives, the rules |
+| [docs/TREE.md](docs/TREE.md) | Every source file and what it does (generated) |
+| [docs/FEATURES.md](docs/FEATURES.md) | Each capability in detail and how it was verified |
+| [docs/API.md](docs/API.md) | The REST API |
+| [.claude/skills/syntra-dev/SKILL.md](.claude/skills/syntra-dev/SKILL.md) | House rules for changing the code |
 
 ## What's real vs. scaffolded — read this first
 
@@ -38,274 +72,12 @@ never verified:
 | Detection Models tab redesign — per-model status cards + Library Status panel | ✅ implemented | Replaced the single flat table with per-model cards (status dot, color-coded badge honestly distinguishing Ready/Unvalidated/Not-ready — fixed a bug where "Unvalidated" rendered the same green as "Ready") with expandable details: live GSD-compatibility check (`GET /api/models/{id}/gsd-check`) and that model's registered dataset versions (`GET /api/datasets/{id}/versions`) — both backend features existed already but were never wired into the UI. Added a "Model & Dataset Manager" panel wrapping the existing `POST /api/datasets/prepare` endpoint. On top, added a "Library Status" + "Installation Options" panel (`EnvironmentPanel.jsx`) mirroring a reference screenshot the user shared of a different QGIS plugin: a per-package install-status list plus Check Dependencies / Install Libraries / Repair Installation / Update Libraries actions. The dependency-check logic was extracted from `scripts/check_environment.py` into `backend/app/diagnostics/environment.py` so the CLI and the new `GET /api/environment` endpoint can never disagree. The three install/repair/update actions run a real `pip` subprocess in a background job (`POST /api/environment/actions` + polling `GET /api/environment/actions/{job_id}`) against `sys.executable -m pip install -r backend/requirements.txt`, with a "Build" selector (Automatic/CPU/CUDA) choosing PyTorch's published CPU or CUDA wheel index — no simulated progress, no faked "installed" state; a failed pip run reports its real exit code and stderr tail. |
 | Full product redesign to match a reference screenshot ("IPSAR SAT") — Phase 6 | ✅ implemented & tested (offline) | The user shared a second reference screenshot of a different, more complete product and said "I mean this interface", then explicitly asked for everything in it: layout, all ~20 model categories "fully working", multi-GPU selection, a File menu, and a usage/credit indicator. Per the user's own choice when asked directly, the "GeoSyn $100.00" balance became a **real usage counter** (total prediction runs, derived from the same per-model stats already recorded — see `GET /api/usage`), explicitly **not** a payment/billing integration, since no payment provider is connected and fabricating a money balance would be exactly the kind of fake result this project refuses to produce elsewhere. Breakdown: **(1) Catalog expanded from 6 → 19 categories** (`app/models/registry.py`) matching the screenshot's list (Buildings, Vacant Land, Street centerline, Construction Waste, Aircraft, Unpaved Road, Walls, Oil Tanks, Oil Shadows, Tank Volume, Bridge, Change Detection, Containers) — honestly scoped: only `aircraft_detection` gets a working generic-COCO-proxy runtime (COCO has an 'airplane' class, same treatment as car/ship), every other new category is `NOT_PRODUCTION_READY` with notes on exactly what's missing (no COCO proxy exists for most of these, unlike car/ship/aircraft) rather than faked. New `backend/tests/test_registry_offline.py` locks this down: catalog size, uniqueness, and that every not-ready model's factory call raises `NotProductionReadyError` except the one documented exception (`field_boundary_segmentation`, whose refusal lives in `predict()`, not `build_model()`). **(2) Real multi-GPU selection**: `_cuda_devices()` already enumerated every physical GPU individually (this pre-existed); `resolve_device()` gained an `allowed_gpu_indices` filter (new regression tests in `test_compute_offline.py`), threaded through `DetectionEngine.run()` → `POST /api/predict`'s new `gpu_indices` field, driven by real per-GPU checkboxes in the top-bar GPU dropdown (`TopBar.jsx`) — unchecking a GPU actually excludes it from that device pool for new runs, it doesn't just change a label. **(3) TopBar redesign**: a working File menu (New Project / Open Project… / Save Project As…, all via real `localStorage` + downloaded/re-opened JSON — no account or server-side project store exists, so this is honestly scoped as local-only; Export Results — GeoJSON/KML/Shapefile wired to the existing real export endpoints), nav relabeled to "Full Map" / "Dashboard" matching the reference, a light/dark theme toggle (new `.theme-light` CSS variable override), and the usage counter described above. **(4) Sidebar redesign**: Detection Models switched from single-select radio to multi-select checkboxes (`Sidebar.jsx`) — selecting several models now starts one real prediction job per model (and per queued image in batch mode); added "Single file" / "Folder batch" tabs, the latter a real multi-file queue (`<input multiple webkitdirectory>`) that uploads and tracks each file's status independently. **(5) Right-side map toolbar** (`MapDrawTools.jsx`, new): rectangle/circle/freehand AOI drawing and a real two-point ruler (Haversine distance via Leaflet's own `distanceTo`) are genuine, working Leaflet draw tools — drawn and measured for real — but are explicitly **not yet wired into the backend as a processing-region restriction**; the AOI polygon is currently a map annotation only, and this file says so rather than implying a run is scoped to it. A "toggle detections visibility" eye button and a shortcut button that jumps to the Dataset & Model Manager are both fully wired. **(6) Multi-model/multi-image run + results**: `App.jsx` tracks one job per (image, model) pair, renders each as its own color-coded GeoJSON layer + legend entry on the map, and lists every job's own progress/result card in the Analysis panel — verified via `py_compile` (all backend files) + `pytest` (34/34 offline tests pass, up from 26) + `esbuild` (every changed/new frontend file parses clean) prior to deployment; **not yet verified live against the user's real running instance** (pending sync + browser check). |
 
+| Resumable, parallel GeoTIFF upload (`POST /api/images/resumable`, `PUT .../resumable/{key}`, `POST .../resumable/{key}/finish`) | 📝 written, **not run** (sandbox has no `fastapi`/network to run `pytest` or `npm`) | A large drone/satellite GeoTIFF sent over the internet, as opposed to the This PC tab, can be interrupted by a dropped connection, a crashed tab, or an accidental close; re-uploading from byte 0 every time was the first complaint. The key is `sha256(owner:name:size:lastModified)`, not a token the browser must remember across a reload: a `File` object cannot survive one anyway, so re-picking the same file in the chooser is what "resuming" means in practice. The second complaint was plain upload speed for 0.25–1 m drone scenes, which can run into the GB range: chunks now upload **4 at a time** instead of one after another, so a slow or high-latency link to the server is used concurrently rather than in a single stream. This needed the server side to accept chunks out of order — the part file is preallocated to its final size as a sparse file (`f.truncate(size)`, no disk cost for the still-empty holes) and each chunk is written at the byte offset the client declares (`f.seek(offset); f.write(...)`); what has actually arrived is tracked as a merged list of `[start, end)` ranges in the metadata file rather than inferred from the file's on-disk size (which, being preallocated, no longer grows chunk by chunk). Two chunks landing at the same instant only race on that bookkeeping, not on the file itself (disjoint byte ranges need no lock), so it is serialised with one `threading.Lock` per upload key (`_resumable_lock_for`). On resume, `/resumable` returns the ranges already on disk and the frontend's fixed 32 MB grid (`_missingChunks`) skips whole cells already covered and only re-queues what is missing. On completion the partial file is `Path.replace()`d into the library (same filesystem, so this is instant — not a second copy) and the existing `_register`/`_claim` path runs unchanged, so a finished resumable upload is indistinguishable from a direct one. Abandoned partial uploads are swept after 14 days. Verified so far: `python -m py_compile` on the backend file and `node --check` on the frontend file (both clean); **not yet run** against a live server, against an actual multi-GB drone GeoTIFF, or exercised with a real interrupted upload — needs `pytest -q backend/tests` plus a live browser check (watch several chunks in flight in the network tab, kill the connection mid-upload, re-pick the same file, confirm it continues instead of restarting) before this row can say more than "written". |
+
+| Faster background retile for large GeoTIFF import (`app/engine/optimize.py`) | 📝 written, **not run** (sandbox has no `fastapi`/rasterio to run `pytest` or exercise it against a real raster) | Upload and resume were already fast; the part the user actually sat waiting on after that was `optimize()` — the background job that rewrites a plain-strip drone export into 512x512 tiles with overviews (`needs_optimizing` fires for most consumer drone software, which does not export an already-tiled/COG file). On a free-tier, shared single-vCPU host this rewrite is genuinely CPU-bound, not I/O-bound, and DEFLATE's default zlib level (6) spends real CPU time squeezing the file smaller. Changed the retile write to `zlevel=1`: far less CPU per block for a file that is still fully lossless, just a little larger on disk — a fair trade since nothing reads this copy directly for its size (predict, map tiles and overviews all decode it either way) and the user's own original upload is never touched or recompressed. Left everything else (512x512 tiling, BigTIFF, averaging overviews, the 512-row windowed pass that bounds memory) unchanged. **Not yet measured**: needs a real high-resolution drone GeoTIFF on the actual Render instance, timed before/after, to say by how much this helps — if the bottleneck turns out to be the row-by-row read/write loop rather than compression, this alone will not be enough and `ROWS_PER_PASS` (currently 512, chosen to bound memory on a small free-tier instance) would be the next thing to look at. |
+
 **Bottom line:** the orchestration engine — the hard, easy-to-get-subtly-wrong
 part (tiling, georeferencing, duplicate removal, the model contract) — is
 real and has passing tests. The ML models themselves need your GPU box,
 your datasets, and a normal internet connection to install dependencies and
 train/fine-tune.
-
-## Model packs: install open models on demand
-
-Categories with open pretrained weights show under **Available to add** with
-an **Install** button instead of "Not ready". Install downloads one ONNX file
-from a fixed, reviewed URL into `SYNTRA_WEIGHTS_DIR/packs/`, checks it loads
-and is the right kind of model, and the category becomes runnable. Offline
-machines use **From file** with the same file. Clients only ever name a pack
-id, never a URL. Chosen from the research report *Open models for satellite
-detection* (Nov 2026):
-
-| Category | Pack | Licence | Training data |
-|---|---|---|---|
-| Trees | DeepForest RetinaNet (GeoDeep ONNX) | MIT | NEON aerial, ~10 cm |
-| Buildings | RAMP U-Net (GeoDeep ONNX) | CC BY-NC 4.0 (non-commercial) | ≤50 cm, 8 regions incl. Oman |
-
-Tiles are read at the scale each model was trained at (from the ONNX
-metadata), so a 10 cm model on 50 cm imagery sees upsampled tiles. Building
-masks are merged across tiles before polygonising, so footprints cut by a
-tile edge come out whole, with area in m².
-
-The model list is grouped: **ready** (an amber dot means pretrained, not yet
-checked on your imagery), **available to add**, and **needs training data**
-(collapsed): palms, field boundaries, vacant land, roads, construction
-waste, walls, change detection. The research found no open model for those
-that is both usable at 0.3–0.7 m and licensed for commercial use.
-
-Verified by `test_model_packs_offline.py` with synthetic ONNX models in the
-same format. **Not yet run with the real weights**: Hugging Face is blocked
-from the build sandbox; the first real install happens on your machine.
-
-## Analyse a drawn area only
-
-Draw a rectangle, circle or freehand area with the Edit tools; the sidebar
-then shows **Drawn area only** and the button becomes **Run in area**. The
-AOI (WGS84 GeoJSON) is transformed into the raster's CRS and clipped to it;
-tiling reads only the AOI's bounding box, skips tiles outside the polygon,
-and drops detections whose centre falls outside. An AOI that misses the
-image is refused before the job starts. This is how a multi-GB scene is
-analysed in seconds. Verified by `test_aoi_vegetation_offline.py`.
-
-## Vegetation (spectral index, no trained model)
-
-`vegetation_index` computes **NDVI** from red and near-infrared (VARI for
-RGB-only images), outputs vegetation polygons with area (ha), mean index
-and a dense/sparse class, and the total vegetation cover of the analysed
-area. With the product XML uploaded beside the image, DN are calibrated to
-radiance and divided by solar irradiance (ESUN) so NDVI is a ratio of
-top-of-atmosphere reflectances. On the SuperView scene this moved bare sand
-from −0.16 (radiance) to ~0.01, as expected physically.
-
-Tree crowns are counted only at ≤ 1 m pixels and only as compact,
-prominent peaks of the smoothed index; otherwise the count is withheld and
-the manifest says why. This was tightened after the user's 2 m scene
-produced ~10,000 false "trees" on one flat intertidal patch.
-
-**Real run on the user's SuperView Neo-3 scene (2 m MUX, UTM 39N):** whole
-scene 12,544 ha analysed, 201 ha vegetation (1.6%), 42 s on the user's
-machine; lagoon area 1,315 ha, 160 ha vegetation (12%). Caveat recorded in
-every manifest: on coasts, positive NDVI also comes from intertidal algal
-mats and seagrass, which is what most of the lagoon cover is.
-
-## Satellite products: raster check, 16-bit, band order, ONNX
-
-Built after inspecting a real SuperView Neo-3 L2A scene (0.5 m PAN 3.6 GB,
-2 m 8-band MUX, UTM 39N, 72% empty footprint):
-
-- **Raster check on upload** (`GET /api/images/{id}/health`, shown in the
-  sidebar): CRS and units, ground resolution in metres (converted for
-  geographic CRSs), bit depth, band count and the RGB bands chosen, tiled vs
-  stripped layout, overviews, RPC model present (not terrain-orthorectified),
-  share of the frame with data. Each warning comes with the GDAL command that
-  fixes it.
-- **16-bit data** is stretched to 8-bit with one scene-wide 2–98% stretch
-  (ignoring no-data), so every tile is treated the same. Previews use the
-  same stretch and show the empty footprint as transparent.
-- **Band order** follows GDAL colour interpretation, then band names, then
-  the sensor (SuperView Neo-3 8-band: R,G,B = 3,2,1; WorldView 8-band: 5,3,2),
-  then the band count. Override per run with `rgb_bands`.
-- **Empty tiles are skipped** before inference.
-- **ONNX backend**: set `SYNTRA_AERIAL_OBB_WEIGHTS` to a `.onnx` file and
-  detection runs on onnxruntime with no PyTorch install. Export once with
-  `yolo export model=yolo11n-obb.pt format=onnx imgsz=1024 opset=17`.
-  Verified identical to ultralytics on the same tile (102/102 boxes, IoU 1.000).
-
-Verified: `test_raster_prep_offline.py` (13 tests) and an end-to-end run on
-an 8-band uint16 UTM GeoTIFF with RGB in bands 3/2/1 and an empty strip:
-health ok, bands 3·2·1 picked from the sensor name, 2 empty tiles skipped,
-181 ships, ONNX only.
-
-## Works with any GeoTIFF: the 21-file matrix
-
-`backend/tests/geotiff_matrix/variants.py` writes 21 GeoTIFFs that differ the
-ways real products do. `test_geotiff_matrix_offline.py` sends each one
-through upload, raster check, preview and a vegetation run via the API, and
-checks the results are WGS84 lon/lat on the scene (it runs in CI).
-
-| Variant | Result |
-|---|---|
-| uint8 RGB UTM, uint16 RGBN no-data 0, BGRN with an empty strip, int16 no-data −9999 | ✅ placed, analysed |
-| float32 reflectance with NaN no-data | ✅ (crashed on upload before: NaN is not valid JSON) |
-| RGBA alpha, internal GDAL mask over 255-filled pixels | ✅ masked pixels skipped |
-| EPSG:4326, EPSG:3857, EPSG:2263 (US feet), south-up, rotated 15° | ✅ GSD converted to metres (0.50 m) |
-| COG deflate, JPEG/YCbCr, 40 px tile, 1 px wide strip | ✅ |
-| GCPs only, no geotransform | ✅ affine fit through the GCPs on upload (warped instead if RMS > 1 px) |
-| RPC only | ✅ orthorectified onto local UTM on upload, raster check warns: no terrain model |
-| Palette (classified) image | ✅ shown in its colours; vegetation refused, with the reason |
-| Panchromatic single band | ✅ detection runs; vegetation refused (needs NIR or RGB) |
-| No CRS at all | ✅ refused before running (409) with how to assign one, instead of exporting pixel coordinates |
-
-The pixel rules are in one place, `raster_prep.valid_pixels` and
-`read_rgb`: GDAL masks (no-data, alpha, internal mask), NaN, and an all-zero
-fill when no no-data is declared. Tiling, preview, the raster check and
-vegetation all use them. Georeferencing changes only the uploaded copy
-(`engine/georef.py`). Ship detection (DOTA-OBB, ONNX) was also run on all 21
-variants using a real marina photo as content; it found boats on every placeable
-file. That run needs the model file, so it is not part of CI.
-
-## Results are always WGS84
-
-Detections are merged across tiles in the GeoTIFF's own projection (metres,
-so overlap math is meaningful) and then reprojected to WGS84 lon/lat before
-export, because GeoJSON, KML and Leaflet all expect it. Before this, results
-from a projected GeoTIFF (UTM, which most orthomosaics use) did not land on
-the map. Shapefile downloads now include a `.prj`. A raster with no CRS is
-left in its own coordinates and the manifest says `"crs": null` rather than
-guessing. Verified by `test_reprojection_offline.py` and the run above.
-
-## Background jobs survive restarts
-
-Prediction, dataset-export, training and pip jobs are kept in a SQLite file
-(`SYNTRA_DATA_DIR/syntra.db`) instead of in memory. After a restart, finished
-jobs and their results are still there, and jobs that were mid-run show as
-**interrupted** with a message instead of looking live forever. The dashboard
-reloads recent prediction jobs and their map layers on page load, and the
-progress bar shows real tiles done out of the total. `GET /api/jobs` lists
-history across all kinds. Verified by `backend/tests/test_jobs_offline.py`
-(14 tests) and a live uvicorn restart.
-
-Not yet: running jobs are not resumed (they restart from scratch), and jobs
-still run in the API process. A separate worker queue (Celery/RQ + Redis) is
-the next step for multi-user or multi-GPU servers.
-
-## Security defaults
-
-The API is safe to run on a single machine out of the box, and has switches
-for when it is exposed to a network (all in `backend/.env.example`):
-
-- Request paths (`image_path`, dataset folders, `out_dir`) must lie inside
-  `SYNTRA_DATA_DIR`; add more folders with `SYNTRA_EXTRA_DATA_ROOTS`.
-  `/api/predict` now takes `image_id` from the image library.
-- Upload filenames are sanitised and capped by `SYNTRA_MAX_UPLOAD_MB`.
-- Library Status install/repair/update (which runs `pip`) only works from
-  the server itself unless `SYNTRA_ALLOW_ENV_ACTIONS=1`.
-- `SYNTRA_API_KEY` turns on a shared key for every `/api/*` route except
-  `/api/health`; set `VITE_API_KEY` in `frontend/.env` to match. This is a
-  LAN gate, not per-user login, which is the next step.
-
-Verified by `backend/tests/test_security_offline.py` (19 tests).
-
-## Project layout
-
-```
-backend/
-  app/
-    core/        # config, compute device manager (CPU0/CPU1/GPU/AUTO)
-    engine/       # raster I/O + tiling, geo transform, NMS, postprocess/export, pipeline orchestrator, benchmark metrics
-    models/       # standardized model interface, catalog/registry, factory, per-model implementations
-    datasets/     # Section 9: annotation parsing (YOLO/COCO/GeoJSON), validation, geo-separated splitting, versioning
-    api/          # FastAPI routes: images, models, predict, results, compute, datasets, benchmark
-    main.py
-  tests/
-    test_pipeline_offline.py        # numpy-only, runs anywhere, no GPU/network needed
-    test_datasets_offline.py        # dataset parsing/validation/splitting (incl. real YOLO dir parsing)
-    test_benchmark_offline.py       # metric-computation correctness (AP/mAP/precision/recall)
-    test_export_formats_offline.py  # GeoJSON -> KML round-trip
-    test_measurements_offline.py    # field area/perimeter math (real cv2 contour extraction)
-    test_stats_offline.py           # per-model processing-statistics accumulation
-    test_shapefile_export_offline.py  # .shp/.shx/.dbf round-trip + spec-derived file-length check
-    test_compute_offline.py         # CPU0/CPU1/GPU/AUTO resolution + fallback-without-GPU behavior
-  requirements.txt
-  Dockerfile
-frontend/
-  src/
-    components/   # TopBar (Detect/Detection Models tabs), Sidebar (model checklist + upload + run), MapView (Leaflet), AnalysisPanel, ModelsDashboard (Phase 4)
-    api/client.js
-  package.json
-  Dockerfile
-  nginx.conf
-docs/
-  API.md          # full REST API reference — routes, request/response shapes, error codes
-scripts/
-  check_environment.py  # dependency + CUDA doctor; run this on your real machine before `uvicorn`
-docker-compose.yml
-.github/workflows/offline-tests.yml
-```
-
-## Running it for real
-
-```bash
-# 0. Check what your machine actually has before installing anything
-python scripts/check_environment.py
-# Prints an honest pass/fail per dependency (fastapi/rasterio/torch/...),
-# whether CUDA is visible to torch, and an exit code (0 = fully ready).
-
-# Backend
-cd backend
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env
-uvicorn app.main:app --reload --port 8000
-
-# Frontend
-cd frontend
-npm install
-npm run dev   # http://localhost:5173, proxies /api -> :8000
-
-# Offline tests (no GPU/rasterio/torch needed)
-cd backend
-python tests/test_pipeline_offline.py
-python tests/test_datasets_offline.py
-python tests/test_benchmark_offline.py
-python tests/test_export_formats_offline.py
-python tests/test_measurements_offline.py
-python tests/test_stats_offline.py
-python tests/test_shapefile_export_offline.py
-python tests/test_compute_offline.py
-
-# Or with Docker Compose (not yet built/tested here — no registry access in this sandbox):
-docker compose up --build
-```
-
-Full REST endpoint reference (request/response shapes, status codes, and
-which checks are real vs. still to be exercised against a live server): see
-[`docs/API.md`](docs/API.md).
-
-## The six initial detection categories
-
-See `backend/app/models/registry.py` for the full catalog (GSD compatibility
-range, supported formats, status, and honest per-model notes on what's
-missing). Status values: `ready`, `validation` (running but unbenchmarked),
-`not_production_ready`, `loading`, `processing`, `training`, `error`,
-`disabled` — matching the spec's Model Management Interface section.
-
-## Roadmap (spec's Section 10, Development Priorities)
-
-- [x] **Phase 1** — detection engine architecture: tiling, model interface, NMS, georeferencing, GeoJSON export. Working placeholder for car/ship; honest stubs for palm/date/tree/field-boundary pending datasets. Also includes the Section 9 dataset module (YOLO/COCO/GeoJSON parsing, validation, geo-separated splitting, versioning) a turn ahead of where the phase list put it, since training anything in Phase 1 needs it.
-- [x] **Phase 2** — CPU0 / CPU1 / GPU / AUTO SELECT compute manager.
-- [ ] **Phase 3** — validated at scale against real multi-GB orthomosaics (needs a real deployment box).
-- [x] **Phase 4** — Model Management dashboard: full registry fields + live processing statistics in a dedicated table view, toggled from the top bar. Dataset-version UI (listing `/api/datasets/{model_id}/versions`) is not built yet.
-- [x] **Phase 5** — GeoJSON → KML export (`GET /api/results/{job_id}/{model_id}/kml`), ESRI Shapefile export (`GET /api/results/{job_id}/{model_id}/shapefile`), and field area/perimeter measurement math (`app/engine/measurements.py`), all implemented and tested. Layer styling / measurement *tools* (interactive, in the dashboard) are still open — the underlying math and export formats are done; the UI affordances for them are not.
-- [x] **Phase 6 (tooling only)** — `app/engine/benchmark.py` computes real precision/recall/F1/mAP50/mAP50-95/throughput/false-positive-rate from predictions + ground truth, unit-tested against hand-verified numbers. Nothing has actually been benchmarked yet — that still requires trained weights and a labeled held-out test set, which don't exist for any model in the catalog.
-
-## What's needed from you to move past Phase 1
-
-1. Labeled datasets (or existing weights) for palm, date-palm, tree, and
-   field-boundary-polygon classes — YOLO/COCO/GeoJSON annotation formats are
-   all parsed and validated by `app/datasets/` already; point it at real
-   annotation files via `POST /api/datasets/prepare` to get a geographically
-   separated train/val/test split and a versioned manifest.
-2. A GPU-equipped host (or at least a normal networked machine) to install
-   `requirements.txt` and actually run/benchmark the models.
-3. Confirmation on the "reference" UI: the dashboard here is an **original**
-   layout/branding inspired by the same category of product (map + model
-   checklist + run button + results panel) — it does not reuse any other
-   vendor's name, logo, or visual assets.

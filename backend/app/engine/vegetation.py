@@ -98,7 +98,7 @@ def read_calibration_gains(path: str | Path) -> tuple[list[float], list[float]] 
     p = Path(path)
     for xml in (p.with_suffix(".xml"), p.with_suffix(".XML")):
         try:
-            text = xml.read_text(errors="ignore")
+            text = xml.read_text(errors="ignore", encoding="utf-8")
         except OSError:
             continue
         g = re.search(r"<AbsCalibrationGain>([^<]+)</AbsCalibrationGain>", text)
@@ -281,7 +281,8 @@ def run_vegetation(
     }
 
     geojson_path = out_dir / f"{model_id}.geojson"
-    geojson_path.write_text(json.dumps({"type": "FeatureCollection", "features": features}))
+    from app.engine.measure import measure_features
+    geojson_path.write_text(json.dumps(measure_features({"type": "FeatureCollection", "features": features})), encoding="utf-8")
     manifest = {
         "model_id": model_id,
         "count": len(features),
@@ -305,7 +306,7 @@ def run_vegetation(
         **summary,
     }
     manifest_path = out_dir / f"{model_id}.manifest.json"
-    manifest_path.write_text(json.dumps(manifest, indent=2))
+    manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     if progress_cb:
         progress_cb(3, 3)
 

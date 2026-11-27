@@ -96,3 +96,21 @@ def test_gcp_and_rpc_files_get_georeferenced(matrix):
         codes = [f["code"] for f in up["health"]["findings"]]
         assert code in codes, codes
         assert up["health"]["crs"], "georeferenced copy has a CRS"
+
+
+def test_saved_raster_check_is_redone_after_the_rules_change(matrix):
+    """A check stored by an older rule set (here: the old 10 cm floor) is recomputed on listing."""
+    import json
+
+    from app.core.image_library import sidecar_path
+
+    c, files = matrix
+    up = c.post("/api/images", files={"file": ("rgb_uint8_utm.tif", files["rgb_uint8_utm.tif"]["path"].read_bytes(), "image/tiff")}).json()
+    sc = sidecar_path(__import__("pathlib").Path(up["path"]))
+    stale = json.loads(sc.read_text())
+    stale["health"]["version"] = 1
+    stale["health"]["findings"].append({"level": "warning", "code": "gsd_range", "title": "old", "detail": "", "fix": None})
+    sc.write_text(json.dumps(stale))
+    listed = next(e for e in c.get("/api/images").json() if e["image_id"] == up["image_id"])
+    assert listed["health"]["version"] >= 2
+    assert not any(f["title"] == "old" for f in listed["health"]["findings"])

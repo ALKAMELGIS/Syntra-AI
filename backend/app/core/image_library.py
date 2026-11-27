@@ -38,7 +38,8 @@ class LibraryEntry:
     gsd_x_m: float | None = None
     gsd_y_m: float | None = None
     area_km2: float | None = None
-    bounds_wgs84: dict[str, float] | None = None  # {south, west, north, east} — for map ImageOverlay placement
+    bounds_wgs84: dict[str, float] | None = None  # {south, west, north, east} of the footprint (zoom to, filters)
+    preview_bounds_wgs84: dict[str, float] | None = None  # exact corners of the Web Mercator preview: ImageOverlay
     raster_meta_note: str | None = None  # set when raster metadata couldn't be read
     health: dict[str, Any] | None = None  # app.engine.raster_health.check_raster(...).to_dict()
 
@@ -64,6 +65,7 @@ def build_entry(
     raster_meta_note: str | None = None,
     bounds_wgs84: dict[str, float] | None = None,
     health: dict[str, Any] | None = None,
+    preview_bounds_wgs84: dict[str, float] | None = None,
 ) -> LibraryEntry:
     raster_meta = raster_meta or {}
     width = raster_meta.get("width")
@@ -85,6 +87,7 @@ def build_entry(
         gsd_y_m=gsd_y_m,
         area_km2=compute_area_km2(width, height, gsd_x_m, gsd_y_m),
         bounds_wgs84=bounds_wgs84,
+        preview_bounds_wgs84=preview_bounds_wgs84,
         raster_meta_note=raster_meta_note,
         health=health,
     )
@@ -92,7 +95,7 @@ def build_entry(
 
 def write_entry(image_path: Path, entry: LibraryEntry) -> Path:
     sc = sidecar_path(image_path)
-    sc.write_text(json.dumps(entry.to_dict(), indent=2))
+    sc.write_text(json.dumps(entry.to_dict(), indent=2), encoding="utf-8")
     return sc
 
 
@@ -101,7 +104,7 @@ def read_entry(image_path: Path) -> dict[str, Any] | None:
     if not sc.exists():
         return None
     try:
-        return json.loads(sc.read_text())
+        return json.loads(sc.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
         return None
 
@@ -117,8 +120,13 @@ def list_library(upload_dir: Path) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     if not upload_dir.exists():
         return out
-    for p in sorted(upload_dir.glob("*")):
-        if p.suffix.lower() not in (".tif", ".tiff"):
+    # images/<key>/<name>.tif (app.core.layout); files directly in the folder
+    # are from before the layout and are still listed until they are moved
+    files = [*upload_dir.glob("*"), *upload_dir.glob("*/*")]
+    for p in sorted(files):
+        if p.suffix.lower() not in (".tif", ".tiff") or not p.is_file():
+            continue
+        if p.name.endswith((".georef.tif", ".tiled.tif")):
             continue
         entry = read_entry(p)
         if entry is None:
@@ -133,6 +141,8 @@ def list_library(upload_dir: Path) -> list[dict[str, Any]]:
                 "gsd_x_m": None, "gsd_y_m": None, "area_km2": None,
                 "raster_meta_note": "No metadata sidecar found for this file.",
             }
+        else:
+            entry["path"] = str(p)            # where it is now, even after a move
         out.append(entry)
     out.sort(key=lambda e: e.get("uploaded_at") or "", reverse=True)
     return out
@@ -143,3 +153,27 @@ def find_entry_by_image_id(upload_dir: Path, image_id: str) -> dict[str, Any] | 
         if entry.get("image_id") == image_id:
             return entry
     return None
+
+
+def detach_if_linked(path: str | Path) -> bool:
+    """Make the library's file its own before writing into it.
+
+    Images opened from the user's folders are hard-linked into the library
+    (instant, no extra space). A hard link shares its bytes with the original,
+    so an in-place write (overviews, a GCP transform) would change the user's
+    file. Call this first: a linked file is copied and swapped in, and the
+    original is never touched. Returns True when a copy was made.
+    """
+    import os
+    import shutil
+
+    path = Path(path)
+    try:
+        if os.stat(path).st_nlink <= 1:
+            return False
+    except OSError:
+        return False
+    tmp = path.with_name(path.name + ".own")
+    shutil.copyfile(path, tmp)
+    os.replace(tmp, path)
+    return True

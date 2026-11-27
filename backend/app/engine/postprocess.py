@@ -138,8 +138,10 @@ def export_results(
     else:
         raise ValueError(f"Unknown geometry kind: {geometry}")
 
+    from app.engine.measure import measure_features
+    measure_features(geojson)
     geojson_path = out_dir / f"{model_id}.geojson"
-    geojson_path.write_text(json.dumps(geojson, indent=2))
+    geojson_path.write_text(json.dumps(geojson, indent=2), encoding="utf-8")
 
     manifest = {
         "model_id": model_id,
@@ -149,6 +151,6 @@ def export_results(
         **(extra_meta or {}),
     }
     manifest_path = out_dir / f"{model_id}.manifest.json"
-    manifest_path.write_text(json.dumps(manifest, indent=2))
+    manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
 
     return {"geojson_path": str(geojson_path), "manifest_path": str(manifest_path), "manifest": manifest}

@@ -154,3 +154,30 @@ def test_segmentation_run_produces_wgs84_polygons_with_area(tmp_path):
     lon, lat = feats[0]["geometry"]["coordinates"][0][0]
     assert 55.2 < lon < 55.3 and 25.0 < lat < 25.1
     assert res["summary"]["tile_px"] == 64 and feats[0]["properties"]["class"] == "building"
+
+
+def test_model_file_in_a_model_folder_counts_as_installed(tmp_path, monkeypatch):
+    """A file put in SYNTRA_MODEL_DIRS (or ~/.syntra/models) is found without installing again."""
+    from app.core.config import settings
+    from app.models import packs
+
+    monkeypatch.setattr(settings, "WEIGHTS_DIR", tmp_path / "weights")
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path / "home"))
+    extra = tmp_path / "my_models"
+    extra.mkdir()
+    pack = packs.PACKS["syntra-drone-objects"]
+    assert not packs.is_installed(pack)
+    monkeypatch.setenv("SYNTRA_MODEL_DIRS", str(extra))
+    (extra / pack.filename).write_bytes(b"onnx")
+    assert packs.is_installed(pack)
+    assert packs.pack_path(pack) == extra / pack.filename
+
+
+def test_obb_weights_found_in_model_folder(tmp_path, monkeypatch):
+    from app.models.aerial_obb_detector import resolve_obb_weights
+
+    monkeypatch.setenv("SYNTRA_MODEL_DIRS", str(tmp_path))
+    assert resolve_obb_weights("yolo11n-obb.pt") == "yolo11n-obb.pt"
+    (tmp_path / "yolo11n-obb.onnx").write_bytes(b"onnx")
+    assert resolve_obb_weights("yolo11n-obb.pt") == str(tmp_path / "yolo11n-obb.onnx")

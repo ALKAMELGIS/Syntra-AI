@@ -80,6 +80,8 @@ def ensure_georeferenced(path: str | Path) -> dict | None:
         fit = from_gcps(gcps)
         rms = _gcp_affine_rms_px(gcps, fit)
         if rms <= 1.0:
+            from app.core.image_library import detach_if_linked
+            detach_if_linked(path)   # never write into a user's original through a hard link
             with rasterio.open(path, "r+") as ds:
                 ds.crs = gcp_crs
                 ds.transform = fit

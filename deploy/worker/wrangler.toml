@@ -1,0 +1,7 @@
+# Deploys the syntra-ai.<your-account>.workers.dev redirect (src/index.js) to
+# the real engine. No [assets] binding: there is nothing to build or upload
+# here, so Cloudflare's Git-connected deploy for this Worker (dashboard:
+# Settings > Builds) only has to run `npx wrangler deploy`, no build command.
+name = "syntra-ai"
+main = "src/index.js"
+compatibility_date = "2026-11-26"

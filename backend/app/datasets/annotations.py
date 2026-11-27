@@ -26,7 +26,7 @@ def parse_yolo_txt(txt_path: str | Path, image_path: str, image_w: int, image_h:
     if not txt_path.exists():
         raise AnnotationError(f"YOLO annotation file not found: {txt_path}")
 
-    for lineno, raw in enumerate(txt_path.read_text().splitlines(), start=1):
+    for lineno, raw in enumerate(txt_path.read_text(encoding="utf-8").splitlines(), start=1):
         line = raw.strip()
         if not line:
             continue
@@ -88,7 +88,7 @@ def parse_yolo_dataset_dir(
         if classes_file.suffix in (".yaml", ".yml"):
             class_names = _parse_names_from_yaml(classes_file)
         else:
-            lines = [l.strip() for l in classes_file.read_text().splitlines() if l.strip()]
+            lines = [l.strip() for l in classes_file.read_text(encoding="utf-8").splitlines() if l.strip()]
             class_names = {i: name for i, name in enumerate(lines)}
 
     image_paths = sorted(p for p in images_dir.iterdir() if p.suffix.lower() in image_extensions)
@@ -116,7 +116,7 @@ def parse_yolo_dataset_dir(
 
 def _parse_names_from_yaml(yaml_path: Path) -> dict[int, str]:
     """Minimal `names:` extractor for an Ultralytics-style data.yaml — avoids a hard PyYAML dependency."""
-    text = yaml_path.read_text()
+    text = yaml_path.read_text(encoding="utf-8")
     try:
         import yaml  # optional; fall back to a tiny manual parser if unavailable
         data = yaml.safe_load(text)
@@ -155,7 +155,7 @@ def parse_coco_json(coco_path: str | Path, images_dir: str | Path) -> list[Datas
     if not coco_path.exists():
         raise AnnotationError(f"COCO annotation file not found: {coco_path}")
 
-    data = json.loads(coco_path.read_text())
+    data = json.loads(coco_path.read_text(encoding="utf-8"))
     for key in ("images", "annotations", "categories"):
         if key not in data:
             raise AnnotationError(f"COCO file missing required key '{key}'.")
@@ -201,7 +201,7 @@ def parse_geojson_annotations(geojson_path: str | Path, class_field: str = "clas
     if not geojson_path.exists():
         raise AnnotationError(f"GeoJSON file not found: {geojson_path}")
 
-    data = json.loads(geojson_path.read_text())
+    data = json.loads(geojson_path.read_text(encoding="utf-8"))
     if data.get("type") != "FeatureCollection":
         raise AnnotationError("Expected a GeoJSON FeatureCollection.")
 

@@ -38,7 +38,8 @@ def load_session(path: str, device: str = "cpu"):
             return _SESSIONS[key]
         import onnxruntime as ort
 
-        providers = ["CUDAExecutionProvider", "CPUExecutionProvider"] if device.startswith("cuda") else ["CPUExecutionProvider"]
+        from app.core.onnx_runtime import session_providers, trt_cache_dir
+        providers = session_providers(device, trt_cache_dir())   # TensorRT > CUDA > DirectML > CPU
         opts = ort.SessionOptions()
         opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
         sess = ort.InferenceSession(path, sess_options=opts, providers=providers)
@@ -75,14 +76,15 @@ def tile_px_for_gsd(cfg: dict, gsd_m: float | None) -> int:
     return max(16, int(round(size * ratio)))
 
 
-def _to_input(tile_rgb: np.ndarray, size: int) -> tuple[np.ndarray, float, float]:
+def _to_input(tile_rgb: np.ndarray, size: int, nominal_tile: int | None = None) -> tuple[np.ndarray, float, float]:
     import cv2
 
     h, w = tile_rgb.shape[:2]
     img = tile_rgb
     if (h, w) != (size, size):
-        # pad partial edge tiles to a square of the same scale, then resize
-        side = max(h, w)
+        # pad partial edge tiles to the FULL tile's size, so they are resized by the
+        # same factor as every other tile (not enlarged to fill the input)
+        side = max(h, w, nominal_tile or 0)
         pad = np.zeros((side, side, 3), dtype=tile_rgb.dtype)
         pad[:h, :w] = tile_rgb
         img = cv2.resize(pad, (size, size), interpolation=cv2.INTER_CUBIC if side < size else cv2.INTER_AREA)
@@ -159,7 +161,7 @@ class GeoDeepDetector(DetectionModel):
 
     def predict(self, tile_rgb: np.ndarray, confidence_threshold: float | None = None) -> list[RawDetection]:
         size = self._cfg["tiles_size"]
-        x, sx, sy = _to_input(tile_rgb, size)
+        x, sx, sy = _to_input(tile_rgb, size, getattr(self, "nominal_tile", None))
         outs = self._sess.run(None, {self._cfg["input_name"]: x})
         conf = confidence_threshold if confidence_threshold is not None else self._cfg["det_conf"]
         boxes, scores, classes = decode_detections(outs, self._cfg, conf)
@@ -182,18 +184,18 @@ class GeoDeepDetector(DetectionModel):
         return export_results(out_dir, self.metadata.model_id, detections_geo, geometry="polygon_detection", extra_meta=meta)
 
 
-def segment_tile(tile_rgb: np.ndarray, sess, cfg: dict) -> np.ndarray:
+def segment_tile(tile_rgb: np.ndarray, sess, cfg: dict, nominal_tile: int | None = None) -> np.ndarray:
     """-> (H, W) uint8 class mask for the tile (0 = background)."""
     import cv2
 
     h, w = tile_rgb.shape[:2]
-    x, s, _ = _to_input(tile_rgb, cfg["tiles_size"])
+    x, s, _ = _to_input(tile_rgb, cfg["tiles_size"], nominal_tile)
     out = np.asarray(sess.run(None, {cfg["input_name"]: x})[0])[0]     # (C, S, S)
     if out.shape[0] == 1:
         mask = (out[0] >= cfg["seg_thresh"]).astype(np.uint8)
     else:
         out = np.where(out >= cfg["seg_thresh"], out, 0)
         mask = out.argmax(0).astype(np.uint8)
-    side = max(h, w)
+    side = max(h, w, nominal_tile or 0)
     mask = cv2.resize(mask, (side, side), interpolation=cv2.INTER_NEAREST)
     return mask[:h, :w]

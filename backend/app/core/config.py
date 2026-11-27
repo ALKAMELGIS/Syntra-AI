@@ -28,7 +28,7 @@ class Settings:
     # --- Paths -----------------------------------------------------------
     BASE_DIR: Path = Path(__file__).resolve().parents[2]
     DATA_DIR: Path = Path(os.getenv("SYNTRA_DATA_DIR", BASE_DIR / "data"))
-    UPLOAD_DIR: Path = DATA_DIR / "uploads"
+    UPLOAD_DIR: Path = DATA_DIR / "images"          # images/<key>/<name>.tif, see app.core.layout
     RESULTS_DIR: Path = DATA_DIR / "results"
     WEIGHTS_DIR: Path = Path(os.getenv("SYNTRA_WEIGHTS_DIR", BASE_DIR / "weights"))
 
@@ -60,7 +60,7 @@ class Settings:
     MAX_UPLOAD_MB: int = int(os.getenv("SYNTRA_MAX_UPLOAD_MB", 20480))  # 20 GB: large orthomosaics are normal
 
     # --- API ---------------------------------------------------------------
-    CORS_ORIGINS: list[str] = os.getenv("SYNTRA_CORS_ORIGINS", "http://localhost:5173").split(",")
+    CORS_ORIGINS: list[str] = os.getenv("SYNTRA_CORS_ORIGINS", "http://localhost:5291,http://localhost:5173").split(",")
 
     def ensure_dirs(self) -> None:
         for d in (self.DATA_DIR, self.UPLOAD_DIR, self.RESULTS_DIR, self.WEIGHTS_DIR):

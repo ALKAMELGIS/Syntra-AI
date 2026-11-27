@@ -40,7 +40,7 @@ def register_version(
     out_dir = Path(data_dir) / "dataset_versions" / model_id
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / f"{version.version_id}.json"
-    out_path.write_text(json.dumps(asdict(version), indent=2, default=str))
+    out_path.write_text(json.dumps(asdict(version), indent=2, default=str), encoding="utf-8")
     return version
 
 
@@ -48,11 +48,11 @@ def list_versions(data_dir: str | Path, model_id: str) -> list[dict]:
     out_dir = Path(data_dir) / "dataset_versions" / model_id
     if not out_dir.exists():
         return []
-    return [json.loads(p.read_text()) for p in sorted(out_dir.glob("*.json"))]
+    return [json.loads(p.read_text(encoding="utf-8")) for p in sorted(out_dir.glob("*.json"))]
 
 
 def load_version(data_dir: str | Path, model_id: str, version_id: str) -> dict:
     path = Path(data_dir) / "dataset_versions" / model_id / f"{version_id}.json"
     if not path.exists():
         raise FileNotFoundError(f"No dataset version '{version_id}' for model '{model_id}'.")
-    return json.loads(path.read_text())
+    return json.loads(path.read_text(encoding="utf-8"))

@@ -1,0 +1,48 @@
+# Deploys main to the Hugging Face Space Alkamelgis/SYNTRA-AI: builds the
+# interface, puts it beside the engine with deploy/space/*, and pushes one
+# commit to the Space (no history, no weights). Needs the repository secret
+# HF_TOKEN: a Hugging Face token with write access to that Space.
+name: Deploy to Hugging Face Space
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: ${{ github.repository == 'ALKAMELGIS/Syntra-AI' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check for the token
+        id: token
+        run: echo "ok=${{ secrets.HF_TOKEN != '' }}" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@v4
+        if: steps.token.outputs.ok == 'true'
+        with:
+          node-version: 20
+      - name: Build the interface
+        if: steps.token.outputs.ok == 'true'
+        working-directory: frontend
+        run: npm ci && npx vite build
+      - name: Assemble the Space
+        if: steps.token.outputs.ok == 'true'
+        run: |
+          mkdir -p space/backend
+          cp -r backend/app space/backend/app
+          cp backend/requirements-core.txt backend/requirements-ml.txt space/backend/
+          cp -r frontend/dist space/static
+          cp deploy/space/README.md deploy/space/app.py deploy/space/requirements.txt space/
+          find space -name "__pycache__" -prune -exec rm -rf {} +
+      - name: Push to the Space
+        if: steps.token.outputs.ok == 'true'
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          cd space
+          git init -q -b main
+          git config user.email "deploy@syntra.local"
+          git config user.name "Syntra deploy"
+          git add -A
+          git commit -qm "Deploy ${GITHUB_SHA::7}"
+          git push --force "https://Alkamelgis:${HF_TOKEN}@huggingface.co/spaces/Alkamelgis/SYNTRA-AI" main

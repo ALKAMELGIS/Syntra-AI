@@ -42,24 +42,34 @@ REQUIRED: list[tuple[str, str, str]] = [
     ("torch", "torch", "model inference runtime (CPU or GPU)"),
     ("torchvision", "torchvision", "vision model utilities"),
     ("ultralytics", "ultralytics", "YOLO-family detectors"),
-    ("segmentation_models_pytorch", "segmentation-models-pytorch", "field-boundary segmentation backbone"),
+    ("scipy", "scipy", "date palm crown splitting"),
+    ("safetensors", "safetensors", "date palm SegFormer weights"),
     ("onnxruntime", "onnxruntime", "optional faster inference path (CPU build; swap for onnxruntime-gpu on a CUDA host)"),
     ("yaml", "pyyaml", "dataset/config YAML parsing"),
     ("dotenv", "python-dotenv", ".env config loading"),
+    ("httpx", "httpx", "Sentinel Hub requests (remote sensing)"),
+    ("huggingface_hub", "huggingface_hub", "samples and models on Hugging Face"),
 ]
 
 BACKEND_ENV_PATH = Path(__file__).resolve().parent.parent.parent / ".env"
 REQUIREMENTS_PATH = Path(__file__).resolve().parent.parent.parent / "requirements.txt"
 
 
-def parse_requirements() -> dict[str, str]:
-    """pip package base-name (lowercased, no extras/markers) -> full pinned requirement line."""
+def parse_requirements(path: Path | None = None, _seen: set | None = None) -> dict[str, str]:
+    """pip package base-name (lowercased, no extras/markers) -> full requirement line.
+    Follows `-r other.txt` includes (requirements.txt = core + ml)."""
+    path = path or REQUIREMENTS_PATH
+    seen = _seen if _seen is not None else set()
     lines: dict[str, str] = {}
-    if not REQUIREMENTS_PATH.exists():
+    if not path.exists() or path in seen:
         return lines
-    for raw in REQUIREMENTS_PATH.read_text().splitlines():
+    seen.add(path)
+    for raw in path.read_text(encoding="utf-8").splitlines():
         line = raw.split("#", 1)[0].strip()
         if not line:
+            continue
+        if line.startswith("-r "):
+            lines.update(parse_requirements(path.parent / line[3:].strip(), seen))
             continue
         base = re.split(r"[\[=<>!~; ]", line, maxsplit=1)[0].strip().lower()
         if base:

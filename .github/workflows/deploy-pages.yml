@@ -1,0 +1,67 @@
+# Publishes a one-line redirect page to GitHub Pages, sending the browser to
+# the syntra-ai Worker (deploy/worker/src/index.js), which transparently
+# proxies the whole app -- not just a redirect itself -- so the address bar
+# lands on syntra-ai.alkamelgis.workers.dev and never shows the Render
+# engine's own onrender.com URL. Tried serving the built interface itself
+# from here first, with the engine called cross-origin (VITE_API_BASE_URL);
+# that needs the session cookie to survive a cross-site fetch, which depends
+# on each visitor's own browser privacy settings (third-party / partitioned
+# cookie blocking) and was not reliable. A redirect to a same-origin proxy
+# sidesteps the whole class of problem: the browser only ever talks to one
+# origin per request, and it is never a cross-site one.
+#
+# One manual step this workflow cannot do itself: in the repo's
+# Settings > Pages, "Build and deployment > Source" must be set to
+# "GitHub Actions" (not "Deploy from a branch") for this to take effect.
+name: Deploy interface to GitHub Pages
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/deploy-pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Write the redirect page
+        run: |
+          mkdir -p pages-site
+          cat > pages-site/index.html <<'HTML'
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+            <meta charset="utf-8">
+            <title>Syntra AI</title>
+            <meta http-equiv="refresh" content="0; url=https://syntra-ai.alkamelgis.workers.dev/">
+            <link rel="canonical" href="https://syntra-ai.alkamelgis.workers.dev/">
+            <script>location.replace("https://syntra-ai.alkamelgis.workers.dev/");</script>
+          </head>
+          <body>
+            <p>Opening Syntra AI… if nothing happens, <a href="https://syntra-ai.alkamelgis.workers.dev/">click here</a>.</p>
+          </body>
+          </html>
+          HTML
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: pages-site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

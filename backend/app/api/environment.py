@@ -86,7 +86,7 @@ def _run_job(job_id: str, cmd: list[str]):
     try:
         proc = subprocess.Popen(
             cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            text=True, bufsize=1,
+            text=True, bufsize=1, encoding="utf-8", errors="replace"
         )
         last_flush = 0.0
         for line in proc.stdout:  # type: ignore[union-attr]
