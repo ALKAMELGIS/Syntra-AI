@@ -271,14 +271,54 @@ async def upload_image(file: UploadFile, background_tasks: BackgroundTasks, requ
 # plus the acting user, not handed out and remembered by the browser: a File
 # object cannot survive a reload anyway, so what "resuming" means in practice
 # is that re-selecting the same file in the picker after a crash is recognised
-# as the same upload and continues from the byte already on disk, instead of
-# starting over. Chunks are appended in order (X-Upload-Offset must match the
-# partial file's current size exactly), so a retried chunk after a network
-# blip is simply rejected with the real offset instead of corrupting the file.
+# as the same upload and continues from the bytes already on disk, instead of
+# starting over.
+#
+# Chunks land at whatever byte offset the client declares (X-Upload-Offset),
+# not strictly in order: the part file is preallocated to its final size up
+# front (a sparse file -- no disk cost for the holes) so several chunks can be
+# written concurrently, each to its own non-overlapping range, which is what
+# lets the frontend run multiple chunk uploads in parallel instead of one at
+# a time. What bytes have actually arrived is tracked separately as a list of
+# [start, end) ranges in the metadata file, merged as they come in; a chunk's
+# own write and the ranges update that follows it are serialised per upload
+# key (_resumable_lock_for) so two chunks finishing at the same instant can't
+# corrupt each other's bookkeeping -- the file writes themselves, to disjoint
+# ranges, need no lock.
 # ---------------------------------------------------------------------------
 _RESUMABLE_DIR_NAME = "_resumable"
 _MAX_CHUNK_BYTES = 64 * 1024 * 1024       # one PUT; the frontend sends chunks well under this
 _RESUMABLE_MAX_AGE_DAYS = 14               # an abandoned upload is swept away after this long
+
+import threading
+
+_resumable_locks: dict[str, threading.Lock] = {}
+_resumable_locks_guard = threading.Lock()
+
+
+def _resumable_lock_for(key: str) -> threading.Lock:
+    with _resumable_locks_guard:
+        lock = _resumable_locks.get(key)
+        if lock is None:
+            lock = threading.Lock()
+            _resumable_locks[key] = lock
+        return lock
+
+
+def _merge_ranges(ranges: list[list[int]], start: int, end: int) -> list[list[int]]:
+    """Insert [start, end) and coalesce with whatever already overlaps or touches it."""
+    merged: list[list[int]] = []
+    placed = False
+    for s, e in sorted(ranges + [[start, end]]):
+        if merged and s <= merged[-1][1]:
+            merged[-1][1] = max(merged[-1][1], e)
+        else:
+            merged.append([s, e])
+    return merged
+
+
+def _received_bytes(ranges: list[list[int]]) -> int:
+    return sum(e - s for s, e in ranges)
 
 
 def _resumable_dir() -> Path:
@@ -312,6 +352,8 @@ def _sweep_stale_resumables() -> None:
             if meta.stat().st_mtime < cutoff:
                 meta.unlink(missing_ok=True)
                 meta.with_suffix(".part").unlink(missing_ok=True)
+                with _resumable_locks_guard:
+                    _resumable_locks.pop(meta.stem, None)
         except OSError:
             pass
 
@@ -324,7 +366,9 @@ class ResumableStart(BaseModel):
 
 @router.post("/resumable")
 async def resumable_start(body: ResumableStart, request: Request):
-    """Begin a chunked upload, or report how far an already-started one got."""
+    """Begin a chunked upload, or report how far an already-started one got
+    (as the list of byte ranges already on disk, so the frontend can skip
+    them and only upload what is still missing)."""
     import json
 
     from app.core.auth import acting_user_id
@@ -344,49 +388,67 @@ async def resumable_start(body: ResumableStart, request: Request):
     key = _resumable_key(uid, filename, body.size, body.modified)
     part, meta = _resumable_paths(key)
     if part.exists() and meta.exists():
-        offset = part.stat().st_size
+        info = json.loads(meta.read_text(encoding="utf-8"))
+        ranges = info.get("ranges", [])
     else:
-        part.write_bytes(b"")
-        meta.write_text(json.dumps({"name": filename, "size": body.size, "owner": uid}), encoding="utf-8")
-        offset = 0
-    return {"key": key, "offset": offset}
+        def _create() -> None:
+            with part.open("wb") as f:
+                f.truncate(body.size)   # sparse file: the holes cost no disk space
+
+        await run_in_threadpool(_create)
+        ranges = []
+        meta.write_text(
+            json.dumps({"name": filename, "size": body.size, "owner": uid, "ranges": ranges}),
+            encoding="utf-8",
+        )
+    return {"key": key, "size": body.size, "ranges": ranges}
 
 
 @router.put("/resumable/{key}")
 async def resumable_chunk(key: str, request: Request):
-    """Append one chunk at the offset the client believes it is at. A mismatch
-    (a retried chunk, two tabs racing) is refused with the real offset in a
-    header rather than silently duplicating or corrupting bytes."""
+    """Write one chunk at the byte offset the client declares. Several chunks
+    may be in flight at once (parallel PUTs to disjoint ranges); each is
+    written independently and only the bookkeeping of which ranges have
+    arrived is serialised, so this does not force uploads to go one at a
+    time the way a strict append would."""
     import json
 
     part, meta = _resumable_paths(key)
     if not part.exists() or not meta.exists():
         raise HTTPException(status_code=404, detail="No upload in progress with this key. Start again.")
-    info = json.loads(meta.read_text(encoding="utf-8"))
 
     try:
-        claimed_offset = int(request.headers.get("x-upload-offset", "-1"))
+        offset = int(request.headers.get("x-upload-offset", "-1"))
     except ValueError:
+        offset = -1
+    if offset < 0:
         raise HTTPException(status_code=400, detail="Missing or invalid X-Upload-Offset header.")
-    current = part.stat().st_size
-    if claimed_offset != current:
-        raise HTTPException(status_code=409, detail="Offset mismatch.", headers={"X-Upload-Offset": str(current)})
 
     content_length = int(request.headers.get("content-length") or 0)
     if content_length <= 0 or content_length > _MAX_CHUNK_BYTES:
         raise HTTPException(status_code=413, detail=f"Each chunk must be under {_MAX_CHUNK_BYTES // (1024 * 1024)} MB.")
-    if current + content_length > info["size"]:
-        raise HTTPException(status_code=400, detail="Chunk would exceed the file's declared size.")
 
     chunk = await request.body()
+    if len(chunk) != content_length:
+        raise HTTPException(status_code=400, detail="Chunk body did not match its declared length.")
 
-    def _append() -> int:
-        with part.open("ab") as f:
-            f.write(chunk)
-        return part.stat().st_size
+    lock = _resumable_lock_for(key)
 
-    new_offset = await run_in_threadpool(_append)
-    return {"offset": new_offset, "complete": new_offset >= info["size"]}
+    def _write_and_record() -> dict:
+        with lock:
+            info = json.loads(meta.read_text(encoding="utf-8"))
+            if offset + content_length > info["size"]:
+                raise HTTPException(status_code=400, detail="Chunk would exceed the file's declared size.")
+            with part.open("r+b") as f:
+                f.seek(offset)
+                f.write(chunk)
+            ranges = _merge_ranges(info.get("ranges", []), offset, offset + content_length)
+            info["ranges"] = ranges
+            meta.write_text(json.dumps(info), encoding="utf-8")
+            received = _received_bytes(ranges)
+            return {"received": received, "complete": received >= info["size"]}
+
+    return await run_in_threadpool(_write_and_record)
 
 
 @router.post("/resumable/{key}/finish")
@@ -399,9 +461,13 @@ async def resumable_finish(key: str, background_tasks: BackgroundTasks, request:
     if not part.exists() or not meta.exists():
         raise HTTPException(status_code=404, detail="No upload in progress with this key.")
     info = json.loads(meta.read_text(encoding="utf-8"))
-    size_now = part.stat().st_size
-    if size_now != info["size"]:
-        raise HTTPException(status_code=409, detail=f"Upload is not complete yet ({size_now} of {info['size']} bytes).")
+    ranges = info.get("ranges", [])
+    received = _received_bytes(ranges)
+    if received != info["size"] or (ranges and (len(ranges) != 1 or ranges[0] != [0, info["size"]])):
+        raise HTTPException(status_code=409, detail=f"Upload is not complete yet ({received} of {info['size']} bytes).")
+
+    with _resumable_locks_guard:
+        _resumable_locks.pop(key, None)
 
     image_id = str(uuid.uuid4())
     dest = _library_path(image_id, info["name"])
@@ -427,6 +493,8 @@ async def resumable_cancel(key: str):
     part, meta = _resumable_paths(key)
     part.unlink(missing_ok=True)
     meta.unlink(missing_ok=True)
+    with _resumable_locks_guard:
+        _resumable_locks.pop(key, None)
     return Response(status_code=204)
 
 

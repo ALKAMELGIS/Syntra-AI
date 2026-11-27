@@ -87,12 +87,14 @@ export const auth = {
   engineUp: () => fetch(`${BASE}/health`).then((r) => r.ok).catch(() => false),
 };
 
-const UPLOAD_CHUNK_BYTES = 16 * 1024 * 1024;   // one PUT; small enough to retry cheaply after a blip
+const UPLOAD_CHUNK_BYTES = 32 * 1024 * 1024;   // grid cell; small enough to retry cheaply after a blip
 const UPLOAD_CHUNK_RETRIES = 5;
+const UPLOAD_PARALLEL = 4;   // concurrent PUTs: several chunks in flight beats one at a time over a
+                              // single slow or high-latency connection, which is the usual bottleneck
+                              // for a large, high-resolution drone GeoTIFF.
 
 // One chunk PUT with real upload-progress events (XHR, not fetch). Resolves
-// with { offset, complete }; rejects with an Error carrying .status and,
-// for a 409 offset mismatch, .serverOffset (the real offset to resync to).
+// with { received, complete }; rejects with an Error carrying .status.
 function putChunk(url, blob, offset, onChunkProgress) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
@@ -109,10 +111,6 @@ function putChunk(url, blob, offset, onChunkProgress) {
       } else {
         const err = new Error(body.detail || `Upload chunk failed (HTTP ${xhr.status}).`);
         err.status = xhr.status;
-        if (xhr.status === 409) {
-          const h = xhr.getResponseHeader("X-Upload-Offset");
-          if (h != null) err.serverOffset = Number(h);
-        }
         reject(err);
       }
     };
@@ -121,46 +119,79 @@ function putChunk(url, blob, offset, onChunkProgress) {
   });
 }
 
+// Fixed-size grid over the whole file; a range the server already has
+// (returned by /resumable on resume) is dropped so only what is missing is
+// sent, whole cells at a time.
+function _missingChunks(fileSize, ranges) {
+  const covered = (pos) => ranges.some(([s, e]) => pos >= s && pos < e);
+  const chunks = [];
+  for (let start = 0; start < fileSize; start += UPLOAD_CHUNK_BYTES) {
+    const end = Math.min(start + UPLOAD_CHUNK_BYTES, fileSize);
+    if (!covered(start)) chunks.push([start, end]);
+  }
+  return chunks;
+}
+
 async function uploadResumable(file, onProgress, metadataFile = null) {
   if (!file.name.toLowerCase().endsWith(".tif") && !file.name.toLowerCase().endsWith(".tiff")) {
     throw new Error("Only GeoTIFF (.tif/.tiff) uploads are supported.");
   }
-  const { key, offset: startOffset } = await request(`${BASE}/images/resumable`, json({
+  const { key, ranges } = await request(`${BASE}/images/resumable`, json({
     name: file.name, size: file.size, modified: String(file.lastModified || 0),
   })).then(handle);
 
-  let offset = startOffset;
-  onProgress?.(offset / file.size);
-  while (offset < file.size) {
-    const end = Math.min(offset + UPLOAD_CHUNK_BYTES, file.size);
-    const blob = file.slice(offset, end);
-    const base = offset;
-    let attempt = 0;
+  const chunkLoaded = new Map();   // offset -> bytes sent so far, for the combined progress bar
+  let alreadyDone = ranges.reduce((n, [s, e]) => n + (e - s), 0);
+  const report = () => {
+    const sent = alreadyDone + [...chunkLoaded.values()].reduce((a, b) => a + b, 0);
+    onProgress?.(Math.min(sent / file.size, 1));
+  };
+  report();
+
+  const queue = _missingChunks(file.size, ranges);
+  let cursor = 0;
+  let firstError = null;
+
+  async function worker() {
     for (;;) {
-      try {
-        const result = await putChunk(`${BASE}/images/resumable/${key}`, blob, offset, (loaded) => {
-          onProgress?.((base + loaded) / file.size);
-        });
-        offset = result.offset;
-        break;
-      } catch (err) {
-        if (err.status === 409 && Number.isFinite(err.serverOffset)) {
-          // another tab, or a retried chunk the server already has: resync and retry from there
-          offset = err.serverOffset;
+      if (firstError) return;
+      const my = cursor++;
+      if (my >= queue.length) return;
+      const [start, end] = queue[my];
+      const blob = file.slice(start, end);
+      let attempt = 0;
+      for (;;) {
+        try {
+          const result = await putChunk(`${BASE}/images/resumable/${key}`, blob, start, (loaded) => {
+            chunkLoaded.set(start, loaded);
+            report();
+          });
+          chunkLoaded.set(start, end - start);
+          report();
+          if (result.complete) return;
           break;
-        }
-        if (err.status !== 0 || ++attempt > UPLOAD_CHUNK_RETRIES) {
-          const up = await fetch(`${BASE}/health`).then((r) => r.ok).catch(() => false);
-          if (err.status === 0) {
-            throw new Error(up
-              ? `The upload was cut off (at ${Math.round((100 * offset) / file.size)}%). The server kept what arrived — try again with the same file to continue from there, instead of from the start.`
-              : "Couldn't reach the Syntra AI server. Check that the backend window is still open, then try again with the same file to continue from where it left off.");
+        } catch (err) {
+          if (err.status !== 0 || ++attempt > UPLOAD_CHUNK_RETRIES) {
+            firstError = err;
+            return;
           }
-          throw err;
+          await new Promise((r) => setTimeout(r, 500 * 2 ** (attempt - 1)));   // 0.5s, 1s, 2s, 4s, 8s
         }
-        await new Promise((r) => setTimeout(r, 500 * 2 ** (attempt - 1)));   // 0.5s, 1s, 2s, 4s, 8s
       }
     }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(UPLOAD_PARALLEL, Math.max(queue.length, 1)) }, worker));
+
+  if (firstError) {
+    const sentFraction = [...chunkLoaded.values()].reduce((a, b) => a + b, 0) + alreadyDone;
+    const up = await fetch(`${BASE}/health`).then((r) => r.ok).catch(() => false);
+    if (firstError.status === 0) {
+      throw new Error(up
+        ? `The upload was cut off (at ${Math.round((100 * sentFraction) / file.size)}%). The server kept what arrived — try again with the same file to continue from there, instead of from the start.`
+        : "Couldn't reach the Syntra AI server. Check that the backend window is still open, then try again with the same file to continue from where it left off.");
+    }
+    throw firstError;
   }
 
   const form = new FormData();
